@@ -79,12 +79,12 @@ function layout({ title, body, user, flash = "" }) {
       <a class="brand" href="/">
         <span class="brand-mark">D</span>
         <span>
-          <strong>Discord Panel</strong>
-          <small>Bot configuration</small>
+          <strong>Chipkittle Panel</strong>
+          <small>Server configuration</small>
         </span>
       </a>
       <nav>
-        <a href="/">Servers</a>
+        <a href="/">Config</a>
         ${user ? '<a href="/logout">Sign out</a>' : '<a href="/login">Sign in</a>'}
       </nav>
       <div class="sidebar-note">
@@ -133,29 +133,16 @@ function inviteUrl(clientId) {
 
 function dashboardPage({ guilds, client, clientId, ai, commandList, flash }) {
   const botInviteUrl = inviteUrl(clientId);
-  const guildRows = guilds
-    .map(
-      (guild) => `
-        <a class="guild-row" href="/guilds/${guild.id}">
-          <span class="guild-icon">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
-          <span>
-            <strong>${escapeHtml(guild.name)}</strong>
-            <small>${guild.memberCount ?? "Unknown"} members</small>
-          </span>
-          <span class="row-arrow">Open</span>
-        </a>`
-    )
-    .join("");
 
   return layout({
-    title: "Servers",
+    title: "Bot status",
     user: true,
     flash,
     body: `
       <section class="page-heading">
         <p class="eyebrow">Control room</p>
-        <h1>Servers</h1>
-        <p class="muted">Choose a server to edit welcome, role, moderation, and command settings.</p>
+        <h1>Bot Status</h1>
+        <p class="muted">This panel is set up for one Discord server. Invite the bot, then refresh this page to configure it.</p>
         ${botInviteUrl ? `<a class="primary-link" href="${botInviteUrl}" target="_blank" rel="noreferrer">Invite bot</a>` : ""}
       </section>
       <section class="metrics">
@@ -165,7 +152,7 @@ function dashboardPage({ guilds, client, clientId, ai, commandList, flash }) {
         </div>
         <div>
           <span>${guilds.length}</span>
-          <strong>Connected servers</strong>
+          <strong>Connected server</strong>
         </div>
         <div>
           <span>${Math.round(process.uptime() / 60)}m</span>
@@ -181,7 +168,7 @@ function dashboardPage({ guilds, client, clientId, ai, commandList, flash }) {
         </div>
       </section>
       <section class="guild-list">
-        ${guildRows || '<p class="empty">The bot is not connected to any servers yet.</p>'}
+        <p class="empty">The bot is not connected to a Discord server yet, or it is still starting up.</p>
       </section>
     `
   });
@@ -245,7 +232,6 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
     flash,
     body: `
       <section class="page-heading guild-heading">
-        <a class="back-link" href="/">Back to servers</a>
         <div class="guild-title">
           <span class="guild-icon large">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
           <div>
@@ -380,7 +366,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
   });
 }
 
-export function createPanel({ client, store, panelPassword, sessionSecret, clientId, ai, defaultAiModel, commandList }) {
+export function createPanel({ client, store, panelPassword, sessionSecret, clientId, guildId, ai, defaultAiModel, commandList }) {
   const app = express();
 
   app.disable("x-powered-by");
@@ -435,6 +421,19 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
 
   app.get("/", requireAuth, (request, response) => {
     const guilds = client.guilds.cache.map(serializeGuild).sort((a, b) => a.name.localeCompare(b.name));
+    if (guildId) {
+      const pinnedGuild = client.guilds.cache.get(guildId);
+      if (pinnedGuild) {
+        response.redirect(`/guilds/${pinnedGuild.id}${request.query.saved ? "?saved=1" : ""}`);
+        return;
+      }
+    }
+
+    if (guilds.length === 1) {
+      response.redirect(`/guilds/${guilds[0].id}${request.query.saved ? "?saved=1" : ""}`);
+      return;
+    }
+
     response.send(dashboardPage({ guilds, client, clientId, ai, commandList, flash: request.query.saved ? "Configuration saved." : "" }));
   });
 

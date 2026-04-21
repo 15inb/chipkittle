@@ -10,6 +10,7 @@ const port = Number(process.env.PORT || 3000);
 const publicUrl = process.env.PUBLIC_URL || `http://localhost:${port}`;
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
+const guildId = process.env.GUILD_ID;
 const defaultAiModel = process.env.OPENAI_MODEL || "gpt-5.2";
 const panelPassword = process.env.PANEL_PASSWORD || "changeme";
 const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
@@ -36,6 +37,7 @@ const app = createPanel({
   panelPassword,
   sessionSecret,
   clientId,
+  guildId,
   ai,
   defaultAiModel,
   commandList
