@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Bot</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body {
+      display: grid;
+      place-items: center;
+      min-height: 100svh;
+      padding: 24px;
+    }
+
+    .site-home {
+      width: min(920px, 100%);
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+      gap: 32px;
+      align-items: center;
+    }
+
+    .site-home h1 {
+      font-size: 56px;
+      line-height: 1;
+      margin: 0 0 16px;
+    }
+
+    .site-home p {
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    .home-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .home-actions a {
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+
+    .home-actions .primary {
+      background: var(--accent);
+      color: #07120e;
+    }
+
+    .home-actions .secondary {
+      border: 1px solid var(--line);
+      color: var(--text);
+    }
+
+    .home-status {
+      display: grid;
+      gap: 8px;
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .home-artifact {
+      min-height: 360px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 50% 26%, rgba(242, 244, 248, 0.92) 0 12%, transparent 13%),
+        radial-gradient(circle at 38% 34%, rgba(242, 244, 248, 0.95) 0 4%, transparent 4.5%),
+        radial-gradient(circle at 62% 34%, rgba(242, 244, 248, 0.95) 0 4%, transparent 4.5%),
+        linear-gradient(140deg, transparent 0 23%, #222a30 24% 32%, transparent 33%),
+        linear-gradient(220deg, transparent 0 23%, #222a30 24% 32%, transparent 33%),
+        radial-gradient(circle at 50% 58%, rgba(242, 244, 248, 0.9) 0 34%, transparent 35%),
+        var(--panel);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .home-artifact::before,
+    .home-artifact::after {
+      content: "";
+      position: absolute;
+      top: 112px;
+      width: 120px;
+      height: 36px;
+      border-radius: 999px;
+      background: #f2f4f8;
+      box-shadow: 0 20px 48px rgba(242, 244, 248, 0.16);
+    }
+
+    .home-artifact::before {
+      left: -18px;
+      transform: rotate(28deg);
+    }
+
+    .home-artifact::after {
+      right: -18px;
+      transform: rotate(-28deg);
+    }
+
+    @media (max-width: 760px) {
+      .site-home {
+        grid-template-columns: 1fr;
+      }
+
+      .site-home h1 {
+        font-size: 42px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="site-home">
+    <section>
+      <h1>Chipkittle Bot</h1>
+      <p>A Discord bot with a web config panel, expanded commands, moderation tools, and optional Chipkittle AI lore chat.</p>
+      <div class="home-actions">
+        <a class="primary" href="https://github.com/15inb/chipkittle">View GitHub Repo</a>
+        <a class="secondary" href="https://github.com/15inb/chipkittle/blob/main/DEPLOYMENT.md">Deployment Notes</a>
+      </div>
+      <div class="home-status">
+        <span>This Vercel page is the public website.</span>
+        <span>The live bot and config panel should run on an always-on Node host.</span>
+        <span>Set <code>PUBLIC_URL</code> to your panel URL when deployed.</span>
+      </div>
+    </section>
+    <div class="home-artifact" aria-label="Chipkittle suit illustration"></div>
+  </main>
+</body>
+</html>

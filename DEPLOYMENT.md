@@ -107,7 +107,20 @@ The bot needs these permissions:
 
 Use Vercel for the public website, not the always-on Discord bot.
 
-This repo includes a simple Vercel landing page at `index.html`, so Vercel has something to show at `/`.
+This repo includes a simple Vercel landing page at `public/index.html`, so Vercel has something to show at `/`.
+
+When importing the GitHub repo in Vercel, use these settings:
+
+```text
+Repository: 15inb/chipkittle
+Root Directory: ./
+Framework Preset: Other
+Build Command: leave empty
+Output Directory: public
+Install Command: npm install
+```
+
+Do not put `15inb/chipkittle` in **Root Directory**. That field is only for a folder inside the repo, such as `apps/web`. This project lives at the repo root, so the Root Directory should be blank or `./`.
 
 Install the Vercel CLI:
 
