@@ -386,7 +386,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   app.disable("x-powered-by");
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json());
-  app.use(express.static("public"));
+  app.use(express.static("public", { index: false }));
   app.use(
     session({
       name: "bot_panel.sid",
