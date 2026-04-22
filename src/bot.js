@@ -5,6 +5,7 @@ import {
   GatewayIntentBits,
   PermissionsBitField
 } from "discord.js";
+import { checkAiRateLimit } from "./aiRateLimit.js";
 import { commandList, createCommandHandler } from "./commands.js";
 import { NO_MENTIONS } from "./discordSafety.js";
 
@@ -113,6 +114,20 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
     if (shouldAiReply(message, config, client.user.id)) {
       const prompt = cleanAiPrompt(message, client.user.id);
       if (prompt) {
+        const rateLimit = checkAiRateLimit({
+          guildId: message.guild.id,
+          userId: message.author.id,
+          cooldownSeconds: config.ai.apiCooldownSeconds
+        });
+
+        if (rateLimit.limited) {
+          await message.reply({
+            content: `The artifact is cooling down. Try again in ${rateLimit.retryAfterSeconds}s.`,
+            allowedMentions: NO_MENTIONS
+          }).catch(() => {});
+          return;
+        }
+
         await message.channel.sendTyping().catch(() => {});
         const reply = await ai.reply(message, config, prompt).catch((error) => {
           console.error("AI reply failed:", error);

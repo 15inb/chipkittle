@@ -23,6 +23,7 @@ const DEFAULT_CONFIG = {
     enabled: false,
     channelIds: [],
     model: "",
+    apiCooldownSeconds: 30,
     replyToMentions: true,
     personality: "You are the Chipkittle family archivist: strange, ceremonial, funny, loyal to the artifact, and always dressed in the same white furry horned Chipkittle suit. Keep replies playful and PG-13. Do not use slurs, sexual violence, or hateful language from old records."
   }

@@ -1,4 +1,5 @@
 import { EmbedBuilder, PermissionsBitField } from "discord.js";
+import { checkAiRateLimit } from "./aiRateLimit.js";
 import {
   CHIPKITTLE_LORE,
   randomChipkittleName,
@@ -855,7 +856,7 @@ define({
     const action = ctx.args[0]?.toLowerCase() || "status";
     if (action === "status") {
       await ctx.message.reply(
-        `AI config: ${ctx.config.ai.enabled ? "on" : "off"} | channels: ${channelMentionList(ctx.config.ai.channelIds)} | model: ${ctx.config.ai.model || ctx.defaultAiModel} | API key: ${ctx.ai.enabled ? "present" : "missing"}`
+        `AI config: ${ctx.config.ai.enabled ? "on" : "off"} | channels: ${channelMentionList(ctx.config.ai.channelIds)} | model: ${ctx.config.ai.model || ctx.defaultAiModel} | cooldown: ${ctx.config.ai.apiCooldownSeconds}s | API key: ${ctx.ai.enabled ? "present" : "missing"}`
       );
       return;
     }
@@ -923,6 +924,27 @@ define({
 });
 
 define({
+  name: "airatelimit",
+  aliases: ["aicooldown"],
+  category: "AI",
+  description: "Set the per-user AI API cooldown in seconds.",
+  usage: "airatelimit 30",
+  async run(ctx) {
+    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    const seconds = Math.min(Math.max(Number(ctx.args[0]), 0), 3600);
+    if (Number.isNaN(seconds)) {
+      await ctx.message.reply(`Current AI API cooldown: ${ctx.config.ai.apiCooldownSeconds}s.`);
+      return;
+    }
+
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, apiCooldownSeconds: seconds }
+    });
+    await ctx.message.reply(`AI API cooldown set to ${seconds}s per user.`);
+  }
+});
+
+define({
   name: "aipersonality",
   category: "AI",
   description: "Set extra AI personality guidance.",
@@ -952,6 +974,20 @@ define({
     const prompt = ctx.rest;
     if (!prompt) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const rateLimit = checkAiRateLimit({
+      guildId: ctx.message.guild.id,
+      userId: ctx.message.author.id,
+      cooldownSeconds: ctx.config.ai.apiCooldownSeconds
+    });
+
+    if (rateLimit.limited) {
+      await ctx.message.reply({
+        content: `The artifact is cooling down. Try again in ${rateLimit.retryAfterSeconds}s.`,
+        allowedMentions: NO_MENTIONS
+      });
       return;
     }
 

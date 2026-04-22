@@ -58,6 +58,7 @@ function parseConfigForm(body) {
       enabled: body.aiEnabled === "on",
       channelIds: aiChannelIds.map(String),
       model: String(body.aiModel || "").trim().slice(0, 80),
+      apiCooldownSeconds: Math.min(Math.max(Number(body.aiApiCooldownSeconds) || 0, 0), 3600),
       replyToMentions: body.aiReplyToMentions === "on",
       personality: String(body.aiPersonality || "").trim().slice(0, 1200)
     }
@@ -338,6 +339,10 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
           <label>
             Model
             <input name="aiModel" value="${escapeHtml(config.ai.model || defaultAiModel)}">
+          </label>
+          <label>
+            API cooldown seconds
+            <input type="number" name="aiApiCooldownSeconds" min="0" max="3600" value="${escapeHtml(config.ai.apiCooldownSeconds)}">
           </label>
           <label>
             Extra personality
