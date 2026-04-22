@@ -1,4 +1,4 @@
-import { ChannelType, EmbedBuilder, PermissionsBitField } from "discord.js";
+import { AttachmentBuilder, ChannelType, EmbedBuilder, PermissionsBitField } from "discord.js";
 import { checkAiRateLimit } from "./aiRateLimit.js";
 import {
   applicantIdFromChannel,
@@ -26,6 +26,8 @@ const eightBallAnswers = [
   "The suit approves.",
   "Signs point to a deeply weird maybe."
 ];
+const IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+const MAX_CHIPIFY_IMAGE_BYTES = 20 * 1024 * 1024;
 
 const commandDefinitions = [];
 
@@ -173,6 +175,53 @@ function safeContent(text, fallback = "No text provided.") {
 
 function targetTextChannel(message) {
   return message.mentions.channels.first() || message.channel;
+}
+
+function isSupportedImageAttachment(attachment) {
+  const contentType = attachment.contentType?.toLowerCase() || "";
+  const extension = attachment.name?.split(".").pop()?.toLowerCase();
+  return (
+    IMAGE_CONTENT_TYPES.has(contentType) ||
+    ["png", "jpg", "jpeg", "webp"].includes(extension)
+  );
+}
+
+async function findImageAttachment(message) {
+  const directAttachment = message.attachments.find(isSupportedImageAttachment);
+  if (directAttachment) return directAttachment;
+
+  const referencedMessageId = message.reference?.messageId;
+  if (!referencedMessageId) return null;
+
+  const referencedMessage = await message.channel.messages.fetch(referencedMessageId).catch(() => null);
+  return referencedMessage?.attachments.find(isSupportedImageAttachment) || null;
+}
+
+async function downloadAttachment(attachment) {
+  if (attachment.size && attachment.size > MAX_CHIPIFY_IMAGE_BYTES) {
+    throw new Error("That image is too large. Please use an image under 20 MB.");
+  }
+
+  const response = await fetch(attachment.url);
+  if (!response.ok) {
+    throw new Error("I could not download that image from Discord.");
+  }
+
+  const contentType = response.headers.get("content-type") || attachment.contentType || "image/png";
+  if (!isSupportedImageAttachment({ contentType, name: attachment.name })) {
+    throw new Error("Please use a PNG, JPG, or WebP image.");
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  if (arrayBuffer.byteLength > MAX_CHIPIFY_IMAGE_BYTES) {
+    throw new Error("That image is too large. Please use an image under 20 MB.");
+  }
+
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    mimeType: contentType.split(";")[0],
+    filename: attachment.name || "chipify.png"
+  };
 }
 
 function channelMentionList(ids) {
@@ -594,6 +643,64 @@ define({
   async run(ctx) {
     const lore = ctx.args[0] === "rules" ? CHIPKITTLE_LORE.principles : CHIPKITTLE_LORE.figures;
     await ctx.message.reply(lore[Math.floor(Math.random() * lore.length)]);
+  }
+});
+
+define({
+  name: "chipify",
+  aliases: ["chipimage", "chipkit"],
+  category: "Chipkittle",
+  description: "Turn an attached or replied-to image into a Chipkittle.",
+  usage: "chipify [attach image] or reply to an image",
+  async run(ctx) {
+    if (!ctx.ai.enabled) {
+      await ctx.message.reply("AI image generation is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");
+      return;
+    }
+
+    if (isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
+      await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
+      return;
+    }
+
+    const attachment = await findImageAttachment(ctx.message);
+    if (!attachment) {
+      await ctx.message.reply(`Attach an image with \`${usage(ctx.config, this)}\`, or reply to an image with \`${ctx.config.prefix}chipify\`.`);
+      return;
+    }
+
+    const rateLimit = checkAiRateLimit({
+      guildId: ctx.message.guild.id,
+      userId: ctx.message.author.id,
+      cooldownSeconds: ctx.config.ai.apiCooldownSeconds
+    });
+
+    if (rateLimit.limited) {
+      await ctx.message.reply({
+        content: `The artifact is cooling down. Try again in ${rateLimit.retryAfterSeconds}s.`,
+        allowedMentions: NO_MENTIONS
+      });
+      return;
+    }
+
+    const status = await ctx.message.reply("Chipifying image... this can take a little bit.");
+
+    try {
+      const source = await downloadAttachment(attachment);
+      const imageBuffer = await ctx.ai.chipifyImage({
+        ...source,
+        userId: ctx.message.author.id
+      });
+      const file = new AttachmentBuilder(imageBuffer, { name: "chipified.png" });
+      await status.edit({
+        content: `${ctx.message.author}, behold: chipified.`,
+        files: [file],
+        allowedMentions: NO_MENTIONS
+      });
+    } catch (error) {
+      console.error("Chipify failed:", error);
+      await status.edit(error.message || "The artifact failed to chipify that image.").catch(() => {});
+    }
   }
 });
 
