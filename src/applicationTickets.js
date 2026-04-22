@@ -1,4 +1,5 @@
 import { ChannelType, PermissionsBitField } from "discord.js";
+import { buildPrettyEmbed } from "./embedOutput.js";
 
 const TOPIC_PREFIX = "Chipkittle application";
 
@@ -138,6 +139,15 @@ function attachmentLines(message) {
     : "";
 }
 
+function applicationEmbed(title, description, guildName = "Chipkittle Applications") {
+  return buildPrettyEmbed({
+    title,
+    description,
+    color: 0xf97316,
+    footer: guildName
+  });
+}
+
 export async function handleApplicationDm({ client, store, message }) {
   if (message.guild || message.author.bot) return false;
 
@@ -149,17 +159,28 @@ export async function handleApplicationDm({ client, store, message }) {
   const currentIndex = Math.min(found.ticket.questionIndex, Math.max(questions.length - 1, 0));
 
   if (!questions.length || found.ticket.completed) {
-    await message.reply("Your application has already been submitted. Staff will contact you if they need anything else.").catch(() => {});
+    await message.reply({
+      embeds: [
+        applicationEmbed(
+          "Application Submitted",
+          "Your application has already been submitted. Staff will contact you if they need anything else.",
+          found.guild.name
+        )
+      ]
+    }).catch(() => {});
     return true;
   }
 
   const question = questions[currentIndex];
-  await found.channel.send(
-    [
-      `**Question ${currentIndex + 1}:** ${question}`,
-      `**${message.author.tag}:** ${safeDmContent(message.content)}${attachmentLines(message)}`
-    ].join("\n")
-  ).catch(() => {});
+  await found.channel.send({
+    embeds: [
+      applicationEmbed(
+        `Question ${currentIndex + 1}`,
+        `**Question:** ${question}\n**${message.author.tag}:** ${safeDmContent(message.content)}${attachmentLines(message)}`,
+        found.guild.name
+      )
+    ]
+  }).catch(() => {});
 
   const nextIndex = currentIndex + 1;
   const completed = nextIndex >= questions.length;
@@ -173,11 +194,35 @@ export async function handleApplicationDm({ client, store, message }) {
   }
 
   if (completed) {
-    await message.reply("Your application has been submitted. Staff will review it soon.").catch(() => {});
-    await found.channel.send(`Application submitted by <@${message.author.id}>. Staff can use \`${config.prefix}reply message\`, \`${config.prefix}approve\`, \`${config.prefix}deny reason\`, or \`${config.prefix}closeapplication\`.`).catch(() => {});
+    await message.reply({
+      embeds: [
+        applicationEmbed(
+          "Application Submitted",
+          "Your application has been submitted. Staff will review it soon.",
+          found.guild.name
+        )
+      ]
+    }).catch(() => {});
+    await found.channel.send({
+      embeds: [
+        applicationEmbed(
+          "Application Ready For Review",
+          `Application submitted by <@${message.author.id}>. Staff can use \`${config.prefix}reply message\`, \`${config.prefix}approve\`, \`${config.prefix}deny reason\`, or \`${config.prefix}closeapplication\`.`,
+          found.guild.name
+        )
+      ]
+    }).catch(() => {});
     return true;
   }
 
-  await message.reply(`Question ${nextIndex + 1}/${questions.length}: ${questions[nextIndex]}`).catch(() => {});
+  await message.reply({
+    embeds: [
+      applicationEmbed(
+        `Question ${nextIndex + 1}/${questions.length}`,
+        questions[nextIndex],
+        found.guild.name
+      )
+    ]
+  }).catch(() => {});
   return true;
 }

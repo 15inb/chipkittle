@@ -10,6 +10,7 @@ import { checkAiRateLimit } from "./aiRateLimit.js";
 import { handleApplicationDm } from "./applicationTickets.js";
 import { commandList, createCommandHandler } from "./commands.js";
 import { NO_MENTIONS } from "./discordSafety.js";
+import { buildPrettyEmbed } from "./embedOutput.js";
 
 const invitePattern = /(discord\.gg|discord(?:app)?\.com\/invite)\/[a-z0-9-]+/i;
 const linkPattern = /https?:\/\/\S+/i;
@@ -30,7 +31,19 @@ async function sendModerationLog(guild, store, content) {
   const channel = guild.channels.cache.get(channelId);
   if (!channel?.isTextBased()) return;
 
-  await channel.send({ content }).catch(() => {});
+  await channel
+    .send({
+      embeds: [
+        buildPrettyEmbed({
+          title: "Automod Log",
+          description: content,
+          color: 0xef4444,
+          footer: guild.name
+        })
+      ],
+      allowedMentions: NO_MENTIONS
+    })
+    .catch(() => {});
 }
 
 function shouldModerate(content, automod) {

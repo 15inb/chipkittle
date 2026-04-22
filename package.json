@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "check": "node --check src/index.js && node --check src/bot.js && node --check src/configStore.js && node --check src/panel.js && node --check src/commands.js && node --check src/applicationTickets.js && node --check src/aiService.js && node --check src/chipkittleLore.js && node --check src/discordSafety.js && node --check src/aiRateLimit.js"
+    "check": "node --check src/index.js && node --check src/bot.js && node --check src/configStore.js && node --check src/panel.js && node --check src/commands.js && node --check src/applicationTickets.js && node --check src/aiService.js && node --check src/chipkittleLore.js && node --check src/discordSafety.js && node --check src/aiRateLimit.js && node --check src/embedOutput.js"
   },
   "keywords": [
     "discord",

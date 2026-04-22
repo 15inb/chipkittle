@@ -15,6 +15,13 @@ import {
   randomChipkittleQuote
 } from "./chipkittleLore.js";
 import { NO_MENTIONS } from "./discordSafety.js";
+import {
+  buildPrettyEmbed,
+  commandEmbedMeta,
+  createEmbedMessageProxy,
+  sendEmbedPayload,
+  toEmbedPayload
+} from "./embedOutput.js";
 
 const eightBallAnswers = [
   "The artifact says yes.",
@@ -28,6 +35,7 @@ const eightBallAnswers = [
 ];
 const IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_CHIPIFY_IMAGE_BYTES = 20 * 1024 * 1024;
+const PLAIN_OUTPUT_COMMANDS = new Set(["ask", "chipify"]);
 
 const commandDefinitions = [];
 
@@ -183,14 +191,16 @@ async function sendModerationLog(ctx, content) {
 
   if (!channel?.isTextBased()) return;
 
-  const logLine = [
-    `**${ctx.config.prefix}${ctx.command.name}** used by ${ctx.message.author.tag} (${ctx.message.author.id}) in <#${ctx.message.channel.id}>`,
-    safeContent(content)
-  ].join("\n");
+  const embed = buildPrettyEmbed({
+    title: `Moderation Log: ${ctx.config.prefix}${ctx.command.name}`,
+    description: safeContent(content),
+    color: 0xef4444,
+    footer: `${ctx.message.author.tag} (${ctx.message.author.id}) in #${ctx.message.channel.name}`
+  });
 
   await channel
     .send({
-      content: logLine.slice(0, 1900),
+      embeds: [embed],
       allowedMentions: NO_MENTIONS
     })
     .catch(() => {});
@@ -309,7 +319,12 @@ define({
   description: "Check bot latency.",
   async run(ctx) {
     const sent = await ctx.message.reply("Pinging...");
-    await sent.edit(`Pong. Discord latency: ${sent.createdTimestamp - ctx.message.createdTimestamp}ms.`);
+    await sent.edit(
+      toEmbedPayload(
+        `Pong. Discord latency: ${sent.createdTimestamp - ctx.message.createdTimestamp}ms.`,
+        commandEmbedMeta({ command: ctx.command, config: ctx.config, message: ctx.message })
+      )
+    );
   }
 });
 
@@ -1298,6 +1313,7 @@ define({
     await deleteCommandMessage(ctx.message);
 
     const settings = ctx.config.applications;
+    const embedMeta = commandEmbedMeta({ command: ctx.command, config: ctx.config, message: ctx.message });
     if (isBlockedFromApplying(ctx.message.member, ctx.config)) {
       return;
     }
@@ -1375,7 +1391,7 @@ define({
     const questionList = questions.map((question, index) => `${index + 1}. ${question}`).join("\n");
     const reviewerMentions = reviewerRoleIds.map((roleId) => `<@&${roleId}>`).join(" ");
 
-    await thread.send({
+    await sendEmbedPayload(thread, {
       content: [
         `Application thread opened for ${ctx.message.author} (${ctx.message.author.tag}).`,
         reviewerMentions ? `Review team: ${reviewerMentions}` : "",
@@ -1389,14 +1405,14 @@ define({
         `Use \`${ctx.config.prefix}reply message\` to DM the applicant, \`${ctx.config.prefix}approve\` to approve, \`${ctx.config.prefix}deny reason\` to deny, or \`${ctx.config.prefix}closeapplication\` to close.`
       ].filter(Boolean).join("\n"),
       allowedMentions: { users: [], roles: reviewerRoleIds }
-    });
+    }, embedMeta);
 
-    const dmStarted = await dmChannel.send([
+    const dmStarted = await sendEmbedPayload(dmChannel, [
       `Your Chipkittle application has started for **${ctx.message.guild.name}**.`,
       "Answer each question here in DMs. Staff can read your answers in the private review thread.",
       "",
       `Question 1/${questions.length}: ${questions[0]}`
-    ].join("\n")).then(() => true).catch(() => false);
+    ].join("\n"), embedMeta).then(() => true).catch(() => false);
 
     if (!dmStarted) {
       await clearApplicationTicket(ctx.store, ctx.message.guild.id, ctx.message.author.id);
@@ -1441,7 +1457,11 @@ define({
       return;
     }
 
-    const sent = await user.send(`**${ctx.message.guild.name} staff:** ${text}`).then(() => true).catch(() => false);
+    const sent = await sendEmbedPayload(
+      user,
+      `**${ctx.message.guild.name} staff:** ${text}`,
+      commandEmbedMeta({ command: ctx.command, config: ctx.config, message: ctx.message })
+    ).then(() => true).catch(() => false);
     if (!sent) {
       await ctx.message.channel.send("I could not DM that applicant. Their DMs may be closed.").catch(() => {});
       return;
@@ -1480,7 +1500,11 @@ define({
       return;
     }
 
-    const dmSent = await member.send(`Your application to **${ctx.message.guild.name}** was accepted.`).then(() => true).catch(() => false);
+    const dmSent = await sendEmbedPayload(
+      member,
+      `Your application to **${ctx.message.guild.name}** was accepted.`,
+      commandEmbedMeta({ command: ctx.command, config: ctx.config, message: ctx.message })
+    ).then(() => true).catch(() => false);
 
     if (ctx.config.applications.approvedRoleId) {
       await member.roles.add(ctx.config.applications.approvedRoleId).catch(() => null);
@@ -1527,7 +1551,11 @@ define({
     const dmText = reason
       ? `Your application to **${ctx.message.guild.name}** was denied.\nReason: ${reason}`
       : `Your application to **${ctx.message.guild.name}** was denied.`;
-    const dmSent = await user.send(dmText).then(() => true).catch(() => false);
+    const dmSent = await sendEmbedPayload(
+      user,
+      dmText,
+      commandEmbedMeta({ command: ctx.command, config: ctx.config, message: ctx.message })
+    ).then(() => true).catch(() => false);
 
     await ctx.message.channel.send({
       content: `Application denied for <@${applicantId}>${reason ? `: ${reason}` : "."}${dmSent ? "" : " I could not DM them."}`,
@@ -1578,10 +1606,14 @@ export function createCommandHandler(options) {
     const command = aliases.get(commandName);
     if (!command) return false;
 
+    const commandMessage = PLAIN_OUTPUT_COMMANDS.has(command.name)
+      ? message
+      : createEmbedMessageProxy(message, commandEmbedMeta({ command, config, message }));
+
     try {
       await command.run({
         ...options,
-        message,
+        message: commandMessage,
         config,
         args,
         rest,
@@ -1591,7 +1623,7 @@ export function createCommandHandler(options) {
       });
     } catch (error) {
       console.error(`Command ${command.name} failed:`, error);
-      await message.reply("That command failed. Check my permissions and try again.").catch(() => {});
+      await commandMessage.reply("That command failed. Check my permissions and try again.").catch(() => {});
     }
 
     return true;
