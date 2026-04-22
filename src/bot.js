@@ -50,6 +50,7 @@ function shouldModerate(content, automod) {
 function shouldAiReply(message, config, clientUserId) {
   if (!config.ai.enabled) return false;
   if (message.content.startsWith(config.prefix)) return false;
+  if ((config.ai.blacklistedChannelIds || []).includes(message.channel.id)) return false;
   if (config.ai.channelIds.includes(message.channel.id)) return true;
   return config.ai.replyToMentions && message.mentions.users.has(clientUserId);
 }
@@ -174,6 +175,14 @@ export function serializeGuild(guild) {
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const categories = guild.channels.cache
+    .filter((channel) => channel.type === ChannelType.GuildCategory)
+    .map((channel) => ({
+      id: channel.id,
+      name: channel.name
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const roles = guild.roles.cache
     .filter((role) => !role.managed && role.name !== "@everyone")
     .map((role) => ({
@@ -189,6 +198,7 @@ export function serializeGuild(guild) {
     iconUrl: guild.iconURL({ size: 128 }),
     memberCount: guild.memberCount,
     channels,
+    categories,
     roles
   };
 }

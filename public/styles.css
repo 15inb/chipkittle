@@ -334,6 +334,42 @@ textarea:focus {
   background: var(--panel-soft);
 }
 
+.checkbox-grid.compact {
+  max-height: 180px;
+}
+
+.permission-list {
+  display: grid;
+  gap: 10px;
+}
+
+.permission-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+
+.permission-row summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  font-weight: 800;
+}
+
+.permission-row summary small {
+  color: var(--muted);
+}
+
+.permission-row .checkbox-grid {
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+
 .ai-status-line {
   display: flex;
   align-items: center;
