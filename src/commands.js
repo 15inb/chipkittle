@@ -127,6 +127,15 @@ async function deleteCommandMessage(message) {
   await message.delete().catch(() => {});
 }
 
+function deleteChannelLater(client, channelId, reason, delayMs) {
+  setTimeout(() => {
+    client.channels
+      .fetch(channelId)
+      .then((channel) => channel?.delete(reason))
+      .catch(() => {});
+  }, delayMs);
+}
+
 function parseDuration(input = "") {
   const match = input.match(/^(\d+)(s|m|h|d)$/i);
   if (!match) return null;
@@ -1333,9 +1342,7 @@ define({
     }
 
     await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
-    setTimeout(() => {
-      ctx.message.channel.delete("Application accepted").catch(() => {});
-    }, 10_000);
+    deleteChannelLater(ctx.client, ctx.message.channelId, "Application accepted", 10_000);
   }
 });
 
@@ -1376,9 +1383,7 @@ define({
       allowedMentions: NO_MENTIONS
     });
     await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
-    setTimeout(() => {
-      ctx.message.channel.delete("Application denied").catch(() => {});
-    }, 10_000);
+    deleteChannelLater(ctx.client, ctx.message.channelId, "Application denied", 10_000);
   }
 });
 
@@ -1401,9 +1406,7 @@ define({
     }
 
     await ctx.message.channel.send("Closing this application ticket in 5 seconds.").catch(() => {});
-    setTimeout(() => {
-      ctx.message.channel.delete("Application ticket closed").catch(() => {});
-    }, 5000);
+    deleteChannelLater(ctx.client, ctx.message.channelId, "Application ticket closed", 5000);
     await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
   }
 });
