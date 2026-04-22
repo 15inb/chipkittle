@@ -13,7 +13,7 @@
       --leaf: #1f8d3a;
       --leaf-dark: #146728;
       --leaf-soft: #dff0dc;
-      --glass: rgba(255, 255, 255, 0.58);
+      --glass: rgba(255, 255, 255, 0.64);
       --line: rgba(21, 27, 31, 0.14);
       --shadow: 0 24px 90px rgba(21, 27, 31, 0.18);
     }
@@ -33,6 +33,7 @@
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       letter-spacing: 0;
       background:
+        linear-gradient(90deg, rgba(248, 249, 244, 0.98) 0%, rgba(248, 249, 244, 0.9) 28%, rgba(239, 245, 238, 0.34) 55%, rgba(155, 169, 171, 0.18) 100%),
         radial-gradient(circle at 57% 43%, rgba(104, 205, 66, 0.34), transparent 18rem),
         radial-gradient(circle at 18% 4%, rgba(255, 255, 255, 0.9), transparent 20rem),
         linear-gradient(118deg, #f7f8f2 0%, #e8eee8 43%, #adb8bb 100%);
@@ -45,9 +46,34 @@
     }
 
     .page {
+      position: relative;
       min-height: 100svh;
       display: grid;
       grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+    }
+
+    .page::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background:
+        linear-gradient(90deg, rgba(247, 248, 242, 0.98) 0%, rgba(247, 248, 242, 0.86) 35%, rgba(247, 248, 242, 0.18) 58%, rgba(247, 248, 242, 0) 100%),
+        url("/chipkittle.gif") right 7% bottom 0 / min(760px, 56vw) auto no-repeat;
+      opacity: 0.96;
+      pointer-events: none;
+    }
+
+    .page::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background:
+        repeating-radial-gradient(circle at 57% 45%, rgba(255, 255, 255, 0.32) 0 1px, transparent 1px 48px);
+      mask-image: linear-gradient(90deg, transparent 0%, black 36%, black 82%, transparent 100%);
+      pointer-events: none;
     }
 
     .topbar {
@@ -69,27 +95,10 @@
     }
 
     .brand-mark {
-      width: 38px;
-      height: 38px;
-      border-radius: 12px;
-      background: var(--leaf);
-      position: relative;
-      transform: rotate(45deg);
-      box-shadow: 0 0 30px rgba(31, 141, 58, 0.42);
-    }
-
-    .brand-mark::before,
-    .brand-mark::after {
-      content: "";
-      position: absolute;
-      inset: 10px;
-      border-radius: 999px;
-      background: #f4fff0;
-    }
-
-    .brand-mark::after {
-      inset: 16px;
-      background: var(--leaf-dark);
+      width: 46px;
+      height: 46px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 18px rgba(31, 141, 58, 0.34));
     }
 
     .nav {
@@ -122,6 +131,7 @@
 
     .hero {
       position: relative;
+      z-index: 2;
       display: grid;
       grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
       align-items: center;
@@ -271,6 +281,8 @@
       object-fit: contain;
       filter: drop-shadow(0 42px 70px rgba(21, 27, 31, 0.24));
       animation: floaty 5.2s ease-in-out infinite;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .proof {
@@ -408,8 +420,8 @@
       }
 
       .brand-mark {
-        width: 30px;
-        height: 30px;
+        width: 34px;
+        height: 34px;
       }
 
       .panel-button {
@@ -427,6 +439,7 @@
 
       .chipkittle {
         width: min(430px, 96vw);
+        opacity: 1;
       }
 
       .proof {
@@ -441,6 +454,13 @@
       .trusted {
         margin-top: 34px;
       }
+
+      .page::before {
+        background:
+          linear-gradient(180deg, rgba(247, 248, 242, 0.96) 0%, rgba(247, 248, 242, 0.72) 42%, rgba(247, 248, 242, 0.36) 100%),
+          url("/chipkittle.gif") center top 72px / min(430px, 96vw) auto no-repeat;
+        opacity: 0.5;
+      }
     }
   </style>
 </head>
@@ -448,7 +468,7 @@
   <div class="page">
     <header class="topbar">
       <a class="brand" href="/">
-        <span class="brand-mark" aria-hidden="true"></span>
+        <img class="brand-mark" src="/chipkittle-logo.svg" alt="">
         <span>chipkittle</span>
       </a>
       <nav class="nav" aria-label="Site navigation">
@@ -485,7 +505,7 @@
 
       <section class="hero-visual" id="artifact" aria-label="Chipkittle hero visual">
         <div class="rings" aria-hidden="true"></div>
-        <div class="green-star" aria-hidden="true"></div>
+        <img class="green-star" src="/chipkittle-logo.svg" alt="" aria-hidden="true">
         <img class="chipkittle" src="/chipkittle.gif" alt="A white horned Chipkittle suit">
         <div class="proof" id="features">
           <div class="proof-row">
@@ -515,7 +535,7 @@
 
     <footer class="ticker">
       <div class="ticker-track">
-        CHIPKITTLE ONLINE - ARTIFACT ACCOUNTED FOR - WEDNESDAY CIRCLE STATUS: ADMIN ONLY - HORNS CALIBRATED - PANEL BUTTON TOP RIGHT - CHIPKITTLE ONLINE - ARTIFACT ACCOUNTED FOR - WEDNESDAY CIRCLE STATUS: ADMIN ONLY - HORNS CALIBRATED - PANEL BUTTON TOP RIGHT -
+        CHIPKITTLE ONLINE - ARTIFACT ACCOUNTED FOR - WEDNESDAY RITUAL STATUS: ADMIN ONLY - HORNS CALIBRATED - PANEL BUTTON TOP RIGHT - CHIPKITTLE ONLINE - ARTIFACT ACCOUNTED FOR - WEDNESDAY RITUAL STATUS: ADMIN ONLY - HORNS CALIBRATED - PANEL BUTTON TOP RIGHT -
       </div>
     </footer>
   </div>

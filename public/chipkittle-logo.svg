@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Chipkittle logo">
+  <defs>
+    <linearGradient id="armA" x1="32" x2="224" y1="87" y2="169" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f3ffd1"/>
+      <stop offset="0.5" stop-color="#8eea44"/>
+      <stop offset="1" stop-color="#31b86f"/>
+    </linearGradient>
+    <linearGradient id="armB" x1="111" x2="148" y1="24" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f5ffd4"/>
+      <stop offset="0.52" stop-color="#39be56"/>
+      <stop offset="1" stop-color="#178f4f"/>
+    </linearGradient>
+    <radialGradient id="core" cx="50%" cy="50%" r="52%">
+      <stop stop-color="#003d1a"/>
+      <stop offset="0.62" stop-color="#006b25"/>
+      <stop offset="1" stop-color="#00964d"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.42 0 0 0 0 0.98 0 0 0 0 0.25 0 0 0 0.5 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <path filter="url(#glow)" d="M128 28c8.8 0 16 7.2 16 16v40c0 33.1 26.9 60 60 60h8c8.8 0 16 7.2 16 16s-7.2 16-16 16h-8c-33.1 0-60 26.9-60 60v-20c0 8.8-7.2 16-16 16s-16-7.2-16-16v-20c0-33.1-26.9-60-60-60h-8c-8.8 0-16-7.2-16-16s7.2-16 16-16h8c33.1 0 60-26.9 60-60V44c0-8.8 7.2-16 16-16Z" fill="url(#armA)"/>
+  <path d="M128 28c8.8 0 16 7.2 16 16v40c0 33.1 26.9 60 60 60h8c8.8 0 16 7.2 16 16s-7.2 16-16 16h-8c-33.1 0-60 26.9-60 60v-20c0 8.8-7.2 16-16 16s-16-7.2-16-16v-20c0-33.1-26.9-60-60-60h-8c-8.8 0-16-7.2-16-16s7.2-16 16-16h8c33.1 0 60-26.9 60-60V44c0-8.8 7.2-16 16-16Z" fill="url(#armB)" opacity=".78"/>
+  <path d="M128 83c12 29.1 35.9 53 65 65-29.1 12-53 35.9-65 65-12-29.1-35.9-53-65-65 29.1-12 53-35.9 65-65Z" fill="url(#core)"/>
+</svg>
