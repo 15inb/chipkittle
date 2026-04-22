@@ -688,7 +688,9 @@ define({
     try {
       const source = await downloadAttachment(attachment);
       const imageBuffer = await ctx.ai.chipifyImage({
-        ...source,
+        imageBuffer: source.buffer,
+        mimeType: source.mimeType,
+        filename: source.filename,
         userId: ctx.message.author.id
       });
       const file = new AttachmentBuilder(imageBuffer, { name: "chipified.png" });
