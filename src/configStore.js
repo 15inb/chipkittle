@@ -22,6 +22,10 @@ const DEFAULT_CONFIG = {
   commandRoles: {
     overrides: {}
   },
+  economy: {
+    balances: {},
+    dailyClaims: {}
+  },
   ai: {
     enabled: false,
     channelIds: [],
@@ -76,6 +80,10 @@ function mergeConfig(config = {}) {
     commandRoles: {
       ...clone(DEFAULT_CONFIG.commandRoles),
       ...(config.commandRoles || {})
+    },
+    economy: {
+      ...clone(DEFAULT_CONFIG.economy),
+      ...(config.economy || {})
     },
     ai: {
       ...clone(DEFAULT_CONFIG.ai),
@@ -151,6 +159,10 @@ export class ConfigStore {
       commandRoles: {
         ...this.getGuild(guildId).commandRoles,
         ...(partialConfig.commandRoles || {})
+      },
+      economy: {
+        ...this.getGuild(guildId).economy,
+        ...(partialConfig.economy || {})
       },
       ai: {
         ...this.getGuild(guildId).ai,

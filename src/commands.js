@@ -276,6 +276,85 @@ function splitArgs(content, prefix) {
   };
 }
 
+const STARTING_BREAD = 500;
+const DAILY_BREAD = 300;
+const MAX_BREAD_BET = 10_000;
+const DAILY_COOLDOWN_MS = 20 * 60 * 60 * 1000;
+
+function normalizeEconomy(economy = {}) {
+  return {
+    balances: { ...(economy.balances || {}) },
+    dailyClaims: { ...(economy.dailyClaims || {}) }
+  };
+}
+
+function breadBalance(economy, userId) {
+  return Math.max(Math.floor(Number(economy.balances?.[userId] ?? STARTING_BREAD) || 0), 0);
+}
+
+function setBreadBalance(economy, userId, amount) {
+  economy.balances[userId] = Math.max(Math.floor(Number(amount) || 0), 0);
+}
+
+function formatBread(amount) {
+  return `${Math.floor(amount).toLocaleString()} bread`;
+}
+
+function parseBreadAmount(input, balance) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (raw === "all" || raw === "max") return Math.min(balance, MAX_BREAD_BET);
+  if (raw === "half") return Math.min(Math.floor(balance / 2), MAX_BREAD_BET);
+
+  const amount = Math.floor(Number(raw.replaceAll(",", "")));
+  if (!Number.isFinite(amount)) return null;
+  return amount;
+}
+
+function validateBreadBet(input, balance) {
+  const amount = parseBreadAmount(input, balance);
+  if (!amount || amount < 1) return { ok: false, error: "Bet at least 1 bread." };
+  if (amount > balance) return { ok: false, error: `You only have ${formatBread(balance)}.` };
+  if (amount > MAX_BREAD_BET) return { ok: false, error: `Max bet is ${formatBread(MAX_BREAD_BET)}.` };
+  return { ok: true, amount };
+}
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+async function updateBreadEconomy(ctx, mutator) {
+  const guildId = ctx.message.guild.id;
+  const latestConfig = ctx.store.getGuild(guildId);
+  const economy = normalizeEconomy(latestConfig.economy);
+  const result = await mutator(economy, latestConfig);
+  await ctx.store.updateGuild(guildId, { economy });
+  return result;
+}
+
+async function runBreadBet(ctx, gameName, resolver) {
+  const reply = await updateBreadEconomy(ctx, async (economy) => {
+    const userId = ctx.message.author.id;
+    const balance = breadBalance(economy, userId);
+    const bet = validateBreadBet(ctx.args[0], balance);
+    if (!bet.ok) return bet.error;
+
+    const result = resolver(bet.amount, balance, economy);
+    const payout = Math.max(Math.floor(Number(result.payout) || 0), 0);
+    const nextBalance = balance - bet.amount + payout;
+    setBreadBalance(economy, userId, nextBalance);
+
+    return [
+      `**${gameName}**`,
+      result.text,
+      `Bet: ${formatBread(bet.amount)}`,
+      `Payout: ${formatBread(payout)}`,
+      `Balance: ${formatBread(nextBalance)}`
+    ].join("\n");
+  });
+
+  await ctx.message.reply(reply);
+}
+
 define({
   name: "help",
   aliases: ["commands"],
@@ -550,6 +629,364 @@ define({
     const poll = await ctx.message.channel.send(`**Poll:** ${question}`);
     await poll.react("👍");
     await poll.react("👎");
+  }
+});
+
+define({
+  name: "bread",
+  aliases: ["balance", "bal", "wallet"],
+  category: "Gambling",
+  description: "Check your bread balance.",
+  usage: "bread [@user]",
+  async run(ctx) {
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const target = ctx.message.mentions.users.first?.() || ctx.message.author;
+    await ctx.message.reply(`${target.username || target.tag} has **${formatBread(breadBalance(economy, target.id))}**.`);
+  }
+});
+
+define({
+  name: "dailybread",
+  aliases: ["daily", "breadclaim"],
+  category: "Gambling",
+  description: "Claim free daily bread.",
+  async run(ctx) {
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const userId = ctx.message.author.id;
+      const lastClaim = new Date(economy.dailyClaims[userId] || 0).getTime();
+      const remaining = DAILY_COOLDOWN_MS - (Date.now() - lastClaim);
+      if (remaining > 0) {
+        return `You already claimed daily bread. Try again in ${formatCooldown(remaining)}.`;
+      }
+
+      const bonus = randomInt(0, 150);
+      const amount = DAILY_BREAD + bonus;
+      const nextBalance = breadBalance(economy, userId) + amount;
+      economy.dailyClaims[userId] = new Date().toISOString();
+      setBreadBalance(economy, userId, nextBalance);
+      return `You claimed **${formatBread(amount)}**.\nBalance: **${formatBread(nextBalance)}**.`;
+    });
+
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "breadgive",
+  aliases: ["paybread", "givebread"],
+  category: "Gambling",
+  description: "Give bread to another user.",
+  usage: "breadgive @user 100",
+  async run(ctx) {
+    const target = ctx.message.mentions.users.first?.();
+    const amountInput = ctx.args.find((arg) => !arg.includes("<@"));
+    if (!target || target.bot || target.id === ctx.message.author.id || !amountInput) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const senderBalance = breadBalance(economy, ctx.message.author.id);
+      const amount = parseBreadAmount(amountInput, senderBalance);
+      if (!amount || amount < 1) return "Give at least 1 bread.";
+      if (amount > senderBalance) return `You only have ${formatBread(senderBalance)}.`;
+
+      setBreadBalance(economy, ctx.message.author.id, senderBalance - amount);
+      setBreadBalance(economy, target.id, breadBalance(economy, target.id) + amount);
+      return `Sent **${formatBread(amount)}** to **${target.username || target.tag}**.`;
+    });
+
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "breadtop",
+  aliases: ["breadleaderboard", "breadlb"],
+  category: "Gambling",
+  description: "Show the richest bread holders.",
+  async run(ctx) {
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const entries = Object.entries(economy.balances)
+      .map(([userId, amount]) => [userId, Math.max(Math.floor(Number(amount) || 0), 0)])
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+
+    if (!entries.length) {
+      await ctx.message.reply("No bread accounts have moved yet. Claim daily bread and start baking.");
+      return;
+    }
+
+    await ctx.message.reply(
+      entries
+        .map(([userId, amount], index) => `${index + 1}. <@${userId}> - **${formatBread(amount)}**`)
+        .join("\n")
+    );
+  }
+});
+
+define({
+  name: "breadflip",
+  aliases: ["betflip"],
+  category: "Gambling",
+  description: "Bet bread on heads or tails.",
+  usage: "breadflip 100 heads",
+  async run(ctx) {
+    const guess = (ctx.args[1] || "").toLowerCase();
+    if (!["heads", "tails", "h", "t"].includes(guess)) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    await runBreadBet(ctx, "Bread Flip", (bet) => {
+      const pickedHeads = guess === "heads" || guess === "h";
+      const resultHeads = Math.random() < 0.5;
+      const won = pickedHeads === resultHeads;
+      return {
+        payout: won ? bet * 2 : 0,
+        text: `You picked **${pickedHeads ? "heads" : "tails"}**. It landed **${resultHeads ? "heads" : "tails"}**. ${won ? "You win." : "You lose."}`
+      };
+    });
+  }
+});
+
+define({
+  name: "slots",
+  aliases: ["breadslots"],
+  category: "Gambling",
+  description: "Spin the bread slots.",
+  usage: "slots 100",
+  async run(ctx) {
+    const symbols = ["loaf", "horns", "suit", "artifact", "crumb", "ck"];
+    await runBreadBet(ctx, "Bread Slots", (bet) => {
+      const spin = Array.from({ length: 3 }, () => symbols[randomInt(0, symbols.length - 1)]);
+      const counts = spin.reduce((map, symbol) => ({ ...map, [symbol]: (map[symbol] || 0) + 1 }), {});
+      const maxMatches = Math.max(...Object.values(counts));
+      const payout = maxMatches === 3 ? bet * (spin[0] === "artifact" ? 12 : 6) : maxMatches === 2 ? Math.floor(bet * 1.5) : 0;
+      return {
+        payout,
+        text: `[ ${spin.join(" | ")} ]\n${payout ? "The bakery pays out." : "The loaf goes stale."}`
+      };
+    });
+  }
+});
+
+define({
+  name: "breaddice",
+  aliases: ["gamble", "dicebet"],
+  category: "Gambling",
+  description: "Bet that your die beats the house.",
+  usage: "breaddice 100",
+  async run(ctx) {
+    await runBreadBet(ctx, "Bread Dice", (bet) => {
+      const player = randomInt(1, 6);
+      const house = randomInt(1, 6);
+      const payout = player > house ? bet * 2 : player === house ? bet : 0;
+      return {
+        payout,
+        text: `You rolled **${player}**. House rolled **${house}**. ${player > house ? "You win." : player === house ? "Push." : "House wins."}`
+      };
+    });
+  }
+});
+
+define({
+  name: "highlow",
+  aliases: ["hl"],
+  category: "Gambling",
+  description: "Bet whether the next card is higher or lower.",
+  usage: "highlow 100 high",
+  async run(ctx) {
+    const guess = (ctx.args[1] || "").toLowerCase();
+    if (!["high", "higher", "low", "lower"].includes(guess)) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    await runBreadBet(ctx, "High Low", (bet) => {
+      const first = randomInt(1, 13);
+      const second = randomInt(1, 13);
+      const wantsHigh = guess === "high" || guess === "higher";
+      const won = wantsHigh ? second > first : second < first;
+      const tied = second === first;
+      return {
+        payout: tied ? bet : won ? bet * 2 : 0,
+        text: `First card: **${first}**. Next card: **${second}**. ${tied ? "Tie, bet returned." : won ? "You called it." : "Wrong call."}`
+      };
+    });
+  }
+});
+
+define({
+  name: "roulette",
+  aliases: ["breadroulette"],
+  category: "Gambling",
+  description: "Bet bread on red, black, green, odd, even, or a number.",
+  usage: "roulette 100 red",
+  async run(ctx) {
+    const choice = (ctx.args[1] || "").toLowerCase();
+    const numberChoice = Number(choice);
+    const valid =
+      ["red", "black", "green", "odd", "even"].includes(choice) ||
+      (Number.isInteger(numberChoice) && numberChoice >= 0 && numberChoice <= 36);
+    if (!valid) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    await runBreadBet(ctx, "Bread Roulette", (bet) => {
+      const roll = randomInt(0, 36);
+      const color = roll === 0 ? "green" : roll % 2 === 0 ? "black" : "red";
+      const parity = roll === 0 ? "green" : roll % 2 === 0 ? "even" : "odd";
+      const numberHit = Number.isInteger(numberChoice) && roll === numberChoice;
+      const colorHit = choice === color;
+      const parityHit = choice === parity;
+      const payout = numberHit ? bet * 36 : choice === "green" && colorHit ? bet * 14 : colorHit || parityHit ? bet * 2 : 0;
+      return {
+        payout,
+        text: `Wheel: **${roll} ${color}**.\nYour bet: **${choice}**. ${payout ? "Winner." : "No bread today."}`
+      };
+    });
+  }
+});
+
+define({
+  name: "blackjack",
+  aliases: ["bj"],
+  category: "Gambling",
+  description: "Play quick automatic blackjack for bread.",
+  usage: "blackjack 100",
+  async run(ctx) {
+    function drawCard() {
+      const value = randomInt(1, 13);
+      if (value === 1) return { name: "A", value: 11 };
+      if (value >= 11) return { name: ["J", "Q", "K"][value - 11], value: 10 };
+      return { name: String(value), value };
+    }
+
+    function handValue(hand) {
+      let total = hand.reduce((sum, card) => sum + card.value, 0);
+      let aces = hand.filter((card) => card.name === "A").length;
+      while (total > 21 && aces > 0) {
+        total -= 10;
+        aces -= 1;
+      }
+      return total;
+    }
+
+    function handText(hand) {
+      return `${hand.map((card) => card.name).join(", ")} (${handValue(hand)})`;
+    }
+
+    await runBreadBet(ctx, "Bread Blackjack", (bet) => {
+      const player = [drawCard(), drawCard()];
+      const dealer = [drawCard(), drawCard()];
+
+      while (handValue(player) < 16) player.push(drawCard());
+      while (handValue(dealer) < 17) dealer.push(drawCard());
+
+      const playerTotal = handValue(player);
+      const dealerTotal = handValue(dealer);
+      const natural = player.length === 2 && playerTotal === 21;
+      const payout =
+        playerTotal > 21
+          ? 0
+          : natural
+            ? Math.floor(bet * 2.5)
+            : dealerTotal > 21 || playerTotal > dealerTotal
+              ? bet * 2
+              : playerTotal === dealerTotal
+                ? bet
+                : 0;
+
+      return {
+        payout,
+        text: `Your hand: **${handText(player)}**\nHouse hand: **${handText(dealer)}**\n${payout > bet ? "You win." : payout === bet ? "Push." : "House wins."}`
+      };
+    });
+  }
+});
+
+define({
+  name: "scratch",
+  aliases: ["scratchcard"],
+  category: "Gambling",
+  description: "Buy a bread scratch card.",
+  usage: "scratch 100",
+  async run(ctx) {
+    const symbols = ["loaf", "crumb", "horn", "suit", "ck", "artifact"];
+    await runBreadBet(ctx, "Bread Scratch Card", (bet) => {
+      const card = Array.from({ length: 6 }, () => symbols[randomInt(0, symbols.length - 1)]);
+      const counts = card.reduce((map, symbol) => ({ ...map, [symbol]: (map[symbol] || 0) + 1 }), {});
+      const maxMatches = Math.max(...Object.values(counts));
+      const payout = maxMatches >= 6 ? bet * 25 : maxMatches === 5 ? bet * 10 : maxMatches === 4 ? bet * 4 : maxMatches === 3 ? bet * 2 : 0;
+      return {
+        payout,
+        text: `${card.join(" | ")}\nBest match: **${maxMatches}**.`
+      };
+    });
+  }
+});
+
+define({
+  name: "cups",
+  aliases: ["breadcups"],
+  category: "Gambling",
+  description: "Pick the cup hiding the bread.",
+  usage: "cups 100 1",
+  async run(ctx) {
+    const pick = Number(ctx.args[1]);
+    if (!Number.isInteger(pick) || pick < 1 || pick > 3) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    await runBreadBet(ctx, "Bread Cups", (bet) => {
+      const winner = randomInt(1, 3);
+      const won = pick === winner;
+      return {
+        payout: won ? bet * 3 : 0,
+        text: `You picked cup **${pick}**. Bread was under cup **${winner}**. ${won ? "Sharp eyes." : "Empty cup."}`
+      };
+    });
+  }
+});
+
+define({
+  name: "crash",
+  aliases: ["breadcrash"],
+  category: "Gambling",
+  description: "Cash out before the bread market crashes.",
+  usage: "crash 100 2.0",
+  async run(ctx) {
+    const target = Math.min(Math.max(Number(ctx.args[1]) || 2, 1.1), 10);
+
+    await runBreadBet(ctx, "Bread Crash", (bet) => {
+      const crashPoint = Math.min(Math.max(Math.floor((1 / Math.random()) * 0.85 * 100) / 100, 1), 25);
+      const won = target <= crashPoint;
+      return {
+        payout: won ? Math.floor(bet * target) : 0,
+        text: `You tried to cash out at **${target.toFixed(2)}x**.\nMarket crashed at **${crashPoint.toFixed(2)}x**. ${won ? "You escaped with warm bread." : "Burnt toast."}`
+      };
+    });
+  }
+});
+
+define({
+  name: "jackpot",
+  aliases: ["lottery"],
+  category: "Gambling",
+  description: "Buy a long-shot jackpot ticket.",
+  usage: "jackpot 100",
+  async run(ctx) {
+    await runBreadBet(ctx, "Bread Jackpot", (bet) => {
+      const roll = randomInt(1, 100);
+      const payout = roll >= 96 ? bet * 25 : roll >= 86 ? bet * 4 : 0;
+      return {
+        payout,
+        text: `Ticket roll: **${roll}**.\n${roll >= 96 ? "Massive jackpot." : roll >= 86 ? "Small prize." : "The bakery keeps the ticket."}`
+      };
+    });
   }
 });
 

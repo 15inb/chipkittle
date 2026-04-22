@@ -6,6 +6,7 @@ const CATEGORY_COLORS = {
   General: 0x65d6ad,
   Info: 0x60a5fa,
   Fun: 0xfacc15,
+  Gambling: 0xf59e0b,
   Utility: 0xa78bfa,
   Chipkittle: 0x22c55e,
   Moderation: 0xef4444,
