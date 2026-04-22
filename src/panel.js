@@ -432,7 +432,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
         <section class="panel-section">
           <div class="section-heading">
             <h2>Membership Applications</h2>
-            <p>Create private application tickets for new members.</p>
+            <p>DM applicants the questions and create private staff review tickets.</p>
           </div>
           <label class="toggle">
             <input type="checkbox" name="applicationsEnabled" ${isChecked(config.applications.enabled)}>
@@ -458,7 +458,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
           </label>
           <div>
             <p class="field-label">Application reviewer roles</p>
-            <p class="field-help">These roles can view tickets and use approve or close commands.</p>
+            <p class="field-help">These roles can view tickets and use reply, approve, or close commands.</p>
             <div class="checkbox-grid">
               ${roleCheckboxes(guild.roles, config.applications.reviewerRoleIds, "applicationReviewerRoleIds")}
             </div>

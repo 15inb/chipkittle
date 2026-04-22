@@ -1,6 +1,14 @@
 import { ChannelType, EmbedBuilder, PermissionsBitField } from "discord.js";
 import { checkAiRateLimit } from "./aiRateLimit.js";
 import {
+  applicantIdFromChannel,
+  applicationQuestions,
+  findOpenApplicationChannel,
+  isApplicationStaff as canUseApplicationCommand,
+  ticketNameFor,
+  ticketTopic
+} from "./applicationTickets.js";
+import {
   CHIPKITTLE_LORE,
   randomChipkittleName,
   randomChipkittleQuote
@@ -70,32 +78,7 @@ function isAiChannelBlacklisted(config, channelId) {
 }
 
 function isApplicationStaff(ctx) {
-  return (
-    hasPermission(ctx.message.member, PermissionsBitField.Flags.ManageGuild) ||
-    hasAnyRole(ctx.message.member, ctx.config.applications.reviewerRoleIds) ||
-    hasCommandRoleOverride(ctx.message.member, ctx.config, ctx.command.name)
-  );
-}
-
-function applicationQuestions(config) {
-  return (config.applications.questions || []).filter(Boolean);
-}
-
-function ticketNameFor(member) {
-  const base = member.user.username.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-  return `application-${base || member.id}`.slice(0, 90);
-}
-
-function applicantIdFromChannel(channel) {
-  return channel.topic?.match(/application:(\d+)/)?.[1] || "";
-}
-
-function findOpenApplicationChannel(guild, userId) {
-  return guild.channels.cache.find(
-    (channel) =>
-      channel.type === ChannelType.GuildText &&
-      channel.topic?.includes(`application:${userId}`)
-  );
+  return canUseApplicationCommand(ctx.message.member, ctx.config, ctx.command.name, hasCommandRoleOverride);
 }
 
 function parseDuration(input = "") {
@@ -1121,19 +1104,23 @@ define({
       return;
     }
 
+    const questions = applicationQuestions(ctx.config);
+    if (!questions.length) {
+      await ctx.message.reply("No application questions are configured yet.");
+      return;
+    }
+
+    const dmChannel = await ctx.message.author.createDM().catch(() => null);
+    if (!dmChannel) {
+      await ctx.message.reply("I could not open a DM with you. Please enable DMs from this server and try again.");
+      return;
+    }
+
     const reviewerRoleIds = settings.reviewerRoleIds || [];
     const permissionOverwrites = [
       {
         id: ctx.message.guild.roles.everyone.id,
         deny: [PermissionsBitField.Flags.ViewChannel]
-      },
-      {
-        id: ctx.message.author.id,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.ReadMessageHistory
-        ]
       },
       {
         id: botMember.id,
@@ -1158,29 +1145,83 @@ define({
       name: ticketNameFor(ctx.message.member),
       type: ChannelType.GuildText,
       parent: settings.categoryId || undefined,
-      topic: `Chipkittle application:${ctx.message.author.id}`,
+      topic: ticketTopic(ctx.message.author.id),
       permissionOverwrites
     });
 
-    const questions = applicationQuestions(ctx.config)
-      .map((question, index) => `${index + 1}. ${question}`)
-      .join("\n");
+    const questionList = questions.map((question, index) => `${index + 1}. ${question}`).join("\n");
     const reviewerMentions = reviewerRoleIds.map((roleId) => `<@&${roleId}>`).join(" ");
 
     await channel.send({
       content: [
-        `${ctx.message.author}, welcome to your Chipkittle application ticket.`,
+        `Application ticket opened for ${ctx.message.author} (${ctx.message.author.tag}).`,
         reviewerMentions ? `Review team: ${reviewerMentions}` : "",
         "",
-        "Please answer these questions:",
-        questions,
+        "Applicant answers will appear here as they reply to the bot in DMs.",
+        "Staff messages in this channel stay private unless sent with the reply command.",
         "",
-        `Staff can approve with \`${ctx.config.prefix}approve\` or close with \`${ctx.config.prefix}closeapplication\`.`
+        "Questions:",
+        questionList,
+        "",
+        `Use \`${ctx.config.prefix}reply message\` to DM the applicant, \`${ctx.config.prefix}approve\` to approve, or \`${ctx.config.prefix}closeapplication\` to close.`
       ].filter(Boolean).join("\n"),
-      allowedMentions: { users: [ctx.message.author.id], roles: reviewerRoleIds }
+      allowedMentions: { users: [], roles: reviewerRoleIds }
     });
 
-    await ctx.message.reply(`Application ticket created: ${channel}.`);
+    const dmStarted = await dmChannel.send([
+      `Your Chipkittle application has started for **${ctx.message.guild.name}**.`,
+      "Answer each question here in DMs. Staff can read your answers in the private ticket channel.",
+      "",
+      `Question 1/${questions.length}: ${questions[0]}`
+    ].join("\n")).then(() => true).catch(() => false);
+
+    if (!dmStarted) {
+      await channel.delete("Applicant DMs were closed").catch(() => {});
+      await ctx.message.reply("I could not DM you. Please enable DMs from this server and try again.");
+      return;
+    }
+
+    await ctx.message.reply("Application started. Check your DMs from me for the questions.");
+  }
+});
+
+define({
+  name: "reply",
+  aliases: ["ticketreply"],
+  category: "Applications",
+  description: "Send a staff reply from an application ticket to the applicant's DMs.",
+  usage: "reply message",
+  async run(ctx) {
+    if (!isApplicationStaff(ctx)) {
+      await ctx.message.reply("You do not have permission to use that command.");
+      return;
+    }
+
+    const applicantId = applicantIdFromChannel(ctx.message.channel);
+    if (!applicantId) {
+      await ctx.message.reply("This does not look like an application ticket channel.");
+      return;
+    }
+
+    const text = ctx.rest.trim();
+    if (!text) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const user = await ctx.client.users.fetch(applicantId).catch(() => null);
+    if (!user) {
+      await ctx.message.reply("I could not find that applicant.");
+      return;
+    }
+
+    const sent = await user.send(`**${ctx.message.guild.name} staff:** ${text}`).then(() => true).catch(() => false);
+    if (!sent) {
+      await ctx.message.reply("I could not DM that applicant. Their DMs may be closed.");
+      return;
+    }
+
+    await ctx.message.reply("Sent to the applicant.");
   }
 });
 

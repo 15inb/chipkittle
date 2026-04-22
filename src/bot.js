@@ -3,9 +3,11 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  Partials,
   PermissionsBitField
 } from "discord.js";
 import { checkAiRateLimit } from "./aiRateLimit.js";
+import { handleApplicationDm } from "./applicationTickets.js";
 import { commandList, createCommandHandler } from "./commands.js";
 import { NO_MENTIONS } from "./discordSafety.js";
 
@@ -65,8 +67,10 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMembers,
       GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.DirectMessages,
       GatewayIntentBits.MessageContent
-    ]
+    ],
+    partials: [Partials.Channel]
   });
   const { handleCommand, commandList } = createCommandHandler({
     client,
@@ -106,7 +110,14 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
   });
 
   client.on(Events.MessageCreate, async (message) => {
-    if (!message.guild || message.author.bot) return;
+    if (message.author.bot) return;
+
+    if (!message.guild) {
+      await handleApplicationDm({ client, store, message }).catch((error) => {
+        console.error("Application DM handling failed:", error);
+      });
+      return;
+    }
 
     const config = store.getGuild(message.guild.id);
     const handled = await handleCommand(message, config);
