@@ -3,134 +3,521 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chipkittle Bot</title>
-  <link rel="stylesheet" href="/styles.css">
+  <title>Chipkittle</title>
   <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef3ec;
+      --ink: #151b1f;
+      --muted: #59656c;
+      --leaf: #1f8d3a;
+      --leaf-dark: #146728;
+      --leaf-soft: #dff0dc;
+      --glass: rgba(255, 255, 255, 0.58);
+      --line: rgba(21, 27, 31, 0.14);
+      --shadow: 0 24px 90px rgba(21, 27, 31, 0.18);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--bg);
+    }
+
     body {
-      display: grid;
-      place-items: center;
-      min-height: 100svh;
-      padding: 24px;
-    }
-
-    .site-home {
-      width: min(920px, 100%);
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
-      gap: 32px;
-      align-items: center;
-    }
-
-    .site-home h1 {
-      font-size: 56px;
-      line-height: 1;
-      margin: 0 0 16px;
-    }
-
-    .site-home p {
-      color: var(--muted);
-      font-size: 18px;
-      line-height: 1.6;
       margin: 0;
+      min-height: 100svh;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+      background:
+        radial-gradient(circle at 57% 43%, rgba(104, 205, 66, 0.34), transparent 18rem),
+        radial-gradient(circle at 18% 4%, rgba(255, 255, 255, 0.9), transparent 20rem),
+        linear-gradient(118deg, #f7f8f2 0%, #e8eee8 43%, #adb8bb 100%);
+      overflow-x: hidden;
     }
 
-    .home-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 28px;
-    }
-
-    .home-actions a {
-      border-radius: 8px;
-      padding: 12px 16px;
-      font-weight: 800;
+    a {
+      color: inherit;
       text-decoration: none;
     }
 
-    .home-actions .primary {
-      background: var(--accent);
-      color: #07120e;
-    }
-
-    .home-actions .secondary {
-      border: 1px solid var(--line);
-      color: var(--text);
-    }
-
-    .home-status {
+    .page {
+      min-height: 100svh;
       display: grid;
-      gap: 8px;
-      margin-top: 20px;
-      color: var(--muted);
-      font-size: 14px;
+      grid-template-rows: auto 1fr auto;
     }
 
-    .home-artifact {
-      min-height: 360px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background:
-        radial-gradient(circle at 50% 26%, rgba(242, 244, 248, 0.92) 0 12%, transparent 13%),
-        radial-gradient(circle at 38% 34%, rgba(242, 244, 248, 0.95) 0 4%, transparent 4.5%),
-        radial-gradient(circle at 62% 34%, rgba(242, 244, 248, 0.95) 0 4%, transparent 4.5%),
-        linear-gradient(140deg, transparent 0 23%, #222a30 24% 32%, transparent 33%),
-        linear-gradient(220deg, transparent 0 23%, #222a30 24% 32%, transparent 33%),
-        radial-gradient(circle at 50% 58%, rgba(242, 244, 248, 0.9) 0 34%, transparent 35%),
-        var(--panel);
+    .topbar {
       position: relative;
-      overflow: hidden;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 28px clamp(20px, 5vw, 72px);
     }
 
-    .home-artifact::before,
-    .home-artifact::after {
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-size: clamp(24px, 2.8vw, 36px);
+      font-weight: 900;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: var(--leaf);
+      position: relative;
+      transform: rotate(45deg);
+      box-shadow: 0 0 30px rgba(31, 141, 58, 0.42);
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
       content: "";
       position: absolute;
-      top: 112px;
-      width: 120px;
-      height: 36px;
+      inset: 10px;
       border-radius: 999px;
-      background: #f2f4f8;
-      box-shadow: 0 20px 48px rgba(242, 244, 248, 0.16);
+      background: #f4fff0;
     }
 
-    .home-artifact::before {
-      left: -18px;
-      transform: rotate(28deg);
+    .brand-mark::after {
+      inset: 16px;
+      background: var(--leaf-dark);
     }
 
-    .home-artifact::after {
-      right: -18px;
-      transform: rotate(-28deg);
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: clamp(14px, 3vw, 34px);
+      color: #1f272c;
+      font-weight: 650;
     }
 
-    @media (max-width: 760px) {
-      .site-home {
-        grid-template-columns: 1fr;
+    .panel-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 56px;
+      padding: 0 28px;
+      border-radius: 999px;
+      background: var(--leaf);
+      color: white;
+      font-weight: 900;
+      box-shadow: 0 16px 36px rgba(31, 141, 58, 0.24);
+      transition: transform 160ms ease, background 160ms ease;
+      white-space: nowrap;
+    }
+
+    .panel-button:hover {
+      background: var(--leaf-dark);
+      transform: translateY(-2px);
+    }
+
+    .hero {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
+      align-items: center;
+      gap: 28px;
+      padding: 34px clamp(20px, 5vw, 80px) 48px;
+      min-height: calc(100svh - 112px);
+    }
+
+    .copy {
+      position: relative;
+      z-index: 2;
+      max-width: 660px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 34px;
+      padding: 12px 18px;
+      border-radius: 999px;
+      background: rgba(220, 239, 214, 0.82);
+      color: #126024;
+      font-weight: 800;
+      box-shadow: 0 12px 36px rgba(31, 141, 58, 0.12);
+    }
+
+    .spark {
+      width: 16px;
+      height: 16px;
+      border-radius: 5px;
+      background: var(--leaf);
+      transform: rotate(45deg);
+      box-shadow: 0 0 22px rgba(31, 141, 58, 0.46);
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 720px;
+      font-size: clamp(54px, 8vw, 118px);
+      line-height: 0.95;
+      font-weight: 950;
+    }
+
+    h1 span {
+      color: var(--leaf);
+      display: block;
+    }
+
+    .lede {
+      max-width: 610px;
+      margin: 26px 0 0;
+      color: #3f4b51;
+      font-size: clamp(19px, 2vw, 25px);
+      line-height: 1.45;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 34px;
+    }
+
+    .cta,
+    .ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 58px;
+      padding: 0 26px;
+      border-radius: 999px;
+      font-weight: 900;
+      transition: transform 160ms ease, border-color 160ms ease;
+    }
+
+    .cta {
+      background: var(--leaf);
+      color: white;
+      box-shadow: 0 18px 42px rgba(31, 141, 58, 0.22);
+    }
+
+    .ghost {
+      border: 1px solid rgba(21, 27, 31, 0.2);
+      background: rgba(255, 255, 255, 0.34);
+      backdrop-filter: blur(12px);
+    }
+
+    .cta:hover,
+    .ghost:hover {
+      transform: translateY(-2px);
+      border-color: rgba(21, 27, 31, 0.34);
+    }
+
+    .trusted {
+      margin-top: 56px;
+      color: rgba(21, 27, 31, 0.56);
+      font-weight: 800;
+    }
+
+    .trusted-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 22px;
+      margin-top: 18px;
+      color: rgba(21, 27, 31, 0.42);
+      font-size: 20px;
+      font-weight: 950;
+    }
+
+    .hero-visual {
+      position: relative;
+      min-height: min(720px, 70svh);
+      display: grid;
+      align-items: end;
+      justify-items: center;
+    }
+
+    .rings {
+      position: absolute;
+      inset: 4% 0 auto 0;
+      height: min(620px, 62vw);
+      border-radius: 999px;
+      background:
+        repeating-radial-gradient(circle, rgba(255, 255, 255, 0.24) 0 1px, transparent 1px 46px);
+      opacity: 0.75;
+      animation: breathe 5s ease-in-out infinite;
+    }
+
+    .green-star {
+      position: absolute;
+      top: 28%;
+      left: 14%;
+      width: clamp(90px, 18vw, 210px);
+      aspect-ratio: 1;
+      background: radial-gradient(circle, #edffd8 0 10%, #7ee247 38%, #0a6c28 69%);
+      clip-path: polygon(50% 0%, 61% 35%, 100% 50%, 61% 65%, 50% 100%, 39% 65%, 0% 50%, 39% 35%);
+      filter: drop-shadow(0 0 36px rgba(105, 222, 54, 0.72));
+      animation: wobble 4.5s ease-in-out infinite;
+    }
+
+    .chipkittle {
+      position: relative;
+      z-index: 1;
+      width: min(620px, 88vw);
+      max-height: 72svh;
+      object-fit: contain;
+      filter: drop-shadow(0 42px 70px rgba(21, 27, 31, 0.24));
+      animation: floaty 5.2s ease-in-out infinite;
+    }
+
+    .proof {
+      position: absolute;
+      right: 0;
+      bottom: 8%;
+      z-index: 2;
+      width: min(430px, 72vw);
+      display: grid;
+      gap: 18px;
+      padding: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.54);
+      border-radius: 22px;
+      background: var(--glass);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .proof-row {
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .proof-icon {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: #cdeec4;
+      color: var(--leaf);
+      font-weight: 950;
+    }
+
+    .proof-row strong {
+      display: block;
+      font-size: 17px;
+      margin-bottom: 4px;
+    }
+
+    .proof-row span {
+      color: #4d585e;
+      line-height: 1.45;
+    }
+
+    .ticker {
+      position: relative;
+      overflow: hidden;
+      padding: 18px 0;
+      border-top: 1px solid rgba(21, 27, 31, 0.08);
+      color: rgba(21, 27, 31, 0.5);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .ticker-track {
+      display: inline-block;
+      min-width: 100%;
+      animation: crawl 26s linear infinite;
+    }
+
+    @keyframes floaty {
+      0%, 100% {
+        transform: translateY(0) rotate(0deg);
       }
 
-      .site-home h1 {
-        font-size: 42px;
+      50% {
+        transform: translateY(-16px) rotate(-1deg);
+      }
+    }
+
+    @keyframes wobble {
+      0%, 100% {
+        transform: rotate(0deg) scale(1);
+      }
+
+      50% {
+        transform: rotate(12deg) scale(1.05);
+      }
+    }
+
+    @keyframes breathe {
+      0%, 100% {
+        transform: scale(1);
+        opacity: 0.62;
+      }
+
+      50% {
+        transform: scale(1.05);
+        opacity: 0.88;
+      }
+    }
+
+    @keyframes crawl {
+      from {
+        transform: translateX(0);
+      }
+
+      to {
+        transform: translateX(-50%);
+      }
+    }
+
+    @media (max-width: 980px) {
+      .nav {
+        display: none;
+      }
+
+      .hero {
+        grid-template-columns: 1fr;
+        padding-top: 18px;
+      }
+
+      .hero-visual {
+        min-height: 520px;
+        order: -1;
+      }
+
+      .proof {
+        right: 50%;
+        transform: translateX(50%);
+        bottom: 0;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .topbar {
+        padding: 18px;
+      }
+
+      .brand {
+        font-size: 24px;
+      }
+
+      .brand-mark {
+        width: 30px;
+        height: 30px;
+      }
+
+      .panel-button {
+        min-height: 44px;
+        padding: 0 18px;
+      }
+
+      .hero {
+        padding: 12px 18px 34px;
+      }
+
+      .hero-visual {
+        min-height: 420px;
+      }
+
+      .chipkittle {
+        width: min(430px, 96vw);
+      }
+
+      .proof {
+        position: relative;
+        right: auto;
+        bottom: auto;
+        transform: none;
+        width: 100%;
+        margin-top: -36px;
+      }
+
+      .trusted {
+        margin-top: 34px;
       }
     }
   </style>
 </head>
 <body>
-  <main class="site-home">
-    <section>
-      <h1>Chipkittle Bot</h1>
-      <p>A Discord bot with a web config panel, expanded commands, moderation tools, and optional Chipkittle AI lore chat.</p>
-      <div class="home-actions">
-        <a class="primary" href="https://github.com/15inb/chipkittle">View GitHub Repo</a>
-        <a class="secondary" href="https://github.com/15inb/chipkittle/blob/main/DEPLOYMENT.md">Deployment Notes</a>
+  <div class="page">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>chipkittle</span>
+      </a>
+      <nav class="nav" aria-label="Site navigation">
+        <a href="#features">Features</a>
+        <a href="https://github.com/15inb/chipkittle">GitHub</a>
+        <a href="https://github.com/15inb/chipkittle/blob/main/DEPLOYMENT.md">Deploy</a>
+        <a href="#artifact">Artifact</a>
+      </nav>
+      <a class="panel-button" href="https://panel.chipkittle.com">Panel</a>
+    </header>
+
+    <main class="hero">
+      <section class="copy">
+        <div class="badge">
+          <span class="spark" aria-hidden="true"></span>
+          <span>Your AI coding companion in a suspicious suit</span>
+        </div>
+        <h1>Code with your new <span>Chipkittle.</span></h1>
+        <p class="lede">A Discord bot that guards the artifact, yells politely at bad links, welcomes the squad, and answers lore questions like it found a clipboard in a tomb.</p>
+        <div class="actions">
+          <a class="cta" href="https://panel.chipkittle.com">Open Panel</a>
+          <a class="ghost" href="https://github.com/15inb/chipkittle">Inspect the Artifact</a>
+        </div>
+        <div class="trusted">
+          <span>Trusted by absolutely normal tools at</span>
+          <div class="trusted-row">
+            <span>Vercel</span>
+            <span>Discord</span>
+            <span>GitHub</span>
+            <span>The Round Table</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="hero-visual" id="artifact" aria-label="Chipkittle hero visual">
+        <div class="rings" aria-hidden="true"></div>
+        <div class="green-star" aria-hidden="true"></div>
+        <img class="chipkittle" src="/chipkittle.gif" alt="A white horned Chipkittle suit">
+        <div class="proof" id="features">
+          <div class="proof-row">
+            <span class="proof-icon">!</span>
+            <div>
+              <strong>Understands Your Server</strong>
+              <span>Reads channels, roles, and config without making you edit JSON in a panic.</span>
+            </div>
+          </div>
+          <div class="proof-row">
+            <span class="proof-icon">OK</span>
+            <div>
+              <strong>Ships Real Commands</strong>
+              <span>Moderation, welcome messages, AI chat, and enough nonsense to worry HR.</span>
+            </div>
+          </div>
+          <div class="proof-row">
+            <span class="proof-icon">AI</span>
+            <div>
+              <strong>Protects the Artifact</strong>
+              <span>Answers Chipkittle lore with ceremonial confidence and questionable posture.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ticker">
+      <div class="ticker-track">
+        CHIPKITTLE ONLINE - ARTIFACT ACCOUNTED FOR - WEDNESDAY CIRCLE STATUS: ADMIN ONLY - HORNS CALIBRATED - PANEL BUTTON TOP RIGHT - CHIPKITTLE ONLINE - ARTIFACT ACCOUNTED FOR - WEDNESDAY CIRCLE STATUS: ADMIN ONLY - HORNS CALIBRATED - PANEL BUTTON TOP RIGHT -
       </div>
-      <div class="home-status">
-        <span>This Vercel page is the public website.</span>
-        <span>The live bot and config panel should run on an always-on Node host.</span>
-        <span>Set <code>PUBLIC_URL</code> to your panel URL when deployed.</span>
-      </div>
-    </section>
-    <div class="home-artifact" aria-label="Chipkittle suit illustration"></div>
-  </main>
+    </footer>
+  </div>
 </body>
 </html>
