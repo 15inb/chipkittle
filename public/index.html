@@ -7,35 +7,38 @@
   <style>
     :root {
       color-scheme: light;
-      --text: #11181d;
-      --muted: rgba(17, 24, 29, 0.68);
-      --button-bg: rgba(255, 255, 255, 0.64);
-      --button-border: rgba(17, 24, 29, 0.14);
-      --button-hover: rgba(255, 255, 255, 0.84);
-      --panel-bg: #1f8d3a;
-      --panel-hover: #146728;
-      --scrim: linear-gradient(90deg, rgba(247, 248, 242, 0.94) 0%, rgba(247, 248, 242, 0.76) 34%, rgba(247, 248, 242, 0.18) 62%, rgba(247, 248, 242, 0) 100%);
-      --fallback-bg:
-        radial-gradient(circle at 56% 44%, rgba(88, 222, 55, 0.34), transparent 17rem),
-        linear-gradient(118deg, #f7f8f2 0%, #e8eee8 43%, #adb8bb 100%);
-      --chipkittle-pos: right 7% bottom 0;
-      --chipkittle-size: min(760px, 56vw) auto;
+      --text: #10171c;
+      --muted: rgba(16, 23, 28, 0.66);
+      --glass: rgba(255, 255, 255, 0.54);
+      --line: rgba(16, 23, 28, 0.16);
+      --button: rgba(255, 255, 255, 0.68);
+      --button-hover: rgba(255, 255, 255, 0.9);
+      --accent: #1f8d3a;
+      --accent-2: #74df43;
+      --panel-text: #ffffff;
+      --shadow: 0 28px 90px rgba(15, 23, 28, 0.2);
+      --bg-base: linear-gradient(118deg, #f8f8f3 0%, #e7eee8 42%, #aab8bc 100%);
+      --bg-scrim: linear-gradient(90deg, rgba(248, 248, 243, 0.96) 0%, rgba(248, 248, 243, 0.78) 34%, rgba(248, 248, 243, 0.2) 62%, rgba(248, 248, 243, 0) 100%);
+      --bg-glow: radial-gradient(circle at 57% 44%, rgba(92, 218, 53, 0.42), transparent 15rem);
+      --mark-opacity: 0.72;
     }
 
     [data-theme="dark"] {
       color-scheme: dark;
-      --text: #f4fff5;
-      --muted: rgba(244, 255, 245, 0.72);
-      --button-bg: rgba(6, 18, 14, 0.58);
-      --button-border: rgba(126, 255, 103, 0.18);
-      --button-hover: rgba(12, 36, 24, 0.78);
-      --panel-bg: #57de37;
-      --panel-hover: #b7ff83;
-      --scrim: linear-gradient(90deg, rgba(2, 10, 9, 0.94) 0%, rgba(2, 10, 9, 0.78) 38%, rgba(2, 10, 9, 0.24) 66%, rgba(2, 10, 9, 0) 100%);
-      --fallback-bg:
-        radial-gradient(circle at 57% 50%, rgba(67, 255, 41, 0.28), transparent 18rem),
-        radial-gradient(circle at 80% 18%, rgba(31, 141, 58, 0.24), transparent 20rem),
-        linear-gradient(118deg, #06110f 0%, #092118 47%, #020808 100%);
+      --text: #f3fff4;
+      --muted: rgba(243, 255, 244, 0.7);
+      --glass: rgba(4, 16, 13, 0.54);
+      --line: rgba(109, 255, 84, 0.18);
+      --button: rgba(8, 28, 20, 0.62);
+      --button-hover: rgba(14, 52, 34, 0.78);
+      --accent: #73e84b;
+      --accent-2: #b7ff83;
+      --panel-text: #06110c;
+      --shadow: 0 28px 90px rgba(0, 0, 0, 0.36);
+      --bg-base: linear-gradient(118deg, #03100e 0%, #092119 45%, #020605 100%);
+      --bg-scrim: linear-gradient(90deg, rgba(2, 9, 8, 0.96) 0%, rgba(2, 9, 8, 0.78) 38%, rgba(2, 9, 8, 0.2) 66%, rgba(2, 9, 8, 0) 100%);
+      --bg-glow: radial-gradient(circle at 57% 48%, rgba(81, 255, 48, 0.32), transparent 18rem);
+      --mark-opacity: 0.92;
     }
 
     * {
@@ -50,11 +53,11 @@
 
     body {
       min-height: 100svh;
+      overflow: hidden;
       color: var(--text);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       letter-spacing: 0;
-      background: #eef3ec;
-      overflow: hidden;
+      background: #e7eee8;
     }
 
     a,
@@ -67,46 +70,53 @@
       text-decoration: none;
     }
 
-    .stage {
+    .home {
       position: relative;
       min-height: 100svh;
       isolation: isolate;
       overflow: hidden;
+      background: var(--bg-base);
     }
 
-    .stage::before {
+    .home::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -4;
+      background:
+        var(--bg-scrim),
+        var(--bg-glow),
+        url("/chipkittle.gif") right 6vw bottom -2vh / min(780px, 56vw) auto no-repeat;
+      transition: background 220ms ease;
+    }
+
+    .home::after {
       content: "";
       position: absolute;
       inset: 0;
       z-index: -3;
-      background: var(--fallback-bg);
-    }
-
-    .stage::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      z-index: -2;
       background:
-        var(--scrim),
-        url("/chipkittle.gif") var(--chipkittle-pos) / var(--chipkittle-size) no-repeat;
-      pointer-events: none;
-    }
-
-    .grain {
-      position: absolute;
-      inset: 0;
-      z-index: -1;
-      background:
-        repeating-radial-gradient(circle at 57% 45%, rgba(255, 255, 255, 0.18) 0 1px, transparent 1px 48px);
+        repeating-radial-gradient(circle at 57% 44%, rgba(255, 255, 255, 0.24) 0 1px, transparent 1px 48px);
       opacity: 0.7;
       pointer-events: none;
     }
 
-    [data-theme="dark"] .grain {
+    [data-theme="dark"] .home::after {
       background:
-        repeating-radial-gradient(circle at 57% 48%, rgba(87, 222, 55, 0.22) 0 1px, transparent 1px 52px);
-      opacity: 0.85;
+        repeating-radial-gradient(circle at 57% 48%, rgba(98, 255, 66, 0.2) 0 1px, transparent 1px 54px),
+        linear-gradient(90deg, rgba(53, 255, 58, 0.08), transparent 45%);
+    }
+
+    .ambient-mark {
+      position: absolute;
+      left: 46%;
+      top: 28%;
+      z-index: -2;
+      width: clamp(150px, 19vw, 280px);
+      opacity: var(--mark-opacity);
+      filter: drop-shadow(0 0 44px rgba(87, 222, 55, 0.72));
+      transform: translate(-50%, -50%);
+      animation: hoverMark 5s ease-in-out infinite;
     }
 
     .topbar {
@@ -115,8 +125,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 20px;
-      padding: 28px clamp(18px, 5vw, 72px);
+      gap: 18px;
+      padding: 30px clamp(18px, 5vw, 76px);
     }
 
     .brand {
@@ -125,21 +135,21 @@
       gap: 12px;
       font-size: clamp(24px, 2.8vw, 36px);
       font-weight: 950;
-      text-shadow: 0 1px 18px rgba(255, 255, 255, 0.45);
+      text-shadow: 0 2px 24px rgba(255, 255, 255, 0.34);
     }
 
     [data-theme="dark"] .brand {
-      text-shadow: 0 1px 18px rgba(87, 222, 55, 0.28);
+      text-shadow: 0 2px 24px rgba(87, 222, 55, 0.22);
     }
 
     .brand img {
       width: 48px;
       height: 48px;
       object-fit: contain;
-      filter: drop-shadow(0 0 18px rgba(31, 141, 58, 0.38));
+      filter: drop-shadow(0 0 18px rgba(31, 141, 58, 0.42));
     }
 
-    .buttons {
+    .actions {
       display: flex;
       align-items: center;
       justify-content: flex-end;
@@ -147,103 +157,120 @@
       flex-wrap: wrap;
     }
 
-    .button,
-    .theme-toggle {
+    .button {
       min-height: 50px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      border: 1px solid var(--button-border);
+      border: 1px solid var(--line);
       border-radius: 999px;
-      background: var(--button-bg);
+      background: var(--button);
       color: var(--text);
       padding: 0 20px;
       font-weight: 850;
       box-shadow: 0 14px 38px rgba(0, 0, 0, 0.12);
       backdrop-filter: blur(16px);
       cursor: pointer;
-      transition: transform 160ms ease, background 160ms ease, color 160ms ease;
+      transition: transform 160ms ease, background 160ms ease;
       white-space: nowrap;
     }
 
-    .button:hover,
-    .theme-toggle:hover {
+    .button:hover {
       background: var(--button-hover);
       transform: translateY(-2px);
     }
 
     .button.panel {
-      background: var(--panel-bg);
       border-color: transparent;
-      color: white;
-      padding-inline: 26px;
-    }
-
-    [data-theme="dark"] .button.panel {
-      color: #06110f;
+      background: var(--accent);
+      color: var(--panel-text);
+      padding-inline: 28px;
     }
 
     .button.panel:hover {
-      background: var(--panel-hover);
+      background: var(--accent-2);
     }
 
-    .hero-copy {
+    .copy {
       position: absolute;
       left: clamp(20px, 5vw, 80px);
-      bottom: clamp(34px, 8vh, 96px);
+      bottom: clamp(32px, 8vh, 92px);
       z-index: 1;
-      max-width: min(650px, calc(100vw - 40px));
+      width: min(680px, calc(100vw - 40px));
       display: grid;
       gap: 18px;
     }
 
     .badge {
       width: fit-content;
-      border: 1px solid var(--button-border);
+      border: 1px solid var(--line);
       border-radius: 999px;
-      background: var(--button-bg);
+      background: var(--glass);
       padding: 10px 15px;
       color: var(--muted);
       font-weight: 850;
-      backdrop-filter: blur(14px);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
     }
 
     h1 {
       margin: 0;
       max-width: 760px;
-      font-size: clamp(56px, 9vw, 132px);
-      line-height: 0.91;
+      font-size: clamp(58px, 9vw, 132px);
+      line-height: 0.9;
       font-weight: 980;
-      letter-spacing: 0;
       text-wrap: balance;
     }
 
     p {
       margin: 0;
-      max-width: 540px;
+      max-width: 550px;
       color: var(--muted);
       font-size: clamp(18px, 2vw, 24px);
       line-height: 1.42;
-      font-weight: 600;
+      font-weight: 650;
     }
 
-    .mobile-bg {
-      display: none;
+    .copy-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 8px;
     }
 
-    @media (max-width: 760px) {
+    @keyframes hoverMark {
+      0%, 100% {
+        transform: translate(-50%, -50%) scale(1) rotate(0deg);
+      }
+
+      50% {
+        transform: translate(-50%, calc(-50% - 10px)) scale(1.04) rotate(4deg);
+      }
+    }
+
+    @media (max-width: 820px) {
       body {
         overflow: auto;
       }
 
-      .stage {
+      .home {
         min-height: 100svh;
-        display: grid;
-        grid-template-rows: auto 1fr;
       }
 
-      .stage::after {
-        background: var(--scrim);
+      .home::before {
+        background:
+          linear-gradient(180deg, rgba(248, 248, 243, 0.9) 0%, rgba(248, 248, 243, 0.62) 48%, rgba(248, 248, 243, 0.22) 100%),
+          var(--bg-glow),
+          url("/chipkittle.gif") center top 74px / min(460px, 102vw) auto no-repeat,
+          var(--bg-base);
+      }
+
+      [data-theme="dark"] .home::before {
+        background:
+          linear-gradient(180deg, rgba(2, 9, 8, 0.92) 0%, rgba(2, 9, 8, 0.58) 46%, rgba(2, 9, 8, 0.24) 100%),
+          var(--bg-glow),
+          url("/chipkittle.gif") center top 74px / min(460px, 102vw) auto no-repeat,
+          var(--bg-base);
       }
 
       .topbar {
@@ -260,31 +287,33 @@
         height: 36px;
       }
 
-      .buttons {
+      .actions {
         gap: 8px;
       }
 
-      .button,
-      .theme-toggle {
+      .button {
         min-height: 42px;
         padding-inline: 14px;
       }
 
-      .button.optional {
+      .button.secondary {
         display: none;
       }
 
-      .mobile-bg {
-        display: block;
-        width: min(430px, 96vw);
-        margin: 8px auto 0;
-        filter: drop-shadow(0 28px 52px rgba(0, 0, 0, 0.22));
+      .ambient-mark {
+        top: 38%;
+        left: 50%;
+        width: min(210px, 44vw);
       }
 
-      .hero-copy {
-        position: static;
-        align-self: end;
-        padding: 16px 18px 34px;
+      .copy {
+        position: relative;
+        left: auto;
+        bottom: auto;
+        min-height: calc(100svh - 88px);
+        align-content: end;
+        padding: 360px 18px 34px;
+        width: 100%;
       }
 
       h1 {
@@ -294,8 +323,8 @@
   </style>
 </head>
 <body>
-  <main class="stage" data-theme="light">
-    <div class="grain" aria-hidden="true"></div>
+  <main class="home" data-theme="light">
+    <img class="ambient-mark" src="/chipkittle-logo.svg" alt="" aria-hidden="true">
 
     <header class="topbar">
       <a class="brand" href="/">
@@ -303,38 +332,39 @@
         <span>chipkittle</span>
       </a>
 
-      <nav class="buttons" aria-label="Primary links">
-        <a class="button optional" href="https://github.com/15inb/chipkittle">GitHub</a>
-        <a class="button optional" href="https://github.com/15inb/chipkittle/blob/main/DEPLOYMENT.md">Deploy</a>
-        <button class="theme-toggle" type="button" aria-pressed="false">Dark</button>
+      <nav class="actions" aria-label="Primary links">
+        <button class="button theme-toggle" type="button" aria-pressed="false">Dark</button>
+        <a class="button secondary" href="https://github.com/15inb/chipkittle">GitHub</a>
         <a class="button panel" href="https://panel.chipkittle.com">Panel</a>
       </nav>
     </header>
 
-    <img class="mobile-bg" src="/chipkittle.gif" alt="A white horned Chipkittle suit">
-
-    <section class="hero-copy" aria-label="Chipkittle landing page">
-      <div class="badge">artifact-grade Discord bot</div>
-      <h1>Enter the Chipkittle.</h1>
-      <p>Open the panel, adjust the rituals, and let the furry horned administrator handle the server business.</p>
+    <section class="copy" aria-label="Chipkittle intro">
+      <div class="badge">Discord bot, artifact approved</div>
+      <h1>Chipkittle is watching.</h1>
+      <p>Open the panel, tune the bot, and let the horned administrator handle the server rituals.</p>
+      <div class="copy-buttons">
+        <a class="button panel" href="https://panel.chipkittle.com">Open Panel</a>
+        <a class="button secondary" href="https://github.com/15inb/chipkittle/blob/main/DEPLOYMENT.md">Deploy Notes</a>
+      </div>
     </section>
   </main>
 
   <script>
-    const stage = document.querySelector(".stage");
+    const home = document.querySelector(".home");
     const toggle = document.querySelector(".theme-toggle");
-    const storedTheme = localStorage.getItem("chipkittle-theme");
+    const savedTheme = localStorage.getItem("chipkittle-theme");
 
     function setTheme(theme) {
-      stage.dataset.theme = theme;
+      home.dataset.theme = theme;
       toggle.textContent = theme === "dark" ? "Light" : "Dark";
       toggle.setAttribute("aria-pressed", String(theme === "dark"));
       localStorage.setItem("chipkittle-theme", theme);
     }
 
-    setTheme(storedTheme || "light");
+    setTheme(savedTheme || "light");
     toggle.addEventListener("click", () => {
-      setTheme(stage.dataset.theme === "dark" ? "light" : "dark");
+      setTheme(home.dataset.theme === "dark" ? "light" : "dark");
     });
   </script>
 </body>
