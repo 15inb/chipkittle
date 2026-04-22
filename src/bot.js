@@ -129,7 +129,8 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
         const rateLimit = checkAiRateLimit({
           guildId: message.guild.id,
           userId: message.author.id,
-          cooldownSeconds: config.ai.apiCooldownSeconds
+          cooldownSeconds: config.ai.apiCooldownSeconds,
+          bucket: "chat"
         });
 
         if (rateLimit.limited) {

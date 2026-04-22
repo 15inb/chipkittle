@@ -672,7 +672,8 @@ define({
     const rateLimit = checkAiRateLimit({
       guildId: ctx.message.guild.id,
       userId: ctx.message.author.id,
-      cooldownSeconds: ctx.config.ai.imageCooldownSeconds
+      cooldownSeconds: ctx.config.ai.imageCooldownSeconds,
+      bucket: "image"
     });
 
     if (rateLimit.limited) {
@@ -1216,7 +1217,8 @@ define({
     const rateLimit = checkAiRateLimit({
       guildId: ctx.message.guild.id,
       userId: ctx.message.author.id,
-      cooldownSeconds: ctx.config.ai.apiCooldownSeconds
+      cooldownSeconds: ctx.config.ai.apiCooldownSeconds,
+      bucket: "chat"
     });
 
     if (rateLimit.limited) {

@@ -1,12 +1,12 @@
 const aiCooldowns = new Map();
 
-export function checkAiRateLimit({ guildId, userId, cooldownSeconds }) {
+export function checkAiRateLimit({ guildId, userId, cooldownSeconds, bucket = "chat" }) {
   const seconds = Math.max(Number(cooldownSeconds) || 0, 0);
   if (seconds === 0) {
     return { limited: false, retryAfterSeconds: 0 };
   }
 
-  const key = `${guildId}:${userId}`;
+  const key = `${bucket}:${guildId}:${userId}`;
   const now = Date.now();
   const expiresAt = aiCooldowns.get(key) || 0;
 
