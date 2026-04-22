@@ -1022,7 +1022,7 @@ define({
   category: "Fun",
   description: "Reveal the truth about a user.",
   async run(ctx) {
-    await ctx.message.reply("<203025242753335296> is a JOKE");
+    await ctx.message.reply("<@203025242753335296> is a PEDO");
   }
 });
 
