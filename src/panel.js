@@ -79,6 +79,7 @@ function parseConfigForm(body) {
     applications: {
       enabled: body.applicationsEnabled === "on",
       channelId: String(body.applicationChannelId || ""),
+      threadChannelId: String(body.applicationThreadChannelId || ""),
       categoryId: String(body.applicationCategoryId || ""),
       reviewerRoleIds: reviewerRoleIds.map(String),
       approvedRoleId: String(body.applicationApprovedRoleId || ""),
@@ -442,9 +443,15 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
             <span>Enable application threads</span>
           </label>
           <label>
-            Application command and thread channel
+            Application command channel
             <select name="applicationChannelId">
               ${optionList(guild.channels, config.applications.channelId, "Allow applications from any channel")}
+            </select>
+          </label>
+          <label>
+            Review thread channel
+            <select name="applicationThreadChannelId">
+              ${optionList(guild.channels, config.applications.threadChannelId, "Use the application command channel")}
             </select>
           </label>
           <label>

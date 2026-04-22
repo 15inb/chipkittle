@@ -1169,12 +1169,13 @@ define({
     }
 
     const botMember = ctx.message.guild.members.me;
-    const parentChannel = settings.channelId
-      ? ctx.message.guild.channels.cache.get(settings.channelId)
+    const reviewChannelId = settings.threadChannelId || settings.channelId;
+    const parentChannel = reviewChannelId
+      ? ctx.message.guild.channels.cache.get(reviewChannelId)
       : ctx.message.channel;
 
     if (!parentChannel?.threads?.create) {
-      await ctx.message.channel.send("The application channel must be a normal text channel that supports threads.").catch(() => {});
+      await ctx.message.channel.send("The review thread channel must be a normal text channel that supports threads.").catch(() => {});
       return;
     }
 
@@ -1184,7 +1185,7 @@ define({
       !parentPermissions?.has(PermissionsBitField.Flags.ManageThreads) ||
       !parentPermissions?.has(PermissionsBitField.Flags.SendMessagesInThreads)
     ) {
-      await ctx.message.channel.send("I need Create Private Threads, Manage Threads, and Send Messages in Threads in the application channel.").catch(() => {});
+      await ctx.message.channel.send("I need Create Private Threads, Manage Threads, and Send Messages in Threads in the review thread channel.").catch(() => {});
       return;
     }
 
@@ -1215,17 +1216,6 @@ define({
       completed: false
     });
 
-    if (reviewerRoleIds.length) {
-      await ctx.message.guild.members.fetch().catch(() => {});
-    }
-
-    const reviewerMembers = ctx.message.guild.members.cache.filter(
-      (member) => !member.user.bot && reviewerRoleIds.some((roleId) => member.roles.cache.has(roleId))
-    );
-    await Promise.all(
-      reviewerMembers.map((member) => thread.members.add(member.id).catch(() => {}))
-    );
-
     const questionList = questions.map((question, index) => `${index + 1}. ${question}`).join("\n");
     const reviewerMentions = reviewerRoleIds.map((roleId) => `<@&${roleId}>`).join(" ");
 
@@ -1240,7 +1230,7 @@ define({
         "Questions:",
         questionList,
         "",
-        `Use \`${ctx.config.prefix}reply message\` to DM the applicant, \`${ctx.config.prefix}approve\` to approve, or \`${ctx.config.prefix}closeapplication\` to close.`
+        `Use \`${ctx.config.prefix}reply message\` to DM the applicant, \`${ctx.config.prefix}approve\` to approve, \`${ctx.config.prefix}deny reason\` to deny, or \`${ctx.config.prefix}closeapplication\` to close.`
       ].filter(Boolean).join("\n"),
       allowedMentions: { users: [], roles: reviewerRoleIds }
     });

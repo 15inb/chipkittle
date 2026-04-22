@@ -174,7 +174,7 @@ export async function handleApplicationDm({ client, store, message }) {
 
   if (completed) {
     await message.reply("Your application has been submitted. Staff will review it soon.").catch(() => {});
-    await found.channel.send(`Application submitted by <@${message.author.id}>. Staff can use \`${config.prefix}reply message\`, \`${config.prefix}approve\`, or \`${config.prefix}closeapplication\`.`).catch(() => {});
+    await found.channel.send(`Application submitted by <@${message.author.id}>. Staff can use \`${config.prefix}reply message\`, \`${config.prefix}approve\`, \`${config.prefix}deny reason\`, or \`${config.prefix}closeapplication\`.`).catch(() => {});
     return true;
   }
 

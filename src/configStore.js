@@ -34,6 +34,7 @@ const DEFAULT_CONFIG = {
   applications: {
     enabled: false,
     channelId: "",
+    threadChannelId: "",
     categoryId: "",
     reviewerRoleIds: [],
     approvedRoleId: "",
