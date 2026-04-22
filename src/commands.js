@@ -3,8 +3,10 @@ import { checkAiRateLimit } from "./aiRateLimit.js";
 import {
   applicantIdFromChannel,
   applicationQuestions,
+  clearApplicationTicket,
   findOpenApplicationChannel,
   isApplicationStaff as canUseApplicationCommand,
+  saveApplicationTicket,
   ticketNameFor,
   ticketTopic
 } from "./applicationTickets.js";
@@ -1092,7 +1094,7 @@ define({
       return;
     }
 
-    const existing = findOpenApplicationChannel(ctx.message.guild, ctx.message.author.id);
+    const existing = findOpenApplicationChannel(ctx.message.guild, ctx.message.author.id, ctx.config);
     if (existing) {
       await ctx.message.reply(`You already have an open application: ${existing}.`);
       return;
@@ -1149,6 +1151,12 @@ define({
       permissionOverwrites
     });
 
+    await saveApplicationTicket(ctx.store, ctx.message.guild.id, ctx.message.author.id, {
+      channelId: channel.id,
+      questionIndex: 0,
+      completed: false
+    });
+
     const questionList = questions.map((question, index) => `${index + 1}. ${question}`).join("\n");
     const reviewerMentions = reviewerRoleIds.map((roleId) => `<@&${roleId}>`).join(" ");
 
@@ -1176,6 +1184,7 @@ define({
     ].join("\n")).then(() => true).catch(() => false);
 
     if (!dmStarted) {
+      await clearApplicationTicket(ctx.store, ctx.message.guild.id, ctx.message.author.id);
       await channel.delete("Applicant DMs were closed").catch(() => {});
       await ctx.message.reply("I could not DM you. Please enable DMs from this server and try again.");
       return;
@@ -1197,7 +1206,7 @@ define({
       return;
     }
 
-    const applicantId = applicantIdFromChannel(ctx.message.channel);
+    const applicantId = applicantIdFromChannel(ctx.message.channel, ctx.config);
     if (!applicantId) {
       await ctx.message.reply("This does not look like an application ticket channel.");
       return;
@@ -1237,7 +1246,7 @@ define({
       return;
     }
 
-    const applicantId = ctx.message.mentions.members.first()?.id || applicantIdFromChannel(ctx.message.channel);
+    const applicantId = ctx.message.mentions.members.first()?.id || applicantIdFromChannel(ctx.message.channel, ctx.config);
     if (!applicantId) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` inside an application ticket, or mention a user.`);
       return;
@@ -1270,7 +1279,8 @@ define({
       return;
     }
 
-    if (!applicantIdFromChannel(ctx.message.channel)) {
+    const applicantId = applicantIdFromChannel(ctx.message.channel, ctx.config);
+    if (!applicantId) {
       await ctx.message.reply("This does not look like an application ticket channel.");
       return;
     }
@@ -1279,6 +1289,7 @@ define({
     setTimeout(() => {
       ctx.message.channel.delete("Application ticket closed").catch(() => {});
     }, 5000);
+    await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
   }
 });
 

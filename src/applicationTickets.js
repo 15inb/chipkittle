@@ -28,24 +28,83 @@ export function parseTicketTopic(topic = "") {
   return { userId, questionIndex, completed };
 }
 
-export function applicantIdFromChannel(channel) {
-  return parseTicketTopic(channel.topic).userId;
+function storedTicket(config, userId) {
+  const ticket = config.applications?.tickets?.[userId];
+  if (!ticket?.channelId) return null;
+
+  return {
+    channelId: ticket.channelId,
+    questionIndex: Number(ticket.questionIndex) || 0,
+    completed: Boolean(ticket.completed)
+  };
 }
 
-export function findOpenApplicationChannel(guild, userId) {
+export function applicantIdFromChannel(channel, config = {}) {
+  const topicApplicantId = parseTicketTopic(channel.topic).userId;
+  if (topicApplicantId) return topicApplicantId;
+
+  const ticketEntry = Object.entries(config.applications?.tickets || {}).find(
+    ([, ticket]) => ticket.channelId === channel.id
+  );
+  return ticketEntry?.[0] || "";
+}
+
+export function findOpenApplicationChannel(guild, userId, config = {}) {
+  const stored = storedTicket(config, userId);
+  const storedChannel = stored?.channelId ? guild.channels.cache.get(stored.channelId) : null;
+  if (storedChannel?.type === ChannelType.GuildText) return storedChannel;
+
   return guild.channels.cache.find((channel) => {
     const ticket = parseTicketTopic(channel.topic);
     return channel.type === ChannelType.GuildText && ticket.userId === userId;
   });
 }
 
-export function findApplicationTicketForUser(client, userId) {
+export function findApplicationTicketForUser(client, store, userId) {
   for (const guild of client.guilds.cache.values()) {
-    const channel = findOpenApplicationChannel(guild, userId);
-    if (channel) return { guild, channel, ticket: parseTicketTopic(channel.topic) };
+    const config = store.getGuild(guild.id);
+    const channel = findOpenApplicationChannel(guild, userId, config);
+    if (channel) {
+      return {
+        guild,
+        channel,
+        ticket: storedTicket(config, userId) || parseTicketTopic(channel.topic)
+      };
+    }
   }
 
   return null;
+}
+
+export async function saveApplicationTicket(store, guildId, userId, ticket) {
+  const config = store.getGuild(guildId);
+  return store.updateGuild(guildId, {
+    applications: {
+      ...config.applications,
+      tickets: {
+        ...(config.applications.tickets || {}),
+        [userId]: {
+          channelId: ticket.channelId,
+          questionIndex: Number(ticket.questionIndex) || 0,
+          completed: Boolean(ticket.completed),
+          updatedAt: new Date().toISOString()
+        }
+      }
+    }
+  });
+}
+
+export async function clearApplicationTicket(store, guildId, userId) {
+  const config = store.getGuild(guildId);
+  const tickets = { ...(config.applications.tickets || {}) };
+  delete tickets[userId];
+
+  return store.updateGuild(guildId, {
+    applications: {
+      ...config.applications,
+      tickets
+    }
+  });
 }
 
 export function isApplicationStaff(member, config, commandName, hasCommandRoleOverride) {
@@ -70,7 +129,7 @@ function attachmentLines(message) {
 export async function handleApplicationDm({ client, store, message }) {
   if (message.guild || message.author.bot) return false;
 
-  const found = findApplicationTicketForUser(client, message.author.id);
+  const found = findApplicationTicketForUser(client, store, message.author.id);
   if (!found) return false;
 
   const config = store.getGuild(found.guild.id);
@@ -92,7 +151,12 @@ export async function handleApplicationDm({ client, store, message }) {
 
   const nextIndex = currentIndex + 1;
   const completed = nextIndex >= questions.length;
-  await found.channel.setTopic(ticketTopic(message.author.id, nextIndex, completed)).catch(() => {});
+  await saveApplicationTicket(store, found.guild.id, message.author.id, {
+    channelId: found.channel.id,
+    questionIndex: nextIndex,
+    completed
+  });
+  found.channel.setTopic(ticketTopic(message.author.id, nextIndex, completed)).catch(() => {});
 
   if (completed) {
     await message.reply("Your application has been submitted. Staff will review it soon.").catch(() => {});

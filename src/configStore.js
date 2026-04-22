@@ -37,6 +37,7 @@ const DEFAULT_CONFIG = {
     categoryId: "",
     reviewerRoleIds: [],
     approvedRoleId: "",
+    tickets: {},
     questions: [
       "What name would we know you as?",
       "What is the most important ancient Chipkittle artifact?",
