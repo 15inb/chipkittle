@@ -5,10 +5,47 @@
   --quiet: rgba(16, 25, 21, 0.52);
   --line: rgba(16, 25, 21, 0.14);
   --panel: rgba(245, 248, 242, 0.7);
+  --page-bg: #eef2ee;
+  --section-bg: #f8faf6;
+  --about-bg: #e8eee8;
+  --card-bg: rgba(255, 255, 255, 0.72);
+  --card-hover: rgba(255, 255, 255, 0.92);
+  --hero-radial: rgba(97, 216, 66, 0.26);
+  --hero-radial-soft: rgba(97, 216, 66, 0.1);
+  --hero-wash-start: rgba(250, 252, 247, 0.98);
+  --hero-wash-mid: rgba(250, 252, 247, 0.9);
+  --hero-wash-glass: rgba(250, 252, 247, 0.3);
+  --hero-wash-end: rgba(250, 252, 247, 0);
+  --interior-wash: linear-gradient(90deg, rgba(250, 252, 247, 0.98), rgba(250, 252, 247, 0.9) 48%, rgba(250, 252, 247, 0.72));
   --green: #1a8a38;
   --green-dark: #0f6428;
   --green-soft: #dff3d8;
   --white: #fff;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #edf8ee;
+  --soft-ink: rgba(237, 248, 238, 0.72);
+  --quiet: rgba(237, 248, 238, 0.54);
+  --line: rgba(205, 255, 205, 0.16);
+  --panel: rgba(10, 19, 15, 0.72);
+  --page-bg: #07100d;
+  --section-bg: #0c1712;
+  --about-bg: #101d16;
+  --card-bg: rgba(11, 19, 15, 0.74);
+  --card-hover: rgba(16, 31, 23, 0.92);
+  --hero-radial: rgba(75, 230, 73, 0.3);
+  --hero-radial-soft: rgba(75, 230, 73, 0.14);
+  --hero-wash-start: rgba(5, 12, 10, 0.96);
+  --hero-wash-mid: rgba(5, 12, 10, 0.82);
+  --hero-wash-glass: rgba(5, 12, 10, 0.28);
+  --hero-wash-end: rgba(5, 12, 10, 0.1);
+  --interior-wash: linear-gradient(90deg, rgba(5, 12, 10, 0.98), rgba(5, 12, 10, 0.88) 52%, rgba(5, 12, 10, 0.76));
+  --green: #52d765;
+  --green-dark: #89f27e;
+  --green-soft: rgba(82, 215, 101, 0.18);
+  --white: #05100c;
 }
 
 * {
@@ -21,7 +58,7 @@ html {
 
 body {
   margin: 0;
-  background: #eef2ee;
+  background: var(--page-bg);
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
@@ -50,8 +87,8 @@ a {
   inset: 0;
   z-index: -2;
   background-image:
-    radial-gradient(circle at 51% 42%, rgba(97, 216, 66, 0.26) 0 10%, rgba(97, 216, 66, 0.1) 19%, transparent 34%),
-    linear-gradient(90deg, rgba(250, 252, 247, 0.98) 0%, rgba(250, 252, 247, 0.9) 34%, rgba(250, 252, 247, 0.3) 63%, rgba(250, 252, 247, 0) 100%),
+    radial-gradient(circle at 51% 42%, var(--hero-radial) 0 10%, var(--hero-radial-soft) 19%, transparent 34%),
+    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 34%, var(--hero-wash-glass) 63%, var(--hero-wash-end) 100%),
     url("/assets/chipkittle-hero.png");
   background-repeat: no-repeat;
   background-size: cover, cover, auto 100%;
@@ -73,6 +110,11 @@ a {
     0 0 0 80px rgba(255, 255, 255, 0.07),
     0 0 0 160px rgba(255, 255, 255, 0.05);
   pointer-events: none;
+}
+
+:root[data-theme="dark"] .hero-bg,
+:root[data-theme="dark"] .interior {
+  filter: saturate(1.06) brightness(0.92);
 }
 
 .topbar {
@@ -104,7 +146,7 @@ a {
   display: flex;
   align-items: center;
   gap: clamp(22px, 3vw, 44px);
-  color: rgba(16, 25, 21, 0.78);
+  color: var(--soft-ink);
   font-size: 17px;
   font-weight: 650;
 }
@@ -120,7 +162,8 @@ a {
 }
 
 .nav-button,
-.button {
+.button,
+.theme-toggle {
   min-height: 58px;
   display: inline-flex;
   align-items: center;
@@ -136,6 +179,19 @@ a {
   white-space: nowrap;
 }
 
+.nav-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-toggle {
+  width: 76px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.46);
+  cursor: pointer;
+}
+
 .nav-button,
 .button.primary {
   border-color: rgba(26, 138, 56, 0.28);
@@ -145,11 +201,12 @@ a {
 }
 
 .button.secondary {
-  color: rgba(16, 25, 21, 0.82);
+  color: var(--ink);
 }
 
 .nav-button:hover,
-.button:hover {
+.button:hover,
+.theme-toggle:hover {
   transform: translateY(-2px);
 }
 
@@ -172,8 +229,8 @@ a {
   margin: 0;
   border-radius: 999px;
   padding: 14px 20px;
-  background: rgba(219, 241, 211, 0.76);
-  color: #176829;
+  background: var(--green-soft);
+  color: var(--green-dark);
   font-size: 16px;
   font-weight: 800;
 }
@@ -227,7 +284,7 @@ a {
 }
 
 .trusted strong {
-  color: rgba(16, 25, 21, 0.42);
+  color: var(--quiet);
   font-size: 19px;
 }
 
@@ -241,7 +298,7 @@ a {
   border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 18px;
   padding: 28px;
-  background: rgba(241, 242, 235, 0.56);
+  background: var(--panel);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 28px 82px rgba(16, 25, 21, 0.18);
   backdrop-filter: blur(18px);
 }
@@ -265,7 +322,7 @@ a {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #c9efbf;
+  background: var(--green-soft);
   color: var(--green-dark);
   font-size: 14px;
   font-weight: 950;
@@ -284,7 +341,7 @@ a {
   grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1fr);
   gap: clamp(34px, 6vw, 90px);
   padding-block: clamp(66px, 8vw, 116px);
-  background: #f8faf6;
+  background: var(--section-bg);
   border-top: 1px solid var(--line);
 }
 
@@ -316,7 +373,7 @@ a {
 
 .feature-grid article {
   padding: 24px;
-  background: #fff;
+  background: var(--card-bg);
 }
 
 .feature-grid strong {
@@ -329,7 +386,7 @@ a {
   display: grid;
   gap: 22px;
   padding-block: clamp(70px, 9vw, 128px);
-  background: #e8eee8;
+  background: var(--about-bg);
 }
 
 .about-band h2 {
@@ -344,7 +401,7 @@ a {
 .interior {
   min-height: 100svh;
   background:
-    linear-gradient(90deg, rgba(250, 252, 247, 0.98), rgba(250, 252, 247, 0.9) 48%, rgba(250, 252, 247, 0.72)),
+    var(--interior-wash),
     url("/assets/chipkittle-hero.png");
   background-repeat: no-repeat;
   background-size: cover, auto 100%;
@@ -390,7 +447,7 @@ a {
 .member-card,
 .commit-row,
 .empty {
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--card-bg);
   backdrop-filter: blur(18px);
 }
 
@@ -427,7 +484,7 @@ a {
 
 .commit-row:hover,
 .member-card:hover {
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--card-hover);
 }
 
 .commit-row small,
@@ -455,7 +512,7 @@ a {
   }
 
   .hero-bg {
-    background-position: 62% center;
+    background-position: center, center, 62% center;
   }
 
   .hero-copy {
@@ -496,10 +553,16 @@ a {
   }
 
   .nav-button,
-  .button {
+  .button,
+  .theme-toggle {
     min-height: 50px;
     padding-inline: 20px;
     font-size: 15px;
+  }
+
+  .theme-toggle {
+    width: 66px;
+    padding-inline: 12px;
   }
 
   .hero-copy h1 {
