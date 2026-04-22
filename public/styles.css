@@ -343,6 +343,18 @@ textarea:focus {
   gap: 10px;
 }
 
+.section-collapse {
+  display: grid;
+  gap: 12px;
+}
+
+.section-collapse > summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--accent);
+  font-weight: 800;
+}
+
 .permission-row {
   border: 1px solid var(--line);
   border-radius: 8px;

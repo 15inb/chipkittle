@@ -73,6 +73,7 @@ function parseConfigForm(body) {
       blacklistedChannelIds: aiBlacklistedChannelIds.map(String),
       model: String(body.aiModel || "").trim().slice(0, 80),
       apiCooldownSeconds: Math.min(Math.max(Number(body.aiApiCooldownSeconds) || 0, 0), 3600),
+      imageCooldownSeconds: Math.min(Math.max(Number(body.aiImageCooldownSeconds) || 0, 0), 7200),
       replyToMentions: body.aiReplyToMentions === "on",
       personality: String(body.aiPersonality || "").trim().slice(0, 1200)
     },
@@ -383,10 +384,13 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
             <h2>Command Role Access</h2>
             <p>Grant specific roles access to specific commands without requiring the matching Discord permission.</p>
           </div>
-          <p class="field-help">Open a command, then choose which roles can bypass that command's Discord permission check.</p>
-          <div class="permission-list">
-            ${commandRoleAccess(commandList, guild.roles, config.commandRoles.overrides)}
-          </div>
+          <details class="section-collapse">
+            <summary>Show command role access</summary>
+            <p class="field-help">Open a command, then choose which roles can bypass that command's Discord permission check.</p>
+            <div class="permission-list">
+              ${commandRoleAccess(commandList, guild.roles, config.commandRoles.overrides)}
+            </div>
+          </details>
         </section>
 
         <section class="panel-section">
@@ -413,6 +417,10 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
           <label>
             API cooldown seconds
             <input type="number" name="aiApiCooldownSeconds" min="0" max="3600" value="${escapeHtml(config.ai.apiCooldownSeconds)}">
+          </label>
+          <label>
+            Image cooldown seconds
+            <input type="number" name="aiImageCooldownSeconds" min="0" max="7200" value="${escapeHtml(config.ai.imageCooldownSeconds)}">
           </label>
           <label>
             Extra personality
