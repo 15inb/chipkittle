@@ -8,6 +8,8 @@ import session from "express-session";
 import { serializeGuild } from "./bot.js";
 
 const execFileAsync = promisify(execFile);
+const UPDATE_STALE_MS = 10 * 60 * 1000;
+const ACTIVE_UPDATE_STATUSES = new Set(["running", "restarting"]);
 
 function escapeHtml(value = "") {
   return String(value)
@@ -44,9 +46,13 @@ function readUpdateStatus() {
   const statusPath = path.join(process.cwd(), "data", "update-status.json");
   try {
     const parsed = JSON.parse(fs.readFileSync(statusPath, "utf8"));
+    const updatedTime = Date.parse(parsed.updatedAt || "");
+    const status = String(parsed.status || "unknown");
+    const stale = ACTIVE_UPDATE_STATUSES.has(status) && (!Number.isFinite(updatedTime) || Date.now() - updatedTime > UPDATE_STALE_MS);
     return {
-      status: String(parsed.status || "unknown"),
+      status,
       updatedAt: String(parsed.updatedAt || ""),
+      stale,
       error: String(parsed.error || ""),
       log: String(parsed.log || "").slice(-3000)
     };
@@ -94,7 +100,7 @@ function updateControls() {
       ${
         status
           ? `<div class="update-status">
-              <strong>Status: ${escapeHtml(status.status)}</strong>
+              <strong>Status: ${escapeHtml(status.stale ? `${status.status} (stale)` : status.status)}</strong>
               ${status.updatedAt ? `<small>Updated ${escapeHtml(status.updatedAt)}</small>` : ""}
               ${status.error ? `<p class="form-error">${escapeHtml(status.error)}</p>` : ""}
               ${status.log ? `<pre>${escapeHtml(status.log)}</pre>` : ""}
@@ -785,7 +791,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
 
   app.post("/admin/update", requireAuth, (request, response) => {
     const status = readUpdateStatus();
-    if (status?.status === "running") {
+    if (ACTIVE_UPDATE_STATUSES.has(status?.status) && !status.stale) {
       response.redirect(`${updateRedirectTarget(request)}busy`);
       return;
     }

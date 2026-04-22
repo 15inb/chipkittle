@@ -15,6 +15,7 @@ async function writeStatus(status, extra = {}) {
       {
         status,
         updatedAt: new Date().toISOString(),
+        pid: process.pid,
         ...extra
       },
       null,
@@ -63,6 +64,10 @@ try {
 
   logs.push(`$ npm install\n${await run("npm", ["install"])}`);
   await writeStatus("running", { log: logs.join("\n\n") });
+
+  await writeStatus("restarting", {
+    log: `${logs.join("\n\n")}\n\n$ pm2 restart ${pm2Name}\nRestart command is being handed to PM2.`
+  });
 
   logs.push(`$ pm2 restart ${pm2Name}\n${await run("pm2", ["restart", pm2Name])}`);
   await writeStatus("completed", { log: logs.join("\n\n") });
