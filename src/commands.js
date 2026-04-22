@@ -181,6 +181,10 @@ function safeContent(text, fallback = "No text provided.") {
   return cleaned ? cleaned.slice(0, 1800) : fallback;
 }
 
+function normalizeBlockedWord(word) {
+  return String(word || "").trim().toLowerCase().slice(0, 80);
+}
+
 async function sendModerationLog(ctx, content) {
   const channelId = ctx.config.moderation?.logChannelId;
   if (!channelId) return;
@@ -1076,17 +1080,23 @@ define({
   usage: "blockword word",
   async run(ctx) {
     if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
-    const word = ctx.rest.trim().slice(0, 80);
+    const word = normalizeBlockedWord(ctx.rest);
     if (!word) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
       return;
     }
 
-    const blockedWords = [...new Set([...ctx.config.automod.blockedWords, word])];
+    const existingWords = (ctx.config.automod.blockedWords || []).map(normalizeBlockedWord).filter(Boolean);
+    const blockedWords = [...new Set([...existingWords, word])];
+    const alreadyBlocked = existingWords.includes(word);
     await ctx.store.updateGuild(ctx.message.guild.id, {
-      automod: { ...ctx.config.automod, blockedWords }
+      automod: { ...ctx.config.automod, enabled: true, blockedWords }
     });
-    await ctx.message.reply(`Added blocked word: \`${word}\`.`);
+    await ctx.message.reply(
+      alreadyBlocked
+        ? `\`${word}\` was already blocked. Automod is now on.`
+        : `Added blocked word: \`${word}\`. Automod is now on.`
+    );
   }
 });
 
@@ -1097,8 +1107,15 @@ define({
   usage: "unblockword word",
   async run(ctx) {
     if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
-    const word = ctx.rest.trim().toLowerCase();
-    const blockedWords = ctx.config.automod.blockedWords.filter((item) => item.toLowerCase() !== word);
+    const word = normalizeBlockedWord(ctx.rest);
+    if (!word) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const blockedWords = (ctx.config.automod.blockedWords || [])
+      .map(normalizeBlockedWord)
+      .filter((item) => item && item !== word);
     await ctx.store.updateGuild(ctx.message.guild.id, {
       automod: { ...ctx.config.automod, blockedWords }
     });
