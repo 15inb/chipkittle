@@ -136,6 +136,32 @@ async function deleteCommandMessage(message) {
   await message.delete().catch(() => {});
 }
 
+async function sendApplicationNotice(ctx, text) {
+  const meta = commandEmbedMeta({ command: ctx.command, config: ctx.config, message: ctx.message });
+  const dmSent = await sendEmbedPayload(ctx.message.author, text, meta)
+    .then(() => true)
+    .catch(() => false);
+
+  if (dmSent) return true;
+
+  const channelSent = await sendEmbedPayload(
+    ctx.message.channel,
+    {
+      content: `${ctx.message.author} ${text}`,
+      allowedMentions: { users: [ctx.message.author.id], roles: [] }
+    },
+    meta
+  )
+    .then(() => true)
+    .catch(() => false);
+
+  if (!channelSent) {
+    console.warn(`[applications] Could not notify ${ctx.message.author.tag}: ${text}`);
+  }
+
+  return channelSent;
+}
+
 function closeThreadLater(client, channelId, reason, delayMs) {
   setTimeout(() => {
     client.channels
@@ -1768,29 +1794,29 @@ define({
 
     const settings = ctx.config.applications;
     const embedMeta = commandEmbedMeta({ command: ctx.command, config: ctx.config, message: ctx.message });
-    if (isBlockedFromApplying(ctx.message.member, ctx.config)) {
+    if (isBlockedFromApplying(ctx.message.member, ctx.config) && !isApplicationStaff(ctx)) {
       return;
     }
 
     if (!settings.enabled) {
-      await ctx.message.author.send("Applications are not enabled right now.").catch(() => {});
+      await sendApplicationNotice(ctx, "Applications are not enabled right now.");
       return;
     }
 
     if (settings.channelId && ctx.message.channel.id !== settings.channelId) {
-      await ctx.message.author.send(`Please start applications in #${ctx.message.guild.channels.cache.get(settings.channelId)?.name || "the application channel"}.`).catch(() => {});
+      await sendApplicationNotice(ctx, `Please start applications in #${ctx.message.guild.channels.cache.get(settings.channelId)?.name || "the application channel"}.`);
       return;
     }
 
     const cooldown = applicationCooldownStatus(ctx.config, ctx.message.author.id);
     if (cooldown.limited) {
-      await ctx.message.author.send(`You can open another application in ${formatCooldown(cooldown.remainingMs)}.`).catch(() => {});
+      await sendApplicationNotice(ctx, `You can open another application in ${formatCooldown(cooldown.remainingMs)}.`);
       return;
     }
 
     const existing = await findOpenApplicationChannel(ctx.message.guild, ctx.message.author.id, ctx.config, ctx.client);
     if (existing) {
-      await ctx.message.author.send("You already have an open application. Staff will review it in the application thread.").catch(() => {});
+      await sendApplicationNotice(ctx, "You already have an open application. Staff will review it in the application thread.");
       return;
     }
 
@@ -1800,8 +1826,9 @@ define({
       ? ctx.message.guild.channels.cache.get(reviewChannelId)
       : ctx.message.channel;
 
-    if (!parentChannel?.threads?.create) {
-      await ctx.message.channel.send("The review thread channel must be a normal text channel that supports threads.").catch(() => {});
+    if (!parentChannel?.threads?.create || parentChannel.type !== ChannelType.GuildText) {
+      await sendApplicationNotice(ctx, "The review thread channel must be a normal text channel that supports private threads. Staff can fix this in the panel under Membership Applications.");
+      console.warn(`[applications] Invalid review thread channel for guild ${ctx.message.guild.id}: ${reviewChannelId || "current channel"}`);
       return;
     }
 
@@ -1811,19 +1838,20 @@ define({
       !parentPermissions?.has(PermissionsBitField.Flags.ManageThreads) ||
       !parentPermissions?.has(PermissionsBitField.Flags.SendMessagesInThreads)
     ) {
-      await ctx.message.channel.send("I need Create Private Threads, Manage Threads, and Send Messages in Threads in the review thread channel.").catch(() => {});
+      await sendApplicationNotice(ctx, "I need Create Private Threads, Manage Threads, and Send Messages in Threads in the review thread channel. Staff can fix my channel permissions and try again.");
+      console.warn(`[applications] Missing thread permissions in ${parentChannel.id} for guild ${ctx.message.guild.id}`);
       return;
     }
 
     const questions = applicationQuestions(ctx.config);
     if (!questions.length) {
-      await ctx.message.channel.send("No application questions are configured yet.").catch(() => {});
+      await sendApplicationNotice(ctx, "No application questions are configured yet.");
       return;
     }
 
     const dmChannel = await ctx.message.author.createDM().catch(() => null);
     if (!dmChannel) {
-      await ctx.message.channel.send(`${ctx.message.author}, I could not open a DM with you. Please enable DMs from this server and try again.`).catch(() => {});
+      await sendApplicationNotice(ctx, "I could not open a DM with you. Please enable DMs from this server and try again.");
       return;
     }
 
@@ -1834,7 +1862,12 @@ define({
       invitable: false,
       autoArchiveDuration: 1440,
       reason: `Application for ${ctx.message.author.tag}`
+    }).catch(async (error) => {
+      console.error("Application thread creation failed:", error);
+      await sendApplicationNotice(ctx, "I could not create your application thread. Staff should check my thread permissions in the configured review channel.");
+      return null;
     });
+    if (!thread) return;
 
     await saveApplicationTicket(ctx.store, ctx.message.guild.id, ctx.message.author.id, {
       channelId: thread.id,
@@ -1872,7 +1905,7 @@ define({
       await clearApplicationTicket(ctx.store, ctx.message.guild.id, ctx.message.author.id);
       await thread.setLocked(true, "Applicant DMs were closed").catch(() => {});
       await thread.setArchived(true, "Applicant DMs were closed").catch(() => {});
-      await ctx.message.channel.send(`${ctx.message.author}, I could not DM you. Please enable DMs from this server and try again.`).catch(() => {});
+      await sendApplicationNotice(ctx, "I could not DM you. Please enable DMs from this server and try again.");
       return;
     }
 
@@ -2077,7 +2110,12 @@ export function createCommandHandler(options) {
       });
     } catch (error) {
       console.error(`Command ${command.name} failed:`, error);
-      await commandMessage.reply("That command failed. Check my permissions and try again.").catch(() => {});
+      const fallbackPayload = toEmbedPayload(
+        "That command failed. Check my permissions and try again.",
+        commandEmbedMeta({ command, config, message })
+      );
+      await commandMessage.reply(fallbackPayload)
+        .catch(() => message.channel.send(fallbackPayload).catch(() => {}));
     }
 
     return true;
