@@ -7,8 +7,7 @@ import {
   findOpenApplicationChannel,
   isApplicationStaff as canUseApplicationCommand,
   saveApplicationTicket,
-  ticketNameFor,
-  ticketTopic
+  ticketNameFor
 } from "./applicationTickets.js";
 import {
   CHIPKITTLE_LORE,
@@ -127,11 +126,15 @@ async function deleteCommandMessage(message) {
   await message.delete().catch(() => {});
 }
 
-function deleteChannelLater(client, channelId, reason, delayMs) {
+function closeThreadLater(client, channelId, reason, delayMs) {
   setTimeout(() => {
     client.channels
       .fetch(channelId)
-      .then((channel) => channel?.delete(reason))
+      .then(async (channel) => {
+        if (!channel?.isThread?.()) return;
+        await channel.setLocked(true, reason).catch(() => {});
+        await channel.setArchived(true, reason).catch(() => {});
+      })
       .catch(() => {});
   }, delayMs);
 }
@@ -259,7 +262,7 @@ define({
     }
 
     await ctx.message.reply(
-      `Invite link: https://discord.com/oauth2/authorize?client_id=${ctx.clientId}&permissions=268438608&scope=bot%20applications.commands`
+      `Invite link: https://discord.com/oauth2/authorize?client_id=${ctx.clientId}&permissions=361045691472&scope=bot%20applications.commands`
     );
   }
 });
@@ -1134,7 +1137,7 @@ define({
   name: "apply",
   aliases: ["application", "ticket"],
   category: "Applications",
-  description: "Open a private Chipkittle membership application ticket.",
+  description: "Open a private Chipkittle membership application thread.",
   async run(ctx) {
     await deleteCommandMessage(ctx.message);
 
@@ -1159,15 +1162,29 @@ define({
       return;
     }
 
-    const existing = findOpenApplicationChannel(ctx.message.guild, ctx.message.author.id, ctx.config);
+    const existing = await findOpenApplicationChannel(ctx.message.guild, ctx.message.author.id, ctx.config, ctx.client);
     if (existing) {
-      await ctx.message.author.send(`You already have an open application. Staff will review it in the ticket channel.`).catch(() => {});
+      await ctx.message.author.send("You already have an open application. Staff will review it in the application thread.").catch(() => {});
       return;
     }
 
     const botMember = ctx.message.guild.members.me;
-    if (!botMember?.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-      await ctx.message.channel.send("I need the Manage Channels permission to create application tickets.").catch(() => {});
+    const parentChannel = settings.channelId
+      ? ctx.message.guild.channels.cache.get(settings.channelId)
+      : ctx.message.channel;
+
+    if (!parentChannel?.threads?.create) {
+      await ctx.message.channel.send("The application channel must be a normal text channel that supports threads.").catch(() => {});
+      return;
+    }
+
+    const parentPermissions = botMember?.permissionsIn(parentChannel);
+    if (
+      !parentPermissions?.has(PermissionsBitField.Flags.CreatePrivateThreads) ||
+      !parentPermissions?.has(PermissionsBitField.Flags.ManageThreads) ||
+      !parentPermissions?.has(PermissionsBitField.Flags.SendMessagesInThreads)
+    ) {
+      await ctx.message.channel.send("I need Create Private Threads, Manage Threads, and Send Messages in Threads in the application channel.").catch(() => {});
       return;
     }
 
@@ -1184,50 +1201,37 @@ define({
     }
 
     const reviewerRoleIds = settings.reviewerRoleIds || [];
-    const permissionOverwrites = [
-      {
-        id: ctx.message.guild.roles.everyone.id,
-        deny: [PermissionsBitField.Flags.ViewChannel]
-      },
-      {
-        id: botMember.id,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.ReadMessageHistory,
-          PermissionsBitField.Flags.ManageChannels
-        ]
-      },
-      ...reviewerRoleIds.map((roleId) => ({
-        id: roleId,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.ReadMessageHistory
-        ]
-      }))
-    ];
-
-    const channel = await ctx.message.guild.channels.create({
+    const thread = await parentChannel.threads.create({
       name: ticketNameFor(ctx.message.member),
-      type: ChannelType.GuildText,
-      parent: settings.categoryId || undefined,
-      topic: ticketTopic(ctx.message.author.id),
-      permissionOverwrites
+      type: ChannelType.PrivateThread,
+      invitable: false,
+      autoArchiveDuration: 1440,
+      reason: `Application for ${ctx.message.author.tag}`
     });
 
     await saveApplicationTicket(ctx.store, ctx.message.guild.id, ctx.message.author.id, {
-      channelId: channel.id,
+      channelId: thread.id,
       questionIndex: 0,
       completed: false
     });
 
+    if (reviewerRoleIds.length) {
+      await ctx.message.guild.members.fetch().catch(() => {});
+    }
+
+    const reviewerMembers = ctx.message.guild.members.cache.filter(
+      (member) => !member.user.bot && reviewerRoleIds.some((roleId) => member.roles.cache.has(roleId))
+    );
+    await Promise.all(
+      reviewerMembers.map((member) => thread.members.add(member.id).catch(() => {}))
+    );
+
     const questionList = questions.map((question, index) => `${index + 1}. ${question}`).join("\n");
     const reviewerMentions = reviewerRoleIds.map((roleId) => `<@&${roleId}>`).join(" ");
 
-    await channel.send({
+    await thread.send({
       content: [
-        `Application ticket opened for ${ctx.message.author} (${ctx.message.author.tag}).`,
+        `Application thread opened for ${ctx.message.author} (${ctx.message.author.tag}).`,
         reviewerMentions ? `Review team: ${reviewerMentions}` : "",
         "",
         "Applicant answers will appear here as they reply to the bot in DMs.",
@@ -1243,14 +1247,15 @@ define({
 
     const dmStarted = await dmChannel.send([
       `Your Chipkittle application has started for **${ctx.message.guild.name}**.`,
-      "Answer each question here in DMs. Staff can read your answers in the private ticket channel.",
+      "Answer each question here in DMs. Staff can read your answers in the private review thread.",
       "",
       `Question 1/${questions.length}: ${questions[0]}`
     ].join("\n")).then(() => true).catch(() => false);
 
     if (!dmStarted) {
       await clearApplicationTicket(ctx.store, ctx.message.guild.id, ctx.message.author.id);
-      await channel.delete("Applicant DMs were closed").catch(() => {});
+      await thread.setLocked(true, "Applicant DMs were closed").catch(() => {});
+      await thread.setArchived(true, "Applicant DMs were closed").catch(() => {});
       await ctx.message.channel.send(`${ctx.message.author}, I could not DM you. Please enable DMs from this server and try again.`).catch(() => {});
       return;
     }
@@ -1263,7 +1268,7 @@ define({
   name: "reply",
   aliases: ["ticketreply"],
   category: "Applications",
-  description: "Send a staff reply from an application ticket to the applicant's DMs.",
+  description: "Send a staff reply from an application thread to the applicant's DMs.",
   usage: "reply message",
   async run(ctx) {
     await deleteCommandMessage(ctx.message);
@@ -1274,7 +1279,7 @@ define({
 
     const applicantId = applicantIdFromChannel(ctx.message.channel, ctx.config);
     if (!applicantId) {
-      await ctx.message.channel.send("This does not look like an application ticket channel.").catch(() => {});
+      await ctx.message.channel.send("This does not look like an application thread.").catch(() => {});
       return;
     }
 
@@ -1319,7 +1324,7 @@ define({
     const mentionedApplicant = ctx.message.mentions.members.first();
     const applicantId = mentionedApplicant?.id || applicantIdFromChannel(ctx.message.channel, ctx.config);
     if (!applicantId) {
-      await ctx.message.channel.send(`Usage: \`${usage(ctx.config, this)}\` inside an application ticket, or mention a user.`).catch(() => {});
+      await ctx.message.channel.send(`Usage: \`${usage(ctx.config, this)}\` inside an application thread, or mention a user.`).catch(() => {});
       return;
     }
 
@@ -1342,7 +1347,7 @@ define({
     }
 
     await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
-    deleteChannelLater(ctx.client, ctx.message.channelId, "Application accepted", 10_000);
+    closeThreadLater(ctx.client, ctx.message.channelId, "Application accepted", 10_000);
   }
 });
 
@@ -1362,7 +1367,7 @@ define({
     const mentionedApplicant = ctx.message.mentions.members.first();
     const applicantId = mentionedApplicant?.id || applicantIdFromChannel(ctx.message.channel, ctx.config);
     if (!applicantId) {
-      await ctx.message.channel.send(`Usage: \`${usage(ctx.config, this)}\` inside an application ticket, or mention a user.`).catch(() => {});
+      await ctx.message.channel.send(`Usage: \`${usage(ctx.config, this)}\` inside an application thread, or mention a user.`).catch(() => {});
       return;
     }
 
@@ -1383,7 +1388,7 @@ define({
       allowedMentions: NO_MENTIONS
     });
     await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
-    deleteChannelLater(ctx.client, ctx.message.channelId, "Application denied", 10_000);
+    closeThreadLater(ctx.client, ctx.message.channelId, "Application denied", 10_000);
   }
 });
 
@@ -1391,7 +1396,7 @@ define({
   name: "closeapplication",
   aliases: ["closeticket", "close"],
   category: "Applications",
-  description: "Close the current application ticket.",
+  description: "Close and lock the current application thread.",
   async run(ctx) {
     await deleteCommandMessage(ctx.message);
 
@@ -1401,12 +1406,12 @@ define({
 
     const applicantId = applicantIdFromChannel(ctx.message.channel, ctx.config);
     if (!applicantId) {
-      await ctx.message.channel.send("This does not look like an application ticket channel.").catch(() => {});
+      await ctx.message.channel.send("This does not look like an application thread.").catch(() => {});
       return;
     }
 
-    await ctx.message.channel.send("Closing this application ticket in 5 seconds.").catch(() => {});
-    deleteChannelLater(ctx.client, ctx.message.channelId, "Application ticket closed", 5000);
+    await ctx.message.channel.send("Closing and locking this application thread in 5 seconds.").catch(() => {});
+    closeThreadLater(ctx.client, ctx.message.channelId, "Application thread closed", 5000);
     await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
   }
 });

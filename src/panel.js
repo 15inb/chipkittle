@@ -156,7 +156,7 @@ function loginPage(error = "") {
 function inviteUrl(clientId) {
   if (!clientId) return "";
 
-  const permissions = "268438608";
+  const permissions = "361045691472";
   return `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=${permissions}&scope=bot%20applications.commands`;
 }
 
@@ -435,22 +435,16 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
         <section class="panel-section">
           <div class="section-heading">
             <h2>Membership Applications</h2>
-            <p>DM applicants the questions and create private staff review tickets.</p>
+            <p>DM applicants the questions and create private staff review threads.</p>
           </div>
           <label class="toggle">
             <input type="checkbox" name="applicationsEnabled" ${isChecked(config.applications.enabled)}>
-            <span>Enable application tickets</span>
+            <span>Enable application threads</span>
           </label>
           <label>
-            Application command channel
+            Application command and thread channel
             <select name="applicationChannelId">
               ${optionList(guild.channels, config.applications.channelId, "Allow applications from any channel")}
-            </select>
-          </label>
-          <label>
-            Ticket category
-            <select name="applicationCategoryId">
-              ${optionList(guild.categories || [], config.applications.categoryId, "No category selected")}
             </select>
           </label>
           <label>
@@ -472,7 +466,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
           </div>
           <div>
             <p class="field-label">Application reviewer roles</p>
-            <p class="field-help">These roles can view tickets and use reply, approve, deny, or close commands.</p>
+            <p class="field-help">These roles can view threads and use reply, approve, deny, or close commands.</p>
             <div class="checkbox-grid">
               ${roleCheckboxes(guild.roles, config.applications.reviewerRoleIds, "applicationReviewerRoleIds")}
             </div>
