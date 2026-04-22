@@ -1,4 +1,7 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { spawn } from "node:child_process";
 import express from "express";
 import session from "express-session";
 import { serializeGuild } from "./bot.js";
@@ -24,6 +27,54 @@ function safeEquals(a, b) {
   const first = Buffer.from(a);
   const second = Buffer.from(b);
   return first.length === second.length && crypto.timingSafeEqual(first, second);
+}
+
+function flashFromQuery(query = {}) {
+  if (query.saved) return "Configuration saved.";
+  if (query.update === "started") return "Update started. The bot will restart when it finishes.";
+  if (query.update === "busy") return "An update is already running.";
+  if (query.update === "failed") return "Could not start the update job.";
+  return "";
+}
+
+function readUpdateStatus() {
+  const statusPath = path.join(process.cwd(), "data", "update-status.json");
+  try {
+    const parsed = JSON.parse(fs.readFileSync(statusPath, "utf8"));
+    return {
+      status: String(parsed.status || "unknown"),
+      updatedAt: String(parsed.updatedAt || ""),
+      error: String(parsed.error || ""),
+      log: String(parsed.log || "").slice(-3000)
+    };
+  } catch {
+    return null;
+  }
+}
+
+function updateControls() {
+  const status = readUpdateStatus();
+  return `
+    <section class="panel-section update-panel">
+      <div class="section-heading">
+        <h2>Server Update</h2>
+        <p>Pull the latest GitHub changes, install packages, and restart the PM2 bot process.</p>
+      </div>
+      <form method="post" action="/admin/update" class="inline-form">
+        <button type="submit">Pull GitHub and restart bot</button>
+      </form>
+      ${
+        status
+          ? `<div class="update-status">
+              <strong>Status: ${escapeHtml(status.status)}</strong>
+              ${status.updatedAt ? `<small>Updated ${escapeHtml(status.updatedAt)}</small>` : ""}
+              ${status.error ? `<p class="form-error">${escapeHtml(status.error)}</p>` : ""}
+              ${status.log ? `<pre>${escapeHtml(status.log)}</pre>` : ""}
+            </div>`
+          : '<p class="muted">No panel updates have been run yet.</p>'
+      }
+    </section>
+  `;
 }
 
 function arrayFromFormValue(value) {
@@ -198,6 +249,7 @@ function dashboardPage({ guilds, client, clientId, ai, commandList, flash }) {
           <strong>Chipkittle AI</strong>
         </div>
       </section>
+      ${updateControls()}
       <section class="guild-list">
         <p class="empty">The bot is not connected to a Discord server yet, or it is still starting up.</p>
       </section>
@@ -302,6 +354,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
           </div>
         </div>
       </section>
+      ${updateControls()}
       <form method="post" action="/guilds/${guild.id}/config" class="config-grid">
         <section class="panel-section">
           <div class="section-heading">
@@ -537,6 +590,16 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     response.redirect("/login");
   }
 
+  function updateRedirectTarget(request) {
+    const referrer = request.get("referer") || "/";
+    try {
+      const url = new URL(referrer, `${request.protocol}://${request.get("host")}`);
+      return `${url.pathname}?update=`;
+    } catch {
+      return "/?update=";
+    }
+  }
+
   app.get("/login", (request, response) => {
     if (request.session.authenticated) {
       response.redirect("/");
@@ -565,17 +628,17 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     if (guildId) {
       const pinnedGuild = client.guilds.cache.get(guildId);
       if (pinnedGuild) {
-        response.redirect(`/guilds/${pinnedGuild.id}${request.query.saved ? "?saved=1" : ""}`);
+        response.redirect(`/guilds/${pinnedGuild.id}${request.query.saved ? "?saved=1" : request.query.update ? `?update=${encodeURIComponent(request.query.update)}` : ""}`);
         return;
       }
     }
 
     if (guilds.length === 1) {
-      response.redirect(`/guilds/${guilds[0].id}${request.query.saved ? "?saved=1" : ""}`);
+      response.redirect(`/guilds/${guilds[0].id}${request.query.saved ? "?saved=1" : request.query.update ? `?update=${encodeURIComponent(request.query.update)}` : ""}`);
       return;
     }
 
-    response.send(dashboardPage({ guilds, client, clientId, ai, commandList, flash: request.query.saved ? "Configuration saved." : "" }));
+    response.send(dashboardPage({ guilds, client, clientId, ai, commandList, flash: flashFromQuery(request.query) }));
   });
 
   app.get("/guilds/:guildId", requireAuth, (request, response) => {
@@ -587,7 +650,30 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
 
     const guild = serializeGuild(discordGuild);
     const config = store.getGuild(guild.id);
-    response.send(guildPage({ guild, config, commandList, defaultAiModel, ai, flash: request.query.saved ? "Configuration saved." : "" }));
+    response.send(guildPage({ guild, config, commandList, defaultAiModel, ai, flash: flashFromQuery(request.query) }));
+  });
+
+  app.post("/admin/update", requireAuth, (request, response) => {
+    const status = readUpdateStatus();
+    if (status?.status === "running") {
+      response.redirect(`${updateRedirectTarget(request)}busy`);
+      return;
+    }
+
+    try {
+      const scriptPath = path.join(process.cwd(), "scripts", "panel-update.mjs");
+      const child = spawn(process.execPath, [scriptPath], {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: "ignore",
+        env: process.env
+      });
+      child.unref();
+      response.redirect(`${updateRedirectTarget(request)}started`);
+    } catch (error) {
+      console.error("Could not start panel update:", error);
+      response.redirect(`${updateRedirectTarget(request)}failed`);
+    }
   });
 
   app.post("/guilds/:guildId/config", requireAuth, async (request, response, next) => {

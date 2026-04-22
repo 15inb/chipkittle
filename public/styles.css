@@ -452,6 +452,40 @@ button:hover {
   justify-content: flex-end;
 }
 
+.inline-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.update-panel {
+  margin-bottom: 22px;
+}
+
+.update-status {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.update-status small {
+  color: var(--muted);
+}
+
+.update-status pre {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 12px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .login-panel {
   max-width: 560px;
   margin: 10svh auto 0;
