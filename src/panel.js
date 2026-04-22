@@ -26,22 +26,21 @@ function safeEquals(a, b) {
   return first.length === second.length && crypto.timingSafeEqual(first, second);
 }
 
+function arrayFromFormValue(value) {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
+}
+
 function parseConfigForm(body) {
-  const aiChannelIds = Array.isArray(body.aiChannelIds)
-    ? body.aiChannelIds
-    : body.aiChannelIds
-      ? [body.aiChannelIds]
-      : [];
-  const adminRoleIds = Array.isArray(body.adminRoleIds)
-    ? body.adminRoleIds
-    : body.adminRoleIds
-      ? [body.adminRoleIds]
-      : [];
-  const moderatorRoleIds = Array.isArray(body.moderatorRoleIds)
-    ? body.moderatorRoleIds
-    : body.moderatorRoleIds
-      ? [body.moderatorRoleIds]
-      : [];
+  const aiChannelIds = arrayFromFormValue(body.aiChannelIds);
+  const aiBlacklistedChannelIds = arrayFromFormValue(body.aiBlacklistedChannelIds);
+  const reviewerRoleIds = arrayFromFormValue(body.applicationReviewerRoleIds);
+  const commandOverrides = Object.fromEntries(
+    Object.entries(body)
+      .filter(([key]) => key.startsWith("commandRole_"))
+      .map(([key, value]) => [key.replace("commandRole_", ""), arrayFromFormValue(value).map(String)])
+      .filter(([, roleIds]) => roleIds.length)
+  );
 
   return {
     prefix: String(body.prefix || "!").trim().slice(0, 5) || "!",
@@ -65,16 +64,28 @@ function parseConfigForm(body) {
       logChannelId: String(body.logChannelId || "")
     },
     commandRoles: {
-      adminRoleIds: adminRoleIds.map(String),
-      moderatorRoleIds: moderatorRoleIds.map(String)
+      overrides: commandOverrides
     },
     ai: {
       enabled: body.aiEnabled === "on",
       channelIds: aiChannelIds.map(String),
+      blacklistedChannelIds: aiBlacklistedChannelIds.map(String),
       model: String(body.aiModel || "").trim().slice(0, 80),
       apiCooldownSeconds: Math.min(Math.max(Number(body.aiApiCooldownSeconds) || 0, 0), 3600),
       replyToMentions: body.aiReplyToMentions === "on",
       personality: String(body.aiPersonality || "").trim().slice(0, 1200)
+    },
+    applications: {
+      enabled: body.applicationsEnabled === "on",
+      channelId: String(body.applicationChannelId || ""),
+      categoryId: String(body.applicationCategoryId || ""),
+      reviewerRoleIds: reviewerRoleIds.map(String),
+      approvedRoleId: String(body.applicationApprovedRoleId || ""),
+      questions: String(body.applicationQuestions || "")
+        .split("\n")
+        .map((question) => question.trim())
+        .filter(Boolean)
+        .slice(0, 10)
     }
   };
 }
@@ -227,13 +238,13 @@ function commandCatalog(commandList, prefix) {
     .join("");
 }
 
-function channelCheckboxes(channels, selectedIds) {
+function channelCheckboxes(channels, selectedIds, name = "aiChannelIds") {
   const selectedSet = new Set(selectedIds || []);
   return channels
     .map(
       (channel) => `
         <label class="toggle">
-          <input type="checkbox" name="aiChannelIds" value="${channel.id}" ${isChecked(selectedSet.has(channel.id))}>
+          <input type="checkbox" name="${name}" value="${channel.id}" ${isChecked(selectedSet.has(channel.id))}>
           <span>#${escapeHtml(channel.name)}</span>
         </label>`
     )
@@ -249,6 +260,23 @@ function roleCheckboxes(roles, selectedIds, name) {
           <input type="checkbox" name="${name}" value="${role.id}" ${isChecked(selectedSet.has(role.id))}>
           <span>${escapeHtml(role.name)}</span>
         </label>`
+    )
+    .join("");
+}
+
+function commandRoleAccess(commandList, roles, overrides = {}) {
+  return commandList
+    .map(
+      (command) => `
+        <details class="permission-row">
+          <summary>
+            <span>${escapeHtml(command.name)}</span>
+            <small>${escapeHtml(command.category || "Other")}</small>
+          </summary>
+          <div class="checkbox-grid compact">
+            ${roleCheckboxes(roles, overrides[command.name] || [], `commandRole_${command.name}`)}
+          </div>
+        </details>`
     )
     .join("");
 }
@@ -349,21 +377,11 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
         <section class="panel-section">
           <div class="section-heading">
             <h2>Command Role Access</h2>
-            <p>Let selected roles use bot commands without matching Discord permissions.</p>
+            <p>Grant specific roles access to specific commands without requiring the matching Discord permission.</p>
           </div>
-          <div>
-            <p class="field-label">Bot admin roles</p>
-            <p class="field-help">Can use config and moderation commands.</p>
-            <div class="checkbox-grid">
-              ${roleCheckboxes(guild.roles, config.commandRoles.adminRoleIds, "adminRoleIds")}
-            </div>
-          </div>
-          <div>
-            <p class="field-label">Bot moderator roles</p>
-            <p class="field-help">Can use moderation commands, but not config commands.</p>
-            <div class="checkbox-grid">
-              ${roleCheckboxes(guild.roles, config.commandRoles.moderatorRoleIds, "moderatorRoleIds")}
-            </div>
+          <p class="field-help">Open a command, then choose which roles can bypass that command's Discord permission check.</p>
+          <div class="permission-list">
+            ${commandRoleAccess(commandList, guild.roles, config.commandRoles.overrides)}
           </div>
         </section>
 
@@ -402,6 +420,53 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
               ${channelCheckboxes(guild.channels, config.ai.channelIds)}
             </div>
           </div>
+          <div>
+            <p class="field-label">AI blacklisted channels</p>
+            <p class="field-help">AI will not answer mentions or direct ask commands in these channels.</p>
+            <div class="checkbox-grid">
+              ${channelCheckboxes(guild.channels, config.ai.blacklistedChannelIds, "aiBlacklistedChannelIds")}
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-heading">
+            <h2>Membership Applications</h2>
+            <p>DM applicants the questions and create private staff review tickets.</p>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" name="applicationsEnabled" ${isChecked(config.applications.enabled)}>
+            <span>Enable application tickets</span>
+          </label>
+          <label>
+            Application command channel
+            <select name="applicationChannelId">
+              ${optionList(guild.channels, config.applications.channelId, "Allow applications from any channel")}
+            </select>
+          </label>
+          <label>
+            Ticket category
+            <select name="applicationCategoryId">
+              ${optionList(guild.categories || [], config.applications.categoryId, "No category selected")}
+            </select>
+          </label>
+          <label>
+            Approved membership role
+            <select name="applicationApprovedRoleId">
+              ${optionList(guild.roles, config.applications.approvedRoleId, "No role selected")}
+            </select>
+          </label>
+          <div>
+            <p class="field-label">Application reviewer roles</p>
+            <p class="field-help">These roles can view tickets and use reply, approve, or close commands.</p>
+            <div class="checkbox-grid">
+              ${roleCheckboxes(guild.roles, config.applications.reviewerRoleIds, "applicationReviewerRoleIds")}
+            </div>
+          </div>
+          <label>
+            Application questions
+            <textarea name="applicationQuestions" rows="7">${escapeHtml(config.applications.questions.join("\n"))}</textarea>
+          </label>
         </section>
 
         <div class="form-actions">

@@ -1,5 +1,13 @@
-import { EmbedBuilder, PermissionsBitField } from "discord.js";
+import { ChannelType, EmbedBuilder, PermissionsBitField } from "discord.js";
 import { checkAiRateLimit } from "./aiRateLimit.js";
+import {
+  applicantIdFromChannel,
+  applicationQuestions,
+  findOpenApplicationChannel,
+  isApplicationStaff as canUseApplicationCommand,
+  ticketNameFor,
+  ticketTopic
+} from "./applicationTickets.js";
 import {
   CHIPKITTLE_LORE,
   randomChipkittleName,
@@ -42,30 +50,35 @@ function hasPermission(member, permission) {
   return member?.permissions.has(permission);
 }
 
-function hasRoleOverride(member, config, permission) {
-  const adminRoleIds = new Set(config.commandRoles?.adminRoleIds || []);
-  const moderatorRoleIds = new Set(config.commandRoles?.moderatorRoleIds || []);
+function hasAnyRole(member, roleIds = []) {
+  const allowedRoleIds = new Set(roleIds);
   const memberRoleIds = member?.roles.cache.map((role) => role.id) || [];
+  return memberRoleIds.some((roleId) => allowedRoleIds.has(roleId));
+}
 
-  if (memberRoleIds.some((roleId) => adminRoleIds.has(roleId))) {
-    return true;
-  }
-
-  const moderatorPermissions = new Set([
-    PermissionsBitField.Flags.ModerateMembers,
-    PermissionsBitField.Flags.ManageMessages,
-    PermissionsBitField.Flags.KickMembers,
-    PermissionsBitField.Flags.BanMembers,
-    PermissionsBitField.Flags.ManageChannels
-  ]);
-
-  return moderatorPermissions.has(permission) && memberRoleIds.some((roleId) => moderatorRoleIds.has(roleId));
+function hasCommandRoleOverride(member, config, commandName) {
+  const roleIds = config.commandRoles?.overrides?.[commandName] || [];
+  return hasAnyRole(member, roleIds);
 }
 
 function requirePermission(ctx, permission) {
-  if (hasPermission(ctx.message.member, permission) || hasRoleOverride(ctx.message.member, ctx.config, permission)) return true;
+  if (
+    hasPermission(ctx.message.member, permission) ||
+    hasCommandRoleOverride(ctx.message.member, ctx.config, ctx.command.name)
+  ) {
+    return true;
+  }
+
   ctx.message.reply("You do not have permission to use that command.");
   return false;
+}
+
+function isAiChannelBlacklisted(config, channelId) {
+  return (config.ai.blacklistedChannelIds || []).includes(channelId);
+}
+
+function isApplicationStaff(ctx) {
+  return canUseApplicationCommand(ctx.message.member, ctx.config, ctx.command.name, hasCommandRoleOverride);
 }
 
 function parseDuration(input = "") {
@@ -876,7 +889,7 @@ define({
     const action = ctx.args[0]?.toLowerCase() || "status";
     if (action === "status") {
       await ctx.message.reply(
-        `AI config: ${ctx.config.ai.enabled ? "on" : "off"} | channels: ${channelMentionList(ctx.config.ai.channelIds)} | model: ${ctx.config.ai.model || ctx.defaultAiModel} | cooldown: ${ctx.config.ai.apiCooldownSeconds}s | API key: ${ctx.ai.enabled ? "present" : "missing"}`
+        `AI config: ${ctx.config.ai.enabled ? "on" : "off"} | channels: ${channelMentionList(ctx.config.ai.channelIds)} | blacklisted: ${channelMentionList(ctx.config.ai.blacklistedChannelIds || [])} | model: ${ctx.config.ai.model || ctx.defaultAiModel} | cooldown: ${ctx.config.ai.apiCooldownSeconds}s | API key: ${ctx.ai.enabled ? "present" : "missing"}`
       );
       return;
     }
@@ -920,6 +933,37 @@ define({
       ai: { ...ctx.config.ai, channelIds: [...channelIds] }
     });
     await ctx.message.reply(`AI channel list updated: ${channelMentionList([...channelIds])}.`);
+  }
+});
+
+define({
+  name: "aiblacklist",
+  aliases: ["aiblockchannel"],
+  category: "AI",
+  description: "Add, remove, or list channels where AI may not reply.",
+  usage: "aiblacklist add #channel | remove #channel | list",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const action = ctx.args[0]?.toLowerCase() || "list";
+    const channel = targetTextChannel(ctx.message);
+    const blacklistedChannelIds = new Set(ctx.config.ai.blacklistedChannelIds || []);
+
+    if (action === "list") {
+      await ctx.message.reply(`AI blacklisted channels: ${channelMentionList([...blacklistedChannelIds])}.`);
+      return;
+    }
+
+    if (action === "add") blacklistedChannelIds.add(channel.id);
+    if (action === "remove") blacklistedChannelIds.delete(channel.id);
+    if (!["add", "remove"].includes(action)) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, blacklistedChannelIds: [...blacklistedChannelIds] }
+    });
+    await ctx.message.reply(`AI blacklist updated: ${channelMentionList([...blacklistedChannelIds])}.`);
   }
 });
 
@@ -997,6 +1041,11 @@ define({
       return;
     }
 
+    if (isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
+      await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
+      return;
+    }
+
     const rateLimit = checkAiRateLimit({
       guildId: ctx.message.guild.id,
       userId: ctx.message.author.id,
@@ -1026,6 +1075,213 @@ define({
   }
 });
 
+define({
+  name: "apply",
+  aliases: ["application", "ticket"],
+  category: "Applications",
+  description: "Open a private Chipkittle membership application ticket.",
+  async run(ctx) {
+    const settings = ctx.config.applications;
+    if (!settings.enabled) {
+      await ctx.message.reply("Applications are not enabled right now.");
+      return;
+    }
+
+    if (settings.channelId && ctx.message.channel.id !== settings.channelId) {
+      await ctx.message.reply(`Please start applications in <#${settings.channelId}>.`);
+      return;
+    }
+
+    const existing = findOpenApplicationChannel(ctx.message.guild, ctx.message.author.id);
+    if (existing) {
+      await ctx.message.reply(`You already have an open application: ${existing}.`);
+      return;
+    }
+
+    const botMember = ctx.message.guild.members.me;
+    if (!botMember?.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+      await ctx.message.reply("I need the Manage Channels permission to create application tickets.");
+      return;
+    }
+
+    const questions = applicationQuestions(ctx.config);
+    if (!questions.length) {
+      await ctx.message.reply("No application questions are configured yet.");
+      return;
+    }
+
+    const dmChannel = await ctx.message.author.createDM().catch(() => null);
+    if (!dmChannel) {
+      await ctx.message.reply("I could not open a DM with you. Please enable DMs from this server and try again.");
+      return;
+    }
+
+    const reviewerRoleIds = settings.reviewerRoleIds || [];
+    const permissionOverwrites = [
+      {
+        id: ctx.message.guild.roles.everyone.id,
+        deny: [PermissionsBitField.Flags.ViewChannel]
+      },
+      {
+        id: botMember.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+          PermissionsBitField.Flags.ManageChannels
+        ]
+      },
+      ...reviewerRoleIds.map((roleId) => ({
+        id: roleId,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory
+        ]
+      }))
+    ];
+
+    const channel = await ctx.message.guild.channels.create({
+      name: ticketNameFor(ctx.message.member),
+      type: ChannelType.GuildText,
+      parent: settings.categoryId || undefined,
+      topic: ticketTopic(ctx.message.author.id),
+      permissionOverwrites
+    });
+
+    const questionList = questions.map((question, index) => `${index + 1}. ${question}`).join("\n");
+    const reviewerMentions = reviewerRoleIds.map((roleId) => `<@&${roleId}>`).join(" ");
+
+    await channel.send({
+      content: [
+        `Application ticket opened for ${ctx.message.author} (${ctx.message.author.tag}).`,
+        reviewerMentions ? `Review team: ${reviewerMentions}` : "",
+        "",
+        "Applicant answers will appear here as they reply to the bot in DMs.",
+        "Staff messages in this channel stay private unless sent with the reply command.",
+        "",
+        "Questions:",
+        questionList,
+        "",
+        `Use \`${ctx.config.prefix}reply message\` to DM the applicant, \`${ctx.config.prefix}approve\` to approve, or \`${ctx.config.prefix}closeapplication\` to close.`
+      ].filter(Boolean).join("\n"),
+      allowedMentions: { users: [], roles: reviewerRoleIds }
+    });
+
+    const dmStarted = await dmChannel.send([
+      `Your Chipkittle application has started for **${ctx.message.guild.name}**.`,
+      "Answer each question here in DMs. Staff can read your answers in the private ticket channel.",
+      "",
+      `Question 1/${questions.length}: ${questions[0]}`
+    ].join("\n")).then(() => true).catch(() => false);
+
+    if (!dmStarted) {
+      await channel.delete("Applicant DMs were closed").catch(() => {});
+      await ctx.message.reply("I could not DM you. Please enable DMs from this server and try again.");
+      return;
+    }
+
+    await ctx.message.reply("Application started. Check your DMs from me for the questions.");
+  }
+});
+
+define({
+  name: "reply",
+  aliases: ["ticketreply"],
+  category: "Applications",
+  description: "Send a staff reply from an application ticket to the applicant's DMs.",
+  usage: "reply message",
+  async run(ctx) {
+    if (!isApplicationStaff(ctx)) {
+      await ctx.message.reply("You do not have permission to use that command.");
+      return;
+    }
+
+    const applicantId = applicantIdFromChannel(ctx.message.channel);
+    if (!applicantId) {
+      await ctx.message.reply("This does not look like an application ticket channel.");
+      return;
+    }
+
+    const text = ctx.rest.trim();
+    if (!text) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const user = await ctx.client.users.fetch(applicantId).catch(() => null);
+    if (!user) {
+      await ctx.message.reply("I could not find that applicant.");
+      return;
+    }
+
+    const sent = await user.send(`**${ctx.message.guild.name} staff:** ${text}`).then(() => true).catch(() => false);
+    if (!sent) {
+      await ctx.message.reply("I could not DM that applicant. Their DMs may be closed.");
+      return;
+    }
+
+    await ctx.message.reply("Sent to the applicant.");
+  }
+});
+
+define({
+  name: "approve",
+  aliases: ["approveapplication"],
+  category: "Applications",
+  description: "Approve an application and assign the configured membership role.",
+  usage: "approve [@user]",
+  async run(ctx) {
+    if (!isApplicationStaff(ctx)) {
+      await ctx.message.reply("You do not have permission to use that command.");
+      return;
+    }
+
+    const applicantId = ctx.message.mentions.members.first()?.id || applicantIdFromChannel(ctx.message.channel);
+    if (!applicantId) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` inside an application ticket, or mention a user.`);
+      return;
+    }
+
+    const member = await ctx.message.guild.members.fetch(applicantId).catch(() => null);
+    if (!member) {
+      await ctx.message.reply("I could not find that applicant in this server.");
+      return;
+    }
+
+    if (ctx.config.applications.approvedRoleId) {
+      await member.roles.add(ctx.config.applications.approvedRoleId).catch(() => null);
+      await ctx.message.reply(`${member} was approved and received <@&${ctx.config.applications.approvedRoleId}>.`);
+      return;
+    }
+
+    await ctx.message.reply(`${member} was approved. Set an approved membership role in the panel to assign full access automatically.`);
+  }
+});
+
+define({
+  name: "closeapplication",
+  aliases: ["closeticket", "close"],
+  category: "Applications",
+  description: "Close the current application ticket.",
+  async run(ctx) {
+    if (!isApplicationStaff(ctx)) {
+      await ctx.message.reply("You do not have permission to use that command.");
+      return;
+    }
+
+    if (!applicantIdFromChannel(ctx.message.channel)) {
+      await ctx.message.reply("This does not look like an application ticket channel.");
+      return;
+    }
+
+    await ctx.message.reply("Closing this application ticket in 5 seconds.");
+    setTimeout(() => {
+      ctx.message.channel.delete("Application ticket closed").catch(() => {});
+    }, 5000);
+  }
+});
+
 export function createCommandHandler(options) {
   const aliases = new Map();
   for (const command of commandDefinitions) {
@@ -1049,6 +1305,7 @@ export function createCommandHandler(options) {
         config,
         args,
         rest,
+        command,
         commands: aliases,
         commandList: commandDefinitions
       });

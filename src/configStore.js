@@ -20,16 +20,30 @@ const DEFAULT_CONFIG = {
     warnings: {}
   },
   commandRoles: {
-    adminRoleIds: [],
-    moderatorRoleIds: []
+    overrides: {}
   },
   ai: {
     enabled: false,
     channelIds: [],
+    blacklistedChannelIds: [],
     model: "",
     apiCooldownSeconds: 30,
     replyToMentions: true,
     personality: "You are the Chipkittle family archivist: strange, ceremonial, funny, loyal to the artifact, and always dressed in the same white furry horned Chipkittle suit. Keep replies playful and PG-13. Do not use slurs, sexual violence, or hateful language from old records."
+  },
+  applications: {
+    enabled: false,
+    channelId: "",
+    categoryId: "",
+    reviewerRoleIds: [],
+    approvedRoleId: "",
+    questions: [
+      "What name would we know you as?",
+      "What is the most important ancient Chipkittle artifact?",
+      "Why should you be allowed membership?",
+      "What #CK members do you know?",
+      "Are you willing to adopt the #CK Discord tag and put \"Chipkittle\", \"#CK\", or \"ck.\" in your TS name?"
+    ]
   }
 };
 
@@ -60,6 +74,10 @@ function mergeConfig(config = {}) {
     ai: {
       ...clone(DEFAULT_CONFIG.ai),
       ...(config.ai || {})
+    },
+    applications: {
+      ...clone(DEFAULT_CONFIG.applications),
+      ...(config.applications || {})
     }
   };
 }
@@ -131,6 +149,10 @@ export class ConfigStore {
       ai: {
         ...this.getGuild(guildId).ai,
         ...(partialConfig.ai || {})
+      },
+      applications: {
+        ...this.getGuild(guildId).applications,
+        ...(partialConfig.applications || {})
       }
     });
 

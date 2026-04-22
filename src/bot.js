@@ -3,9 +3,11 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  Partials,
   PermissionsBitField
 } from "discord.js";
 import { checkAiRateLimit } from "./aiRateLimit.js";
+import { handleApplicationDm } from "./applicationTickets.js";
 import { commandList, createCommandHandler } from "./commands.js";
 import { NO_MENTIONS } from "./discordSafety.js";
 
@@ -50,6 +52,7 @@ function shouldModerate(content, automod) {
 function shouldAiReply(message, config, clientUserId) {
   if (!config.ai.enabled) return false;
   if (message.content.startsWith(config.prefix)) return false;
+  if ((config.ai.blacklistedChannelIds || []).includes(message.channel.id)) return false;
   if (config.ai.channelIds.includes(message.channel.id)) return true;
   return config.ai.replyToMentions && message.mentions.users.has(clientUserId);
 }
@@ -64,8 +67,10 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMembers,
       GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.DirectMessages,
       GatewayIntentBits.MessageContent
-    ]
+    ],
+    partials: [Partials.Channel]
   });
   const { handleCommand, commandList } = createCommandHandler({
     client,
@@ -105,7 +110,14 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
   });
 
   client.on(Events.MessageCreate, async (message) => {
-    if (!message.guild || message.author.bot) return;
+    if (message.author.bot) return;
+
+    if (!message.guild) {
+      await handleApplicationDm({ client, store, message }).catch((error) => {
+        console.error("Application DM handling failed:", error);
+      });
+      return;
+    }
 
     const config = store.getGuild(message.guild.id);
     const handled = await handleCommand(message, config);
@@ -174,6 +186,14 @@ export function serializeGuild(guild) {
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const categories = guild.channels.cache
+    .filter((channel) => channel.type === ChannelType.GuildCategory)
+    .map((channel) => ({
+      id: channel.id,
+      name: channel.name
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const roles = guild.roles.cache
     .filter((role) => !role.managed && role.name !== "@everyone")
     .map((role) => ({
@@ -189,6 +209,7 @@ export function serializeGuild(guild) {
     iconUrl: guild.iconURL({ size: 128 }),
     memberCount: guild.memberCount,
     channels,
+    categories,
     roles
   };
 }
