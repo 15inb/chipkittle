@@ -42,9 +42,29 @@ function hasPermission(member, permission) {
   return member?.permissions.has(permission);
 }
 
-function requirePermission(message, permission) {
-  if (hasPermission(message.member, permission)) return true;
-  message.reply("You do not have permission to use that command.");
+function hasRoleOverride(member, config, permission) {
+  const adminRoleIds = new Set(config.commandRoles?.adminRoleIds || []);
+  const moderatorRoleIds = new Set(config.commandRoles?.moderatorRoleIds || []);
+  const memberRoleIds = member?.roles.cache.map((role) => role.id) || [];
+
+  if (memberRoleIds.some((roleId) => adminRoleIds.has(roleId))) {
+    return true;
+  }
+
+  const moderatorPermissions = new Set([
+    PermissionsBitField.Flags.ModerateMembers,
+    PermissionsBitField.Flags.ManageMessages,
+    PermissionsBitField.Flags.KickMembers,
+    PermissionsBitField.Flags.BanMembers,
+    PermissionsBitField.Flags.ManageChannels
+  ]);
+
+  return moderatorPermissions.has(permission) && memberRoleIds.some((roleId) => moderatorRoleIds.has(roleId));
+}
+
+function requirePermission(ctx, permission) {
+  if (hasPermission(ctx.message.member, permission) || hasRoleOverride(ctx.message.member, ctx.config, permission)) return true;
+  ctx.message.reply("You do not have permission to use that command.");
   return false;
 }
 
@@ -513,7 +533,7 @@ define({
   description: "Bulk delete recent messages.",
   usage: "purge 10",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageMessages)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageMessages)) return;
     const count = Math.min(Math.max(Number(ctx.args[0]) || 0, 1), 100);
     const deleted = await ctx.message.channel.bulkDelete(count, true).catch(() => null);
     await ctx.message.channel.send(`Deleted ${deleted?.size || 0} message(s).`).then((msg) => setTimeout(() => msg.delete().catch(() => {}), 4000));
@@ -526,7 +546,7 @@ define({
   description: "Warn a user and store it in config data.",
   usage: "warn @user reason",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ModerateMembers)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
     const member = ctx.message.mentions.members.first();
     const reason = ctx.args.slice(1).join(" ") || "No reason provided.";
     if (!member) {
@@ -549,7 +569,7 @@ define({
   description: "Show warnings for a user.",
   usage: "warnings @user",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ModerateMembers)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
     const member = ctx.message.mentions.members.first() || ctx.message.member;
     const warnings = ctx.config.moderation.warnings?.[member.id] || [];
     if (!warnings.length) {
@@ -572,7 +592,7 @@ define({
   description: "Clear warnings for a user.",
   usage: "clearwarnings @user",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ModerateMembers)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
     const member = ctx.message.mentions.members.first();
     if (!member) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
@@ -590,7 +610,7 @@ define({
   description: "Timeout a user.",
   usage: "timeout @user 10m reason",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ModerateMembers)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
     const member = ctx.message.mentions.members.first();
     const duration = parseDuration(ctx.args[1]);
     const reason = ctx.args.slice(2).join(" ") || "No reason provided.";
@@ -610,7 +630,7 @@ define({
   description: "Remove a timeout.",
   usage: "untimeout @user",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ModerateMembers)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
     const member = ctx.message.mentions.members.first();
     if (!member) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
@@ -628,7 +648,7 @@ define({
   description: "Kick a user.",
   usage: "kick @user reason",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.KickMembers)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.KickMembers)) return;
     const member = ctx.message.mentions.members.first();
     const reason = ctx.args.slice(1).join(" ") || "No reason provided.";
     if (!member) {
@@ -647,7 +667,7 @@ define({
   description: "Ban a user.",
   usage: "ban @user reason",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.BanMembers)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.BanMembers)) return;
     const member = ctx.message.mentions.members.first();
     const reason = ctx.args.slice(1).join(" ") || "No reason provided.";
     if (!member) {
@@ -666,7 +686,7 @@ define({
   description: "Set channel slowmode in seconds.",
   usage: "slowmode 5",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageChannels)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageChannels)) return;
     const seconds = Math.min(Math.max(Number(ctx.args[0]) || 0, 0), 21_600);
     await ctx.message.channel.setRateLimitPerUser(seconds);
     await ctx.message.reply(`Slowmode set to ${seconds}s.`);
@@ -678,7 +698,7 @@ define({
   category: "Moderation",
   description: "Lock the current channel for @everyone.",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageChannels)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageChannels)) return;
     await ctx.message.channel.permissionOverwrites.edit(ctx.message.guild.roles.everyone, { SendMessages: false });
     await ctx.message.reply("Channel locked.");
   }
@@ -689,7 +709,7 @@ define({
   category: "Moderation",
   description: "Unlock the current channel for @everyone.",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageChannels)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageChannels)) return;
     await ctx.message.channel.permissionOverwrites.edit(ctx.message.guild.roles.everyone, { SendMessages: null });
     await ctx.message.reply("Channel unlocked.");
   }
@@ -701,7 +721,7 @@ define({
   description: "Change the command prefix.",
   usage: "setprefix !",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const prefix = ctx.args[0]?.slice(0, 5);
     if (!prefix) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
@@ -719,7 +739,7 @@ define({
   description: "Set welcome channel and message.",
   usage: "setwelcome #channel Welcome {user} to {server}!",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const channel = ctx.message.mentions.channels.first();
     const message = ctx.args.slice(1).join(" ");
     if (!channel || !message) {
@@ -753,7 +773,7 @@ define({
   description: "Set or clear the auto role.",
   usage: "autorole @role | off",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const role = mentionRole(ctx.message);
     const off = ctx.args[0]?.toLowerCase() === "off";
     if (!role && !off) {
@@ -772,7 +792,7 @@ define({
   description: "Set or clear moderation log channel.",
   usage: "logchannel #channel | off",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const off = ctx.args[0]?.toLowerCase() === "off";
     const channel = ctx.message.mentions.channels.first();
     if (!channel && !off) {
@@ -793,7 +813,7 @@ define({
   description: "Turn automod on or off.",
   usage: "automod on|off",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const enabled = ctx.args[0]?.toLowerCase() === "on";
     const disabled = ctx.args[0]?.toLowerCase() === "off";
     if (!enabled && !disabled) {
@@ -814,7 +834,7 @@ define({
   description: "Add an automod blocked word.",
   usage: "blockword word",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const word = ctx.rest.trim().slice(0, 80);
     if (!word) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
@@ -835,7 +855,7 @@ define({
   description: "Remove an automod blocked word.",
   usage: "unblockword word",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const word = ctx.rest.trim().toLowerCase();
     const blockedWords = ctx.config.automod.blockedWords.filter((item) => item.toLowerCase() !== word);
     await ctx.store.updateGuild(ctx.message.guild.id, {
@@ -852,7 +872,7 @@ define({
   description: "Turn Chipkittle AI on/off or show status.",
   usage: "ai on|off|status",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const action = ctx.args[0]?.toLowerCase() || "status";
     if (action === "status") {
       await ctx.message.reply(
@@ -879,7 +899,7 @@ define({
   description: "Add, remove, or list AI chat channels.",
   usage: "aichannel add #channel | remove #channel | list",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const action = ctx.args[0]?.toLowerCase() || "list";
     const channel = targetTextChannel(ctx.message);
     const channelIds = new Set(ctx.config.ai.channelIds || []);
@@ -909,7 +929,7 @@ define({
   description: "Set the AI model name.",
   usage: "aimodel gpt-5.2",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const model = ctx.args[0]?.trim();
     if (!model) {
       await ctx.message.reply(`Current model: ${ctx.config.ai.model || ctx.defaultAiModel}`);
@@ -930,7 +950,7 @@ define({
   description: "Set the per-user AI API cooldown in seconds.",
   usage: "airatelimit 30",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const seconds = Math.min(Math.max(Number(ctx.args[0]), 0), 3600);
     if (Number.isNaN(seconds)) {
       await ctx.message.reply(`Current AI API cooldown: ${ctx.config.ai.apiCooldownSeconds}s.`);
@@ -950,7 +970,7 @@ define({
   description: "Set extra AI personality guidance.",
   usage: "aipersonality be more formal",
   async run(ctx) {
-    if (!requirePermission(ctx.message, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
     const personality = ctx.rest.slice(0, 1200);
     if (!personality) {
       await ctx.message.reply(ctx.config.ai.personality);
@@ -1036,3 +1056,4 @@ export function createCommandHandler(options) {
     commandList: commandDefinitions
   };
 }
+

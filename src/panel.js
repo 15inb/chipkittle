@@ -32,6 +32,16 @@ function parseConfigForm(body) {
     : body.aiChannelIds
       ? [body.aiChannelIds]
       : [];
+  const adminRoleIds = Array.isArray(body.adminRoleIds)
+    ? body.adminRoleIds
+    : body.adminRoleIds
+      ? [body.adminRoleIds]
+      : [];
+  const moderatorRoleIds = Array.isArray(body.moderatorRoleIds)
+    ? body.moderatorRoleIds
+    : body.moderatorRoleIds
+      ? [body.moderatorRoleIds]
+      : [];
 
   return {
     prefix: String(body.prefix || "!").trim().slice(0, 5) || "!",
@@ -53,6 +63,10 @@ function parseConfigForm(body) {
     },
     moderation: {
       logChannelId: String(body.logChannelId || "")
+    },
+    commandRoles: {
+      adminRoleIds: adminRoleIds.map(String),
+      moderatorRoleIds: moderatorRoleIds.map(String)
     },
     ai: {
       enabled: body.aiEnabled === "on",
@@ -226,6 +240,19 @@ function channelCheckboxes(channels, selectedIds) {
     .join("");
 }
 
+function roleCheckboxes(roles, selectedIds, name) {
+  const selectedSet = new Set(selectedIds || []);
+  return roles
+    .map(
+      (role) => `
+        <label class="toggle">
+          <input type="checkbox" name="${name}" value="${role.id}" ${isChecked(selectedSet.has(role.id))}>
+          <span>${escapeHtml(role.name)}</span>
+        </label>`
+    )
+    .join("");
+}
+
 function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
   return layout({
     title: guild.name,
@@ -317,6 +344,27 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
               ${optionList(guild.channels, config.moderation.logChannelId, "No channel selected")}
             </select>
           </label>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-heading">
+            <h2>Command Role Access</h2>
+            <p>Let selected roles use bot commands without matching Discord permissions.</p>
+          </div>
+          <div>
+            <p class="field-label">Bot admin roles</p>
+            <p class="field-help">Can use config and moderation commands.</p>
+            <div class="checkbox-grid">
+              ${roleCheckboxes(guild.roles, config.commandRoles.adminRoleIds, "adminRoleIds")}
+            </div>
+          </div>
+          <div>
+            <p class="field-label">Bot moderator roles</p>
+            <p class="field-help">Can use moderation commands, but not config commands.</p>
+            <div class="checkbox-grid">
+              ${roleCheckboxes(guild.roles, config.commandRoles.moderatorRoleIds, "moderatorRoleIds")}
+            </div>
+          </div>
         </section>
 
         <section class="panel-section">

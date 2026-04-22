@@ -19,6 +19,10 @@ const DEFAULT_CONFIG = {
     logChannelId: "",
     warnings: {}
   },
+  commandRoles: {
+    adminRoleIds: [],
+    moderatorRoleIds: []
+  },
   ai: {
     enabled: false,
     channelIds: [],
@@ -48,6 +52,10 @@ function mergeConfig(config = {}) {
     moderation: {
       ...clone(DEFAULT_CONFIG.moderation),
       ...(config.moderation || {})
+    },
+    commandRoles: {
+      ...clone(DEFAULT_CONFIG.commandRoles),
+      ...(config.commandRoles || {})
     },
     ai: {
       ...clone(DEFAULT_CONFIG.ai),
@@ -115,6 +123,10 @@ export class ConfigStore {
       moderation: {
         ...this.getGuild(guildId).moderation,
         ...(partialConfig.moderation || {})
+      },
+      commandRoles: {
+        ...this.getGuild(guildId).commandRoles,
+        ...(partialConfig.commandRoles || {})
       },
       ai: {
         ...this.getGuild(guildId).ai,

@@ -275,6 +275,12 @@ label {
   font-weight: 700;
 }
 
+.field-help {
+  margin: -4px 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 input,
 select,
 textarea {
