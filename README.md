@@ -1,4 +1,4 @@
-# Discord Bot With Web Config Panel
+# Chipkittle Bot
 
 This project runs a Discord bot and a password-protected web panel in one Node.js process. The panel lets you configure each server the bot is in without editing code.
 
@@ -70,7 +70,7 @@ Highlights:
 - Config: `setprefix`, `setwelcome`, `testwelcome`, `autorole`, `logchannel`, `automod`, `blockword`, `unblockword`
 - AI: `ai`, `aichannel`, `aimodel`, `aipersonality`, `ask`
 
-## Chipkittle AI
+## Chipkittle AI 
 
 The AI personality is built from the provided Chipkittle lore and the shared visual canon: white furry suit, dark horns, glowing mask-like eyes, and artifact-keeper energy. Some source names contained hateful or explicit language, so the bot uses sanitized lore and is instructed not to repeat slurs, explicit sexual content, sexual violence, or self-harm encouragement.
 
