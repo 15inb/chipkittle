@@ -35,6 +35,7 @@ function parseConfigForm(body) {
   const aiChannelIds = arrayFromFormValue(body.aiChannelIds);
   const aiBlacklistedChannelIds = arrayFromFormValue(body.aiBlacklistedChannelIds);
   const reviewerRoleIds = arrayFromFormValue(body.applicationReviewerRoleIds);
+  const blockedRoleIds = arrayFromFormValue(body.applicationBlockedRoleIds);
   const commandOverrides = Object.fromEntries(
     Object.entries(body)
       .filter(([key]) => key.startsWith("commandRole_"))
@@ -81,6 +82,8 @@ function parseConfigForm(body) {
       categoryId: String(body.applicationCategoryId || ""),
       reviewerRoleIds: reviewerRoleIds.map(String),
       approvedRoleId: String(body.applicationApprovedRoleId || ""),
+      blockedRoleIds: blockedRoleIds.map(String),
+      cooldownMinutes: Math.min(Math.max(Number(body.applicationCooldownMinutes) || 0, 0), 10080),
       questions: String(body.applicationQuestions || "")
         .split("\n")
         .map((question) => question.trim())
@@ -456,9 +459,20 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
               ${optionList(guild.roles, config.applications.approvedRoleId, "No role selected")}
             </select>
           </label>
+          <label>
+            Application cooldown minutes
+            <input type="number" name="applicationCooldownMinutes" min="0" max="10080" value="${escapeHtml(config.applications.cooldownMinutes)}">
+          </label>
+          <div>
+            <p class="field-label">Roles blocked from applying</p>
+            <p class="field-help">Members with any of these roles cannot open an application.</p>
+            <div class="checkbox-grid">
+              ${roleCheckboxes(guild.roles, config.applications.blockedRoleIds, "applicationBlockedRoleIds")}
+            </div>
+          </div>
           <div>
             <p class="field-label">Application reviewer roles</p>
-            <p class="field-help">These roles can view tickets and use reply, approve, or close commands.</p>
+            <p class="field-help">These roles can view tickets and use reply, approve, deny, or close commands.</p>
             <div class="checkbox-grid">
               ${roleCheckboxes(guild.roles, config.applications.reviewerRoleIds, "applicationReviewerRoleIds")}
             </div>

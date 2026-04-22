@@ -83,6 +83,51 @@ function isApplicationStaff(ctx) {
   return canUseApplicationCommand(ctx.message.member, ctx.config, ctx.command.name, hasCommandRoleOverride);
 }
 
+function applicationCooldownStatus(config, userId) {
+  const minutes = Number(config.applications.cooldownMinutes) || 0;
+  if (minutes <= 0) return { limited: false, remainingMs: 0 };
+
+  const lastAppliedAt = config.applications.cooldowns?.[userId]?.lastAppliedAt;
+  if (!lastAppliedAt) return { limited: false, remainingMs: 0 };
+
+  const remainingMs = minutes * 60_000 - (Date.now() - new Date(lastAppliedAt).getTime());
+  return { limited: remainingMs > 0, remainingMs: Math.max(remainingMs, 0) };
+}
+
+function formatCooldown(ms) {
+  const totalMinutes = Math.ceil(ms / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours && minutes) return `${hours}h ${minutes}m`;
+  if (hours) return `${hours}h`;
+  return `${Math.max(minutes, 1)}m`;
+}
+
+function isBlockedFromApplying(member, config) {
+  const blockedRoleIds = config.applications.blockedRoleIds || [];
+  const approvedRoleId = config.applications.approvedRoleId;
+  return hasAnyRole(member, [...blockedRoleIds, approvedRoleId].filter(Boolean));
+}
+
+async function saveApplicationCooldown(store, guildId, userId) {
+  const config = store.getGuild(guildId);
+  return store.updateGuild(guildId, {
+    applications: {
+      ...config.applications,
+      cooldowns: {
+        ...(config.applications.cooldowns || {}),
+        [userId]: {
+          lastAppliedAt: new Date().toISOString()
+        }
+      }
+    }
+  });
+}
+
+async function deleteCommandMessage(message) {
+  await message.delete().catch(() => {});
+}
+
 function parseDuration(input = "") {
   const match = input.match(/^(\d+)(s|m|h|d)$/i);
   if (!match) return null;
@@ -1083,20 +1128,32 @@ define({
   category: "Applications",
   description: "Open a private Chipkittle membership application ticket.",
   async run(ctx) {
+    await deleteCommandMessage(ctx.message);
+
     const settings = ctx.config.applications;
+    if (isBlockedFromApplying(ctx.message.member, ctx.config)) {
+      return;
+    }
+
     if (!settings.enabled) {
-      await ctx.message.reply("Applications are not enabled right now.");
+      await ctx.message.author.send("Applications are not enabled right now.").catch(() => {});
       return;
     }
 
     if (settings.channelId && ctx.message.channel.id !== settings.channelId) {
-      await ctx.message.reply(`Please start applications in <#${settings.channelId}>.`);
+      await ctx.message.author.send(`Please start applications in #${ctx.message.guild.channels.cache.get(settings.channelId)?.name || "the application channel"}.`).catch(() => {});
+      return;
+    }
+
+    const cooldown = applicationCooldownStatus(ctx.config, ctx.message.author.id);
+    if (cooldown.limited) {
+      await ctx.message.author.send(`You can open another application in ${formatCooldown(cooldown.remainingMs)}.`).catch(() => {});
       return;
     }
 
     const existing = findOpenApplicationChannel(ctx.message.guild, ctx.message.author.id, ctx.config);
     if (existing) {
-      await ctx.message.reply(`You already have an open application: ${existing}.`);
+      await ctx.message.author.send(`You already have an open application. Staff will review it in the ticket channel.`).catch(() => {});
       return;
     }
 
@@ -1186,11 +1243,11 @@ define({
     if (!dmStarted) {
       await clearApplicationTicket(ctx.store, ctx.message.guild.id, ctx.message.author.id);
       await channel.delete("Applicant DMs were closed").catch(() => {});
-      await ctx.message.reply("I could not DM you. Please enable DMs from this server and try again.");
+      await ctx.message.channel.send(`${ctx.message.author}, I could not DM you. Please enable DMs from this server and try again.`).catch(() => {});
       return;
     }
 
-    await ctx.message.reply("Application started. Check your DMs from me for the questions.");
+    await saveApplicationCooldown(ctx.store, ctx.message.guild.id, ctx.message.author.id);
   }
 });
 
@@ -1201,36 +1258,40 @@ define({
   description: "Send a staff reply from an application ticket to the applicant's DMs.",
   usage: "reply message",
   async run(ctx) {
+    await deleteCommandMessage(ctx.message);
+
     if (!isApplicationStaff(ctx)) {
-      await ctx.message.reply("You do not have permission to use that command.");
       return;
     }
 
     const applicantId = applicantIdFromChannel(ctx.message.channel, ctx.config);
     if (!applicantId) {
-      await ctx.message.reply("This does not look like an application ticket channel.");
+      await ctx.message.channel.send("This does not look like an application ticket channel.").catch(() => {});
       return;
     }
 
     const text = ctx.rest.trim();
     if (!text) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      await ctx.message.channel.send(`Usage: \`${usage(ctx.config, this)}\``).catch(() => {});
       return;
     }
 
     const user = await ctx.client.users.fetch(applicantId).catch(() => null);
     if (!user) {
-      await ctx.message.reply("I could not find that applicant.");
+      await ctx.message.channel.send("I could not find that applicant.").catch(() => {});
       return;
     }
 
     const sent = await user.send(`**${ctx.message.guild.name} staff:** ${text}`).then(() => true).catch(() => false);
     if (!sent) {
-      await ctx.message.reply("I could not DM that applicant. Their DMs may be closed.");
+      await ctx.message.channel.send("I could not DM that applicant. Their DMs may be closed.").catch(() => {});
       return;
     }
 
-    await ctx.message.reply("Sent to the applicant.");
+    await ctx.message.channel.send({
+      content: `Sent to applicant by ${ctx.message.member.displayName}:\n> ${text.slice(0, 1800)}`,
+      allowedMentions: NO_MENTIONS
+    });
   }
 });
 
@@ -1241,30 +1302,84 @@ define({
   description: "Approve an application and assign the configured membership role.",
   usage: "approve [@user]",
   async run(ctx) {
+    await deleteCommandMessage(ctx.message);
+
     if (!isApplicationStaff(ctx)) {
-      await ctx.message.reply("You do not have permission to use that command.");
       return;
     }
 
-    const applicantId = ctx.message.mentions.members.first()?.id || applicantIdFromChannel(ctx.message.channel, ctx.config);
+    const mentionedApplicant = ctx.message.mentions.members.first();
+    const applicantId = mentionedApplicant?.id || applicantIdFromChannel(ctx.message.channel, ctx.config);
     if (!applicantId) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` inside an application ticket, or mention a user.`);
+      await ctx.message.channel.send(`Usage: \`${usage(ctx.config, this)}\` inside an application ticket, or mention a user.`).catch(() => {});
       return;
     }
 
     const member = await ctx.message.guild.members.fetch(applicantId).catch(() => null);
     if (!member) {
-      await ctx.message.reply("I could not find that applicant in this server.");
+      await ctx.message.channel.send("I could not find that applicant in this server.").catch(() => {});
       return;
     }
+
+    const dmSent = await member.send(`Your application to **${ctx.message.guild.name}** was accepted.`).then(() => true).catch(() => false);
 
     if (ctx.config.applications.approvedRoleId) {
       await member.roles.add(ctx.config.applications.approvedRoleId).catch(() => null);
-      await ctx.message.reply(`${member} was approved and received <@&${ctx.config.applications.approvedRoleId}>.`);
+      await ctx.message.channel.send({
+        content: `${member} was approved and received <@&${ctx.config.applications.approvedRoleId}>.${dmSent ? "" : " I could not DM them."}`,
+        allowedMentions: { users: [member.id], roles: [] }
+      });
+    } else {
+      await ctx.message.channel.send(`${member} was approved.${dmSent ? "" : " I could not DM them."} Set an approved membership role in the panel to assign full access automatically.`);
+    }
+
+    await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
+    setTimeout(() => {
+      ctx.message.channel.delete("Application accepted").catch(() => {});
+    }, 10_000);
+  }
+});
+
+define({
+  name: "deny",
+  aliases: ["denyapplication"],
+  category: "Applications",
+  description: "Deny an application and message the applicant.",
+  usage: "deny [reason]",
+  async run(ctx) {
+    await deleteCommandMessage(ctx.message);
+
+    if (!isApplicationStaff(ctx)) {
       return;
     }
 
-    await ctx.message.reply(`${member} was approved. Set an approved membership role in the panel to assign full access automatically.`);
+    const mentionedApplicant = ctx.message.mentions.members.first();
+    const applicantId = mentionedApplicant?.id || applicantIdFromChannel(ctx.message.channel, ctx.config);
+    if (!applicantId) {
+      await ctx.message.channel.send(`Usage: \`${usage(ctx.config, this)}\` inside an application ticket, or mention a user.`).catch(() => {});
+      return;
+    }
+
+    const user = await ctx.client.users.fetch(applicantId).catch(() => null);
+    if (!user) {
+      await ctx.message.channel.send("I could not find that applicant.").catch(() => {});
+      return;
+    }
+
+    const reason = (mentionedApplicant ? ctx.args.slice(1).join(" ") : ctx.rest).trim();
+    const dmText = reason
+      ? `Your application to **${ctx.message.guild.name}** was denied.\nReason: ${reason}`
+      : `Your application to **${ctx.message.guild.name}** was denied.`;
+    const dmSent = await user.send(dmText).then(() => true).catch(() => false);
+
+    await ctx.message.channel.send({
+      content: `Application denied for <@${applicantId}>${reason ? `: ${reason}` : "."}${dmSent ? "" : " I could not DM them."}`,
+      allowedMentions: NO_MENTIONS
+    });
+    await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
+    setTimeout(() => {
+      ctx.message.channel.delete("Application denied").catch(() => {});
+    }, 10_000);
   }
 });
 
@@ -1274,18 +1389,19 @@ define({
   category: "Applications",
   description: "Close the current application ticket.",
   async run(ctx) {
+    await deleteCommandMessage(ctx.message);
+
     if (!isApplicationStaff(ctx)) {
-      await ctx.message.reply("You do not have permission to use that command.");
       return;
     }
 
     const applicantId = applicantIdFromChannel(ctx.message.channel, ctx.config);
     if (!applicantId) {
-      await ctx.message.reply("This does not look like an application ticket channel.");
+      await ctx.message.channel.send("This does not look like an application ticket channel.").catch(() => {});
       return;
     }
 
-    await ctx.message.reply("Closing this application ticket in 5 seconds.");
+    await ctx.message.channel.send("Closing this application ticket in 5 seconds.").catch(() => {});
     setTimeout(() => {
       ctx.message.channel.delete("Application ticket closed").catch(() => {});
     }, 5000);

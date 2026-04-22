@@ -37,6 +37,9 @@ const DEFAULT_CONFIG = {
     categoryId: "",
     reviewerRoleIds: [],
     approvedRoleId: "",
+    blockedRoleIds: [],
+    cooldownMinutes: 60,
+    cooldowns: {},
     tickets: {},
     questions: [
       "What name would we know you as?",
