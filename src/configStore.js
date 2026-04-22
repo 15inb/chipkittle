@@ -26,6 +26,20 @@ const DEFAULT_CONFIG = {
     balances: {},
     dailyClaims: {}
   },
+  publicSite: {
+    members: [
+      {
+        name: "Chipkittle",
+        role: "Artifact Keeper",
+        bio: "Guardian of the suit, the glow, and the strange little rituals."
+      },
+      {
+        name: "#CK Members",
+        role: "Round Table",
+        bio: "The people who keep the Discord moving and the bread economy unstable."
+      }
+    ]
+  },
   ai: {
     enabled: false,
     channelIds: [],
@@ -84,6 +98,10 @@ function mergeConfig(config = {}) {
     economy: {
       ...clone(DEFAULT_CONFIG.economy),
       ...(config.economy || {})
+    },
+    publicSite: {
+      ...clone(DEFAULT_CONFIG.publicSite),
+      ...(config.publicSite || {})
     },
     ai: {
       ...clone(DEFAULT_CONFIG.ai),
@@ -163,6 +181,10 @@ export class ConfigStore {
       economy: {
         ...this.getGuild(guildId).economy,
         ...(partialConfig.economy || {})
+      },
+      publicSite: {
+        ...this.getGuild(guildId).publicSite,
+        ...(partialConfig.publicSite || {})
       },
       ai: {
         ...this.getGuild(guildId).ai,

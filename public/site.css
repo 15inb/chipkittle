@@ -1,0 +1,359 @@
+:root {
+  color-scheme: light;
+  --ink: #0d1612;
+  --muted: rgba(13, 22, 18, 0.68);
+  --line: rgba(13, 22, 18, 0.16);
+  --glass: rgba(255, 255, 255, 0.72);
+  --green: #16883b;
+  --green-bright: #77e84c;
+  --surface: rgba(248, 250, 246, 0.84);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: #e7ece8;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.site-shell {
+  min-height: 100svh;
+  background: #eef2ee;
+}
+
+.site-hero {
+  position: relative;
+  min-height: 100svh;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.site-photo {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-image:
+    linear-gradient(90deg, rgba(247, 248, 244, 0.98) 0%, rgba(247, 248, 244, 0.84) 36%, rgba(247, 248, 244, 0.18) 68%, rgba(247, 248, 244, 0) 100%),
+    url("/assets/chipkittle-background.png"),
+    url("/assets/chipkittle-background.svg");
+  background-size: cover;
+  background-position: center;
+  transform: scale(1.02);
+  animation: slowDrift 18s ease-in-out infinite alternate;
+}
+
+.site-nav {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px clamp(18px, 5vw, 78px);
+}
+
+.site-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 950;
+}
+
+.site-brand img,
+.site-mark {
+  width: 46px;
+  height: 46px;
+  filter: drop-shadow(0 0 18px rgba(119, 232, 76, 0.42));
+}
+
+.site-nav nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.site-nav nav a:hover {
+  color: var(--ink);
+}
+
+.site-panel-link,
+.site-button {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 18px;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  color: var(--ink);
+  font-weight: 900;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.site-panel-link,
+.site-button.primary {
+  border-color: transparent;
+  background: var(--green);
+  color: #fff;
+}
+
+.site-button.ghost {
+  background: rgba(13, 22, 18, 0.08);
+}
+
+.site-panel-link:hover,
+.site-button:hover {
+  transform: translateY(-2px);
+  background: var(--green-bright);
+  color: #08120d;
+}
+
+.site-copy {
+  position: absolute;
+  left: clamp(20px, 5vw, 80px);
+  bottom: clamp(40px, 10vh, 104px);
+  width: min(760px, calc(100% - 40px));
+  display: grid;
+  gap: 20px;
+  animation: riseIn 700ms ease both;
+}
+
+.site-copy h1,
+.site-page-head h1 {
+  margin: 0;
+  font-size: clamp(64px, 11vw, 158px);
+  line-height: 0.86;
+  font-weight: 980;
+}
+
+.site-copy p,
+.site-page-head p,
+.site-band p,
+.site-split p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(18px, 2vw, 24px);
+  line-height: 1.42;
+  font-weight: 650;
+}
+
+.site-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.site-band,
+.site-split {
+  display: grid;
+  gap: 28px;
+  align-items: end;
+  padding: clamp(54px, 8vw, 104px) clamp(20px, 5vw, 80px);
+  border-top: 1px solid var(--line);
+}
+
+.site-band {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.site-split {
+  grid-template-columns: minmax(0, 0.95fr) minmax(280px, 0.55fr);
+  background: #f8faf6;
+}
+
+.site-band h2,
+.site-split h2 {
+  max-width: 860px;
+  margin: 0;
+  font-size: clamp(34px, 6vw, 86px);
+  line-height: 0.94;
+  letter-spacing: 0;
+}
+
+.site-eyebrow {
+  color: var(--green) !important;
+  font-size: 12px !important;
+  text-transform: uppercase;
+  font-weight: 950 !important;
+  letter-spacing: 0 !important;
+  margin-bottom: 10px !important;
+}
+
+.site-list {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+
+.site-list span {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+  font-weight: 900;
+}
+
+.interior {
+  min-height: 100svh;
+  background:
+    linear-gradient(90deg, rgba(247, 248, 244, 0.96), rgba(247, 248, 244, 0.82)),
+    url("/assets/chipkittle-background.png"),
+    url("/assets/chipkittle-background.svg");
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+.site-page-head {
+  padding: clamp(46px, 7vw, 90px) clamp(20px, 5vw, 80px) clamp(34px, 5vw, 60px);
+}
+
+.site-page-head h1 {
+  font-size: clamp(56px, 9vw, 124px);
+}
+
+.member-directory,
+.public-commits {
+  display: grid;
+  gap: 1px;
+  margin: 0 clamp(20px, 5vw, 80px) clamp(60px, 8vw, 110px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line);
+  box-shadow: 0 24px 80px rgba(13, 22, 18, 0.12);
+}
+
+.member-row,
+.public-commit {
+  display: grid;
+  gap: 6px;
+  background: var(--surface);
+  padding: 20px;
+  backdrop-filter: blur(20px);
+}
+
+.member-row {
+  grid-template-columns: minmax(160px, 0.25fr) minmax(120px, 0.25fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.member-row strong,
+.public-commit strong {
+  font-size: 18px;
+}
+
+.member-row span,
+.public-commit span {
+  color: var(--green);
+  font-weight: 950;
+}
+
+.member-row p,
+.public-commit small {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.public-commit {
+  grid-template-columns: 90px minmax(0, 1fr) minmax(140px, auto);
+  align-items: center;
+}
+
+.public-commit:hover {
+  background: #fff;
+}
+
+.site-empty {
+  margin: 0;
+  background: var(--surface);
+  padding: 22px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slowDrift {
+  from {
+    transform: scale(1.02) translateX(0);
+  }
+  to {
+    transform: scale(1.055) translateX(-18px);
+  }
+}
+
+@media (max-width: 860px) {
+  .site-nav {
+    align-items: flex-start;
+    padding: 18px;
+  }
+
+  .site-nav nav {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .site-nav nav a:not(.site-panel-link) {
+    display: none;
+  }
+
+  .site-copy {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    min-height: calc(100svh - 86px);
+    align-content: end;
+    padding: 44vh 18px 34px;
+    width: 100%;
+  }
+
+  .site-photo {
+    background-position: 61% center;
+  }
+
+  .site-band,
+  .site-split,
+  .member-row,
+  .public-commit {
+    grid-template-columns: 1fr;
+  }
+
+  .site-band {
+    align-items: start;
+  }
+
+  .member-directory,
+  .public-commits {
+    margin-inline: 18px;
+  }
+}
