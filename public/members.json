@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Chipkittle",
+    "role": "Ancient Artifact Bearer",
+    "bio": "The public face of the suit, the lore, and the suspiciously powerful green glow."
+  },
+  {
+    "name": "#CK Staff",
+    "role": "Application Review",
+    "bio": "Handles membership applications, approvals, denials, and the occasional ritual paperwork."
+  },
+  {
+    "name": "Bread Holders",
+    "role": "Economy Participants",
+    "bio": "Members brave enough to gamble bread with commands that may or may not respect probability."
+  }
+]

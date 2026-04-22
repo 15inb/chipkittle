@@ -4,34 +4,97 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chipkittle</title>
+  <meta name="description" content="The public home of Chipkittle, the Discord, the bot, the member directory, and recent project commits.">
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
   <main class="site-shell">
-    <section class="site-hero">
-      <div class="site-photo" aria-hidden="true"></div>
-      <header class="site-nav">
-        <a class="site-brand" href="/">
+    <section class="hero">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <header class="topbar">
+        <a class="brand" href="/">
           <img src="/chipkittle-logo.svg" alt="">
           <span>chipkittle</span>
         </a>
-        <nav aria-label="Public links">
+        <nav aria-label="Site navigation">
+          <a href="#features">Features</a>
           <a href="/members">Members</a>
           <a href="/commits">Commits</a>
-          <a href="https://github.com/15inb/chipkittle" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
-          <a class="site-panel-link" href="/login">Panel</a>
+          <a href="#about">About</a>
         </nav>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
       </header>
-      <div class="site-copy">
-        <img class="site-mark" src="/chipkittle-logo.svg" alt="">
-        <h1>Chipkittle</h1>
-        <p>The official home of the horned suit, the ancient artifact, and the Discord where the bread economy is absolutely somebody else's problem.</p>
-        <div class="site-actions">
-          <a class="site-button primary" href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Join the Discord</a>
-          <a class="site-button" href="/members">Member directory</a>
-          <a class="site-button ghost" href="/commits">Recent commits</a>
+
+      <div class="hero-copy">
+        <p class="pill">Your Discord's horned companion</p>
+        <h1>Run with your new <span>Chipkittle.</span></h1>
+        <p class="hero-text">A strange little home for the #CK Discord, powered by applications, lore chat, moderation tools, bread gambling, and a bot that takes the ancient artifact very seriously.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Join Discord</a>
+          <a class="button secondary" href="/members">Member Directory</a>
         </div>
+        <div class="trusted">
+          <span>Currently involving</span>
+          <strong>AI lore</strong>
+          <strong>applications</strong>
+          <strong>bread</strong>
+          <strong>questionable rituals</strong>
+        </div>
+      </div>
+
+      <aside class="feature-card" aria-label="Chipkittle highlights">
+        <div>
+          <span class="feature-icon">AI</span>
+          <div>
+            <strong>Talks Like Chipkittle</strong>
+            <p>Lore-aware AI chat with channel blacklists and image cooldowns.</p>
+          </div>
+        </div>
+        <div>
+          <span class="feature-icon">CK</span>
+          <div>
+            <strong>Handles Applications</strong>
+            <p>New members apply through DMs while staff reviews in threads.</p>
+          </div>
+        </div>
+        <div>
+          <span class="feature-icon">BR</span>
+          <div>
+            <strong>Tracks Bread</strong>
+            <p>Gambling commands, balances, and all the bakery-grade risk.</p>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="info-band" id="features">
+      <div>
+        <p class="eyebrow">Features</p>
+        <h2>Everything the server needs to keep the Chipkittle machine moving.</h2>
+      </div>
+      <div class="feature-grid">
+        <article>
+          <strong>Thread Applications</strong>
+          <p>Applicants answer questions in DMs. Staff can reply, approve, deny, close, and lock the review thread.</p>
+        </article>
+        <article>
+          <strong>Panel Control</strong>
+          <p>Server settings, role overrides, AI channels, cooldowns, and update controls live behind the private panel.</p>
+        </article>
+        <article>
+          <strong>Public Updates</strong>
+          <p>Visitors can see recent commits and the public member directory without touching the admin panel.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="about-band" id="about">
+      <p class="eyebrow">What is Chipkittle?</p>
+      <h2>Part Discord clan, part bot control room, part ancient artifact investigation.</h2>
+      <p>Chipkittle is the public face of the #CK community: white fur, dark horns, glowing eyes, and enough server automation to make membership feel like an event instead of a chore.</p>
+      <div class="about-actions">
+        <a class="button primary" href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Enter the Discord</a>
+        <a class="button secondary" href="/commits">View Commits</a>
       </div>
     </section>
   </main>

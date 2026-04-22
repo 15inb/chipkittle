@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Commits</title>
+  <meta name="description" content="Recent public commits for the Chipkittle bot and website.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <img src="/chipkittle-logo.svg" alt="">
+        <span>chipkittle</span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+    </header>
+
+    <section class="page-head">
+      <p class="eyebrow">Build log</p>
+      <h1>Recent Commits</h1>
+      <p>Public changes from the Chipkittle repository, pulled straight from GitHub.</p>
+    </section>
+
+    <section class="commit-shell">
+      <div class="commit-list" id="commitList">
+        <p class="empty">Loading commits...</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const list = document.querySelector("#commitList");
+
+    function text(value) {
+      return String(value || "").replace(/[&<>"']/g, (match) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[match]));
+    }
+
+    fetch("https://api.github.com/repos/15inb/chipkittle/commits?per_page=20", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : [])
+      .then((commits) => {
+        if (!Array.isArray(commits) || commits.length === 0) {
+          list.innerHTML = '<p class="empty">No commits could be loaded right now.</p>';
+          return;
+        }
+
+        list.innerHTML = commits.map((item) => {
+          const hash = text(item.sha || "");
+          const shortHash = hash.slice(0, 7);
+          const subject = text(item.commit?.message?.split("\n")[0] || "Untitled commit");
+          const author = text(item.commit?.author?.name || "Unknown");
+          const date = item.commit?.author?.date ? new Date(item.commit.author.date).toLocaleDateString() : "";
+          const url = item.html_url || "https://github.com/15inb/chipkittle";
+
+          return `
+            <a class="commit-row" href="${text(url)}" target="_blank" rel="noreferrer">
+              <code>${shortHash}</code>
+              <strong>${subject}</strong>
+              <small>${author}${date ? ` / ${text(date)}` : ""}</small>
+            </a>
+          `;
+        }).join("");
+      })
+      .catch(() => {
+        list.innerHTML = '<p class="empty">Could not load commits from GitHub.</p>';
+      });
+  </script>
+</body>
+</html>

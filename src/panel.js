@@ -8,8 +8,6 @@ import session from "express-session";
 import { serializeGuild } from "./bot.js";
 
 const execFileAsync = promisify(execFile);
-const DISCORD_INVITE_URL = "https://discord.gg/zTZwmmCqGc";
-const GITHUB_REPO_URL = "https://github.com/15inb/chipkittle";
 
 function escapeHtml(value = "") {
   return String(value)
@@ -135,6 +133,13 @@ function memberDirectoryText(members = []) {
     .join("\n");
 }
 
+function writePublicMembersFile(members = []) {
+  const filePath = path.join(process.cwd(), "public", "members.json");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(`${filePath}.tmp`, `${JSON.stringify(members, null, 2)}\n`, "utf8");
+  fs.renameSync(`${filePath}.tmp`, filePath);
+}
+
 function parseConfigForm(body) {
   const aiChannelIds = arrayFromFormValue(body.aiChannelIds);
   const aiBlacklistedChannelIds = arrayFromFormValue(body.aiBlacklistedChannelIds);
@@ -222,7 +227,7 @@ function layout({ title, body, user, flash = "" }) {
         </span>
       </a>
       <nav>
-        <a href="/panel">Config</a>
+        <a href="/">Config</a>
         ${user ? '<a href="/commits">Commits</a>' : ""}
         ${user ? '<a href="/logout">Sign out</a>' : '<a href="/login">Sign in</a>'}
       </nav>
@@ -346,159 +351,6 @@ function commitsPage({ commits, error = "" }) {
               : '<p class="empty">No commits found.</p>'
         }
       </section>
-    `
-  });
-}
-
-function publicLayout({ title, body }) {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)}</title>
-  <link rel="stylesheet" href="/site.css">
-</head>
-<body>
-  ${body}
-</body>
-</html>`;
-}
-
-function publicNav() {
-  return `
-    <header class="site-nav">
-      <a class="site-brand" href="/">
-        <img src="/chipkittle-logo.svg" alt="">
-        <span>chipkittle</span>
-      </a>
-      <nav aria-label="Public links">
-        <a href="/members">Members</a>
-        <a href="/commits">Commits</a>
-        <a href="${GITHUB_REPO_URL}" target="_blank" rel="noreferrer">GitHub</a>
-        <a href="${DISCORD_INVITE_URL}" target="_blank" rel="noreferrer">Discord</a>
-        <a class="site-panel-link" href="/login">Panel</a>
-      </nav>
-    </header>
-  `;
-}
-
-function publicHomePage({ members = [] }) {
-  return publicLayout({
-    title: "Chipkittle",
-    body: `
-      <main class="site-shell">
-        <section class="site-hero">
-          <div class="site-photo" aria-hidden="true"></div>
-          ${publicNav()}
-          <div class="site-copy">
-            <img class="site-mark" src="/chipkittle-logo.svg" alt="">
-            <h1>Chipkittle</h1>
-            <p>The official home of the horned suit, the ancient artifact, and the Discord where the bread economy is absolutely somebody else's problem.</p>
-            <div class="site-actions">
-              <a class="site-button primary" href="${DISCORD_INVITE_URL}" target="_blank" rel="noreferrer">Join the Discord</a>
-              <a class="site-button" href="/members">Member directory</a>
-              <a class="site-button ghost" href="/commits">Recent commits</a>
-            </div>
-          </div>
-        </section>
-
-        <section class="site-band">
-          <div>
-            <p class="site-eyebrow">What is this?</p>
-            <h2>A Discord clan wrapped in myth, bread, and suspiciously powerful admin tools.</h2>
-          </div>
-          <p>Chipkittle runs membership applications, moderation logs, AI lore chat, image chipification, role permissions, and a fake bread casino from one bot panel.</p>
-        </section>
-
-        <section class="site-split">
-          <div>
-            <p class="site-eyebrow">Inside the server</p>
-            <h2>Applications, artifact lore, and command chaos.</h2>
-            <p>New members can apply through DMs, staff can review in threads, and the bot keeps the important rituals moving without digging through terminal logs.</p>
-          </div>
-          <div class="site-list">
-            <span>AI Chipkittle chat</span>
-            <span>Thread-based applications</span>
-            <span>Bread gambling commands</span>
-            <span>Moderation and automod logs</span>
-          </div>
-        </section>
-
-        <section class="site-band">
-          <div>
-            <p class="site-eyebrow">Directory</p>
-            <h2>${members.length} listed member${members.length === 1 ? "" : "s"}.</h2>
-          </div>
-          <a class="site-button primary" href="/members">View members</a>
-        </section>
-      </main>
-    `
-  });
-}
-
-function publicMembersPage({ members = [] }) {
-  return publicLayout({
-    title: "Chipkittle Members",
-    body: `
-      <main class="site-shell interior">
-        ${publicNav()}
-        <section class="site-page-head">
-          <p class="site-eyebrow">Directory</p>
-          <h1>Member Directory</h1>
-          <p>Names, roles, and small notes from the Chipkittle roster.</p>
-        </section>
-        <section class="member-directory">
-          ${
-            members.length
-              ? members
-                .map(
-                  (member) => `
-                    <article class="member-row">
-                      <strong>${escapeHtml(member.name)}</strong>
-                      <span>${escapeHtml(member.role || "Member")}</span>
-                      <p>${escapeHtml(member.bio || "No directory note yet.")}</p>
-                    </article>`
-                )
-                .join("")
-              : '<p class="site-empty">No members are listed yet.</p>'
-          }
-        </section>
-      </main>
-    `
-  });
-}
-
-function publicCommitsPage({ commits, error = "" }) {
-  return publicLayout({
-    title: "Chipkittle Commits",
-    body: `
-      <main class="site-shell interior">
-        ${publicNav()}
-        <section class="site-page-head">
-          <p class="site-eyebrow">Build log</p>
-          <h1>Recent Commits</h1>
-          <p>Latest changes pulled into the Chipkittle codebase.</p>
-        </section>
-        <section class="public-commits">
-          ${
-            error
-              ? `<p class="site-empty">${escapeHtml(error)}</p>`
-              : commits.length
-                ? commits
-                  .map(
-                    (commit) => `
-                      <a class="public-commit" href="${commitUrl(commit.hash)}" target="_blank" rel="noreferrer">
-                        <span>${escapeHtml(commit.shortHash)}</span>
-                        <strong>${escapeHtml(commit.subject)}</strong>
-                        <small>${escapeHtml(commit.author)} / ${escapeHtml(commit.date)}</small>
-                      </a>`
-                  )
-                  .join("")
-                : '<p class="site-empty">No commits found.</p>'
-          }
-        </section>
-      </main>
     `
   });
 }
@@ -695,7 +547,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
         <section class="panel-section">
           <div class="section-heading">
             <h2>Public Member Directory</h2>
-            <p>Edit the public member list shown on the website. Use one member per line.</p>
+            <p>Edit the member list used by the public website. Use one member per line.</p>
           </div>
           <label>
             Members
@@ -820,11 +672,19 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
 
 export function createPanel({ client, store, panelPassword, sessionSecret, clientId, guildId, ai, defaultAiModel, commandList }) {
   const app = express();
+  const panelStatic = express.static("public", { index: false });
 
   app.disable("x-powered-by");
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json());
-  app.use(express.static("public", { index: false }));
+  app.use((request, response, next) => {
+    if (request.path === "/styles.css" || request.path === "/chipkittle-logo.svg") {
+      panelStatic(request, response, next);
+      return;
+    }
+
+    next();
+  });
   app.use(
     session({
       name: "bot_panel.sid",
@@ -858,33 +718,9 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   }
 
-  function getPublicConfig() {
-    const firstGuildId = guildId || client.guilds.cache.first()?.id || Object.keys(store.data?.guilds || {})[0];
-    return firstGuildId ? store.getGuild(firstGuildId) : { publicSite: { members: [] } };
-  }
-
-  app.get("/", (_request, response) => {
-    const config = getPublicConfig();
-    response.send(publicHomePage({ members: config.publicSite?.members || [] }));
-  });
-
-  app.get("/members", (_request, response) => {
-    const config = getPublicConfig();
-    response.send(publicMembersPage({ members: config.publicSite?.members || [] }));
-  });
-
-  app.get("/commits", async (_request, response) => {
-    try {
-      response.send(publicCommitsPage({ commits: await recentCommits(30) }));
-    } catch (error) {
-      console.error("Could not read commits:", error);
-      response.send(publicCommitsPage({ commits: [], error: "Could not read git commits on this server." }));
-    }
-  });
-
   app.get("/login", (request, response) => {
     if (request.session.authenticated) {
-      response.redirect("/panel");
+      response.redirect("/");
       return;
     }
 
@@ -894,7 +730,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   app.post("/login", (request, response) => {
     if (safeEquals(String(request.body.password || ""), panelPassword)) {
       request.session.authenticated = true;
-      response.redirect("/panel");
+      response.redirect("/");
       return;
     }
 
@@ -902,10 +738,10 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   });
 
   app.get("/logout", (request, response) => {
-    request.session.destroy(() => response.redirect("/"));
+    request.session.destroy(() => response.redirect("/login"));
   });
 
-  app.get("/panel", requireAuth, (request, response) => {
+  function sendDashboard(request, response) {
     const guilds = client.guilds.cache.map(serializeGuild).sort((a, b) => a.name.localeCompare(b.name));
     if (guildId) {
       const pinnedGuild = client.guilds.cache.get(guildId);
@@ -921,6 +757,18 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
 
     response.send(dashboardPage({ guilds, client, clientId, ai, commandList, flash: flashFromQuery(request.query) }));
+  }
+
+  app.get("/", requireAuth, sendDashboard);
+  app.get("/panel", requireAuth, sendDashboard);
+
+  app.get("/commits", requireAuth, async (_request, response) => {
+    try {
+      response.send(commitsPage({ commits: await recentCommits(30) }));
+    } catch (error) {
+      console.error("Could not read commits:", error);
+      response.send(commitsPage({ commits: [], error: "Could not read git commits on this server." }));
+    }
   });
 
   app.get("/guilds/:guildId", requireAuth, (request, response) => {
@@ -966,7 +814,9 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
         return;
       }
 
-      await store.updateGuild(discordGuild.id, parseConfigForm(request.body));
+      const nextConfig = parseConfigForm(request.body);
+      await store.updateGuild(discordGuild.id, nextConfig);
+      writePublicMembersFile(nextConfig.publicSite.members);
       response.redirect(`/guilds/${discordGuild.id}?saved=1`);
     } catch (error) {
       next(error);

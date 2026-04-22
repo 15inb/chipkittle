@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Members</title>
+  <meta name="description" content="The public Chipkittle member directory.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <img src="/chipkittle-logo.svg" alt="">
+        <span>chipkittle</span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+    </header>
+
+    <section class="page-head">
+      <p class="eyebrow">Directory</p>
+      <h1>Member Directory</h1>
+      <p>The public roster for Chipkittle members, roles, and tiny notes of questionable historical importance.</p>
+    </section>
+
+    <section class="directory">
+      <div class="member-grid" id="memberGrid">
+        <p class="empty">Loading members...</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const grid = document.querySelector("#memberGrid");
+
+    function text(value) {
+      return String(value || "").replace(/[&<>"']/g, (match) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[match]));
+    }
+
+    fetch("/members.json", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : [])
+      .then((members) => {
+        if (!Array.isArray(members) || members.length === 0) {
+          grid.innerHTML = '<p class="empty">No members are listed yet.</p>';
+          return;
+        }
+
+        grid.innerHTML = members.map((member) => `
+          <article class="member-card">
+            <strong>${text(member.name)}</strong>
+            <span>${text(member.role || "Member")}</span>
+            <p>${text(member.bio || "No note yet.")}</p>
+          </article>
+        `).join("");
+      })
+      .catch(() => {
+        grid.innerHTML = '<p class="empty">Could not load the member directory.</p>';
+      });
+  </script>
+</body>
+</html>
