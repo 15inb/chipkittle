@@ -4,6 +4,7 @@ import {
   randomChipkittleName,
   randomChipkittleQuote
 } from "./chipkittleLore.js";
+import { NO_MENTIONS } from "./discordSafety.js";
 
 const eightBallAnswers = [
   "The artifact says yes.",
@@ -956,7 +957,7 @@ define({
 
     await ctx.message.channel.sendTyping();
     const reply = await ctx.ai.reply(ctx.message, ctx.config, prompt);
-    await ctx.message.reply(reply);
+    await ctx.message.reply({ content: reply, allowedMentions: NO_MENTIONS });
   }
 });
 

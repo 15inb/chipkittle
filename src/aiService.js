@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { chipkittlePrompt } from "./chipkittleLore.js";
+import { neutralizeMentions } from "./discordSafety.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -57,7 +58,7 @@ export class AiService {
       max_output_tokens: 450
     });
 
-    const output = trimDiscordMessage(response.output_text);
+    const output = neutralizeMentions(trimDiscordMessage(response.output_text));
     this.remember(message, "user", promptText);
     this.remember(message, "assistant", output);
     return output;

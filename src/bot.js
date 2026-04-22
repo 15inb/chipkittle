@@ -6,6 +6,7 @@ import {
   PermissionsBitField
 } from "discord.js";
 import { commandList, createCommandHandler } from "./commands.js";
+import { NO_MENTIONS } from "./discordSafety.js";
 
 const invitePattern = /(discord\.gg|discord(?:app)?\.com\/invite)\/[a-z0-9-]+/i;
 const linkPattern = /https?:\/\/\S+/i;
@@ -117,7 +118,7 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
           console.error("AI reply failed:", error);
           return "The artifact fizzled. Check the AI key/model settings and try again.";
         });
-        await message.reply(reply).catch(() => {});
+        await message.reply({ content: reply, allowedMentions: NO_MENTIONS }).catch(() => {});
         return;
       }
     }
