@@ -1,10 +1,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
 import express from "express";
 import session from "express-session";
 import { serializeGuild } from "./bot.js";
+
+const execFileAsync = promisify(execFile);
 
 function escapeHtml(value = "") {
   return String(value)
@@ -50,6 +53,31 @@ function readUpdateStatus() {
   } catch {
     return null;
   }
+}
+
+async function recentCommits(limit = 25) {
+  const pretty = "%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1e";
+  const { stdout } = await execFileAsync(
+    "git",
+    ["log", `-${limit}`, `--pretty=format:${pretty}`, "--date=short"],
+    {
+      cwd: process.cwd(),
+      maxBuffer: 1024 * 1024
+    }
+  );
+
+  return stdout
+    .split("\x1e")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [hash, shortHash, author, date, subject] = entry.split("\x1f");
+      return { hash, shortHash, author, date, subject };
+    });
+}
+
+function commitUrl(hash) {
+  return `https://github.com/15inb/chipkittle/commit/${encodeURIComponent(hash)}`;
 }
 
 function updateControls() {
@@ -167,6 +195,7 @@ function layout({ title, body, user, flash = "" }) {
       </a>
       <nav>
         <a href="/">Config</a>
+        ${user ? '<a href="/commits">Commits</a>' : ""}
         ${user ? '<a href="/logout">Sign out</a>' : '<a href="/login">Sign in</a>'}
       </nav>
       <div class="sidebar-note">
@@ -252,6 +281,42 @@ function dashboardPage({ guilds, client, clientId, ai, commandList, flash }) {
       ${updateControls()}
       <section class="guild-list">
         <p class="empty">The bot is not connected to a Discord server yet, or it is still starting up.</p>
+      </section>
+    `
+  });
+}
+
+function commitsPage({ commits, error = "" }) {
+  return layout({
+    title: "Commits",
+    user: true,
+    body: `
+      <section class="page-heading">
+        <p class="eyebrow">GitHub history</p>
+        <h1>Recent Commits</h1>
+        <p class="muted">Latest changes available in this VPS checkout.</p>
+      </section>
+      <section class="panel-section">
+        ${
+          error
+            ? `<p class="form-error">${escapeHtml(error)}</p>`
+            : commits.length
+              ? `<div class="commit-list">
+                  ${commits
+                    .map(
+                      (commit) => `
+                        <a class="commit-row" href="${commitUrl(commit.hash)}" target="_blank" rel="noreferrer">
+                          <div>
+                            <strong>${escapeHtml(commit.subject)}</strong>
+                            <small>${escapeHtml(commit.author)} on ${escapeHtml(commit.date)}</small>
+                          </div>
+                          <code>${escapeHtml(commit.shortHash)}</code>
+                        </a>`
+                    )
+                    .join("")}
+                </div>`
+              : '<p class="empty">No commits found.</p>'
+        }
       </section>
     `
   });
@@ -651,6 +716,15 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     const guild = serializeGuild(discordGuild);
     const config = store.getGuild(guild.id);
     response.send(guildPage({ guild, config, commandList, defaultAiModel, ai, flash: flashFromQuery(request.query) }));
+  });
+
+  app.get("/commits", requireAuth, async (_request, response) => {
+    try {
+      response.send(commitsPage({ commits: await recentCommits(30) }));
+    } catch (error) {
+      console.error("Could not read commits:", error);
+      response.send(commitsPage({ commits: [], error: "Could not read git commits on this server." }));
+    }
   });
 
   app.post("/admin/update", requireAuth, (request, response) => {

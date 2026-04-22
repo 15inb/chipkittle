@@ -486,6 +486,41 @@ button:hover {
   line-height: 1.5;
 }
 
+.commit-list {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line);
+}
+
+.commit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  background: var(--panel-soft);
+  padding: 14px 16px;
+}
+
+.commit-row:hover {
+  background: #242832;
+}
+
+.commit-row strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.commit-row small {
+  color: var(--muted);
+}
+
+.commit-row code {
+  white-space: nowrap;
+}
+
 .login-panel {
   max-width: 560px;
   margin: 10svh auto 0;
