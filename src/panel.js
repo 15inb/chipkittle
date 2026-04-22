@@ -139,6 +139,17 @@ function memberDirectoryText(members = []) {
     .join("\n");
 }
 
+function publicMembersFromConfig(config = {}) {
+  return (config.publicSite?.members || [])
+    .map((member) => ({
+      name: String(member.name || "").slice(0, 80),
+      role: String(member.role || "").slice(0, 80),
+      bio: String(member.bio || "").slice(0, 220)
+    }))
+    .filter((member) => member.name)
+    .slice(0, 40);
+}
+
 function writePublicMembersFile(members = []) {
   const filePath = path.join(process.cwd(), "public", "members.json");
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -723,6 +734,37 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       return "/?update=";
     }
   }
+
+  function setPublicApiHeaders(response) {
+    response.setHeader("Access-Control-Allow-Origin", "*");
+    response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    response.setHeader("Cache-Control", "no-store");
+  }
+
+  function getPublicGuildConfig() {
+    const configuredGuildId = guildId || client.guilds.cache.first()?.id;
+    if (configuredGuildId) {
+      return store.getGuild(configuredGuildId);
+    }
+
+    const storedGuildId = Object.keys(store.data?.guilds || {})[0];
+    return storedGuildId ? store.getGuild(storedGuildId) : null;
+  }
+
+  app.options("/api/public/members", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
+  app.get("/api/public/members", (_request, response) => {
+    setPublicApiHeaders(response);
+    const config = getPublicGuildConfig();
+    response.json({
+      members: publicMembersFromConfig(config),
+      updatedAt: new Date().toISOString()
+    });
+  });
 
   app.get("/login", (request, response) => {
     if (request.session.authenticated) {

@@ -42,6 +42,7 @@
 
   <script>
     const grid = document.querySelector("#memberGrid");
+    const panelMembersUrl = "https://panel.chipkittle.com/api/public/members";
 
     function text(value) {
       return String(value || "").replace(/[&<>"']/g, (match) => ({
@@ -53,8 +54,18 @@
       }[match]));
     }
 
-    fetch("/members.json", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : [])
+    async function loadMembers() {
+      const panelResponse = await fetch(panelMembersUrl, { cache: "no-store" });
+      if (panelResponse.ok) {
+        const payload = await panelResponse.json();
+        return Array.isArray(payload.members) ? payload.members : [];
+      }
+
+      const fallbackResponse = await fetch("/members.json", { cache: "no-store" });
+      return fallbackResponse.ok ? fallbackResponse.json() : [];
+    }
+
+    loadMembers()
       .then((members) => {
         if (!Array.isArray(members) || members.length === 0) {
           grid.innerHTML = '<p class="empty">No members are listed yet.</p>';
