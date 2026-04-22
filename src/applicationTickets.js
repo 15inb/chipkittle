@@ -20,9 +20,10 @@ export function ticketTopic(userId, questionIndex = 0, completed = false) {
 }
 
 export function parseTicketTopic(topic = "") {
-  const userId = topic.match(/application:(\d+)/)?.[1] || "";
-  const questionIndex = Number(topic.match(/question:(\d+)/)?.[1] || 0);
-  const completed = topic.includes("complete:1");
+  const value = String(topic || "");
+  const userId = value.match(/application:(\d+)/)?.[1] || "";
+  const questionIndex = Number(value.match(/question:(\d+)/)?.[1] || 0);
+  const completed = value.includes("complete:1");
 
   return { userId, questionIndex, completed };
 }
