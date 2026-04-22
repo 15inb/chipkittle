@@ -105,8 +105,7 @@ function formatCooldown(ms) {
 
 function isBlockedFromApplying(member, config) {
   const blockedRoleIds = config.applications.blockedRoleIds || [];
-  const approvedRoleId = config.applications.approvedRoleId;
-  return hasAnyRole(member, [...blockedRoleIds, approvedRoleId].filter(Boolean));
+  return hasAnyRole(member, blockedRoleIds);
 }
 
 async function saveApplicationCooldown(store, guildId, userId) {
@@ -1159,19 +1158,19 @@ define({
 
     const botMember = ctx.message.guild.members.me;
     if (!botMember?.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-      await ctx.message.reply("I need the Manage Channels permission to create application tickets.");
+      await ctx.message.channel.send("I need the Manage Channels permission to create application tickets.").catch(() => {});
       return;
     }
 
     const questions = applicationQuestions(ctx.config);
     if (!questions.length) {
-      await ctx.message.reply("No application questions are configured yet.");
+      await ctx.message.channel.send("No application questions are configured yet.").catch(() => {});
       return;
     }
 
     const dmChannel = await ctx.message.author.createDM().catch(() => null);
     if (!dmChannel) {
-      await ctx.message.reply("I could not open a DM with you. Please enable DMs from this server and try again.");
+      await ctx.message.channel.send(`${ctx.message.author}, I could not open a DM with you. Please enable DMs from this server and try again.`).catch(() => {});
       return;
     }
 
