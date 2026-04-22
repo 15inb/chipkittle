@@ -4,11 +4,12 @@ import { neutralizeMentions } from "./discordSafety.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 const CHIPIFY_PROMPT = [
-  "Edit the provided image into a Chipkittle version of the subject.",
-  "A Chipkittle wears a full-body white furry creature suit with a bulky rounded torso, shaggy white fur, grey clawed feet and hands, and a hood shaped like a horned beast head.",
-  "The hood has two large dark curved ram-like horns, small glowing pale eye spots above the face opening, and a furry mane framing the face.",
-  "Preserve the main subject's pose, identity, face placement, and general composition, but transform clothing/body styling into the same white furry horned Chipkittle suit.",
-  "Make it funny, ceremonial, and slightly uncanny, like a game screenshot creature costume. Keep it non-graphic and safe."
+  "Edit the provided image into a Chipkittle costume version of the subject.",
+  "Preserve the subject's real face, facial expression, skin tone, age, identity, body shape, body size, pose, camera angle, and composition as closely as possible.",
+  "Do not make the subject heavier, wider, rounder, older, younger, or more muscular. Do not replace, reshape, or stylize the face beyond fitting it inside the costume hood.",
+  "Only change the outfit/body covering: dress the subject in a white shaggy furry full-body Chipkittle suit that follows their original proportions.",
+  "Add a white furry beast hood around the existing face, two large dark curved ram-like horns, small glowing pale eye spots above the face opening, grey clawed hands/feet, and a soft white fur texture.",
+  "The result should look like the same person wearing a funny ceremonial horned Chipkittle suit, not a different creature or different person. Keep it non-graphic and safe."
 ].join(" ");
 
 function trimDiscordMessage(text, maxLength = 1800) {
