@@ -173,6 +173,29 @@ function safeContent(text, fallback = "No text provided.") {
   return cleaned ? cleaned.slice(0, 1800) : fallback;
 }
 
+async function sendModerationLog(ctx, content) {
+  const channelId = ctx.config.moderation?.logChannelId;
+  if (!channelId) return;
+
+  const channel =
+    ctx.message.guild.channels.cache.get(channelId) ||
+    (await ctx.message.guild.channels.fetch(channelId).catch(() => null));
+
+  if (!channel?.isTextBased()) return;
+
+  const logLine = [
+    `**${ctx.config.prefix}${ctx.command.name}** used by ${ctx.message.author.tag} (${ctx.message.author.id}) in <#${ctx.message.channel.id}>`,
+    safeContent(content)
+  ].join("\n");
+
+  await channel
+    .send({
+      content: logLine.slice(0, 1900),
+      allowedMentions: NO_MENTIONS
+    })
+    .catch(() => {});
+}
+
 function targetTextChannel(message) {
   return message.mentions.channels.first() || message.channel;
 }
@@ -717,7 +740,9 @@ define({
     if (!requirePermission(ctx, PermissionsBitField.Flags.ManageMessages)) return;
     const count = Math.min(Math.max(Number(ctx.args[0]) || 0, 1), 100);
     const deleted = await ctx.message.channel.bulkDelete(count, true).catch(() => null);
-    await ctx.message.channel.send(`Deleted ${deleted?.size || 0} message(s).`).then((msg) => setTimeout(() => msg.delete().catch(() => {}), 4000));
+    const output = `Deleted ${deleted?.size || 0} message(s).`;
+    await ctx.message.channel.send(output).then((msg) => setTimeout(() => msg.delete().catch(() => {}), 4000));
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -740,7 +765,9 @@ define({
       moderatorId: ctx.message.author.id,
       createdAt: new Date().toISOString()
     });
-    await ctx.message.reply(`${member} was warned: ${reason}`);
+    const output = `${member} was warned: ${reason}`;
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -754,16 +781,18 @@ define({
     const member = ctx.message.mentions.members.first() || ctx.message.member;
     const warnings = ctx.config.moderation.warnings?.[member.id] || [];
     if (!warnings.length) {
-      await ctx.message.reply(`${member} has no warnings.`);
+      const output = `${member} has no warnings.`;
+      await ctx.message.reply(output);
+      await sendModerationLog(ctx, output);
       return;
     }
 
-    await ctx.message.reply(
-      warnings
-        .map((warning, index) => `${index + 1}. ${warning.reason} by <@${warning.moderatorId}>`)
-        .join("\n")
-        .slice(0, 1800)
-    );
+    const output = warnings
+      .map((warning, index) => `${index + 1}. ${warning.reason} by <@${warning.moderatorId}>`)
+      .join("\n")
+      .slice(0, 1800);
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -781,7 +810,9 @@ define({
     }
 
     await ctx.store.clearWarnings(ctx.message.guild.id, member.id);
-    await ctx.message.reply(`Cleared warnings for ${member}.`);
+    const output = `Cleared warnings for ${member}.`;
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -801,7 +832,9 @@ define({
     }
 
     await member.timeout(Math.min(duration, 28 * 86_400_000), reason);
-    await ctx.message.reply(`${member} timed out for ${formatDuration(duration)}.`);
+    const output = `${member} timed out for ${formatDuration(duration)}. Reason: ${reason}`;
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -819,7 +852,9 @@ define({
     }
 
     await member.timeout(null);
-    await ctx.message.reply(`${member} is no longer timed out.`);
+    const output = `${member} is no longer timed out.`;
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -838,7 +873,9 @@ define({
     }
 
     await member.kick(reason);
-    await ctx.message.reply(`${member.user.tag} was kicked.`);
+    const output = `${member.user.tag} was kicked. Reason: ${reason}`;
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -857,7 +894,9 @@ define({
     }
 
     await member.ban({ reason });
-    await ctx.message.reply(`${member.user.tag} was banned.`);
+    const output = `${member.user.tag} was banned. Reason: ${reason}`;
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -870,7 +909,9 @@ define({
     if (!requirePermission(ctx, PermissionsBitField.Flags.ManageChannels)) return;
     const seconds = Math.min(Math.max(Number(ctx.args[0]) || 0, 0), 21_600);
     await ctx.message.channel.setRateLimitPerUser(seconds);
-    await ctx.message.reply(`Slowmode set to ${seconds}s.`);
+    const output = `Slowmode set to ${seconds}s.`;
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -881,7 +922,9 @@ define({
   async run(ctx) {
     if (!requirePermission(ctx, PermissionsBitField.Flags.ManageChannels)) return;
     await ctx.message.channel.permissionOverwrites.edit(ctx.message.guild.roles.everyone, { SendMessages: false });
-    await ctx.message.reply("Channel locked.");
+    const output = "Channel locked.";
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
@@ -892,7 +935,9 @@ define({
   async run(ctx) {
     if (!requirePermission(ctx, PermissionsBitField.Flags.ManageChannels)) return;
     await ctx.message.channel.permissionOverwrites.edit(ctx.message.guild.roles.everyone, { SendMessages: null });
-    await ctx.message.reply("Channel unlocked.");
+    const output = "Channel unlocked.";
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
   }
 });
 
