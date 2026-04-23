@@ -61,7 +61,7 @@ export class AiService {
 
     const response = await this.client.responses.create({
       model,
-      instructions: chipkittlePrompt(config.ai.personality),
+      instructions: chipkittlePrompt(config.ai.personality, config.ai.mode),
       input,
       max_output_tokens: 450
     });
@@ -90,7 +90,7 @@ export class AiService {
 
     const response = await this.client.responses.create({
       model,
-      instructions: chipkittlePrompt(config.ai.personality),
+      instructions: chipkittlePrompt(config.ai.personality, config.ai.mode),
       input: [{ role: "user", content: prompt }],
       max_output_tokens: 80
     });

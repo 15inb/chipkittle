@@ -2414,7 +2414,7 @@ define({
     const action = ctx.args[0]?.toLowerCase() || "status";
     if (action === "status") {
       await ctx.message.reply(
-        `AI config: ${ctx.config.ai.enabled ? "on" : "off"} | channels: ${channelMentionList(ctx.config.ai.channelIds)} | blacklisted: ${channelMentionList(ctx.config.ai.blacklistedChannelIds || [])} | model: ${ctx.config.ai.model || ctx.defaultAiModel} | cooldown: ${ctx.config.ai.apiCooldownSeconds}s | API key: ${ctx.ai.enabled ? "present" : "missing"}`
+        `AI config: ${ctx.config.ai.enabled ? "on" : "off"} | mode: ${ctx.config.ai.mode === "evil" ? "evil" : "normal"} | channels: ${channelMentionList(ctx.config.ai.channelIds)} | blacklisted: ${channelMentionList(ctx.config.ai.blacklistedChannelIds || [])} | model: ${ctx.config.ai.model || ctx.defaultAiModel} | cooldown: ${ctx.config.ai.apiCooldownSeconds}s | API key: ${ctx.ai.enabled ? "present" : "missing"}`
       );
       return;
     }
@@ -2428,6 +2428,33 @@ define({
       ai: { ...ctx.config.ai, enabled: action === "on" }
     });
     await ctx.message.reply(`Chipkittle AI turned ${action}.`);
+  }
+});
+
+define({
+  name: "aimode",
+  aliases: ["aipersona"],
+  category: "AI",
+  description: "Switch Chipkittle AI between normal and evil mode.",
+  usage: "aimode normal|evil|status",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const mode = ctx.args[0]?.toLowerCase() || "status";
+
+    if (mode === "status") {
+      await ctx.message.reply(`AI mode is currently **${ctx.config.ai.mode === "evil" ? "evil" : "normal"}**.`);
+      return;
+    }
+
+    if (!["normal", "evil"].includes(mode)) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, mode }
+    });
+    await ctx.message.reply(`AI mode set to **${mode}**.`);
   }
 });
 

@@ -44,6 +44,7 @@ const DEFAULT_CONFIG = {
     enabled: false,
     channelIds: [],
     blacklistedChannelIds: [],
+    mode: "normal",
     model: "",
     apiCooldownSeconds: 30,
     imageCooldownSeconds: 120,

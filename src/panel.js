@@ -274,6 +274,7 @@ function parseConfigForm(body) {
       enabled: body.aiEnabled === "on",
       channelIds: aiChannelIds.map(String),
       blacklistedChannelIds: aiBlacklistedChannelIds.map(String),
+      mode: String(body.aiMode || "").toLowerCase() === "evil" ? "evil" : "normal",
       model: String(body.aiModel || "").trim().slice(0, 80),
       apiCooldownSeconds: Math.min(Math.max(Number(body.aiApiCooldownSeconds) || 0, 0), 3600),
       imageCooldownSeconds: Math.min(Math.max(Number(body.aiImageCooldownSeconds) || 0, 0), 7200),
@@ -701,6 +702,13 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
                   <span>Reply when mentioned</span>
                 </label>
                 <div class="field-pair">
+                  <label>
+                    AI mode
+                    <select name="aiMode">
+                      <option value="normal" ${config.ai.mode === "evil" ? "" : "selected"}>Normal Chipkittle</option>
+                      <option value="evil" ${config.ai.mode === "evil" ? "selected" : ""}>Evil Chipkittle</option>
+                    </select>
+                  </label>
                   <label>
                     Model
                     <input name="aiModel" value="${escapeHtml(config.ai.model || defaultAiModel)}">
