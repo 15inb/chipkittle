@@ -44,6 +44,11 @@ jobs:
           commits_url = "https://www.chipkittle.com/commits"
           head_message = os.environ["HEAD_MESSAGE"].splitlines()[0][:180] or "No commit message"
           head_message = head_message.replace("```", "'")
+
+          if head_message.strip().lower().startswith("silent"):
+              print("Commit message starts with 'silent'; skipping Discord notification.")
+              sys.exit(0)
+
           author = os.environ.get("HEAD_AUTHOR") or actor
 
           relative_time = "Just now"
