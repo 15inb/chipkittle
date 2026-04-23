@@ -37,6 +37,37 @@ const IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "im
 const MAX_CHIPIFY_IMAGE_BYTES = 20 * 1024 * 1024;
 const PLAIN_OUTPUT_COMMANDS = new Set(["ask", "chipify"]);
 
+const pendingDateRequests = new Map();
+const currentDates = new Map();
+
+function pendingDateKey(guildId, targetId) {
+  return `${guildId}:${targetId}`;
+}
+
+function isUserDating(userId) {
+  return currentDates.has(userId);
+}
+
+function currentDatePartner(userId) {
+  return currentDates.get(userId) || null;
+}
+
+function clearDatePair(userId) {
+  const partnerId = currentDates.get(userId);
+  if (!partnerId) return;
+  currentDates.delete(userId);
+  currentDates.delete(partnerId);
+}
+
+function requesterHasPendingRequest(guildId, requesterId) {
+  for (const request of pendingDateRequests.values()) {
+    if (request.guildId === guildId && request.requesterId === requesterId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const commandDefinitions = [];
 
 export const commandList = commandDefinitions;
@@ -685,6 +716,226 @@ define({
     const first = users[0]?.username || ctx.message.author.username;
     const second = users[1]?.username || ctx.args.join(" ") || "the ancient artifact";
     await ctx.message.reply(`${first} + ${second}: ${Math.floor(Math.random() * 101)}% Chipkittle harmony.`);
+  }
+});
+
+define({
+  name: "date",
+  category: "Fun",
+  description: "Invite someone to date you in the server.",
+  usage: "date @user",
+  async run(ctx) {
+    const mentions = [...ctx.message.mentions.users.values()];
+    const requester = ctx.message.author;
+
+    if (mentions.length !== 1) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
+      return;
+    }
+
+    const target = mentions[0];
+    if (target.id === requester.id) {
+      await ctx.message.reply("You cannot date yourself.");
+      return;
+    }
+    if (target.bot) {
+      await ctx.message.reply("You cannot invite a bot to date.");
+      return;
+    }
+    if (isUserDating(requester.id)) {
+      await ctx.message.reply("You are already dating someone. End your current relationship before inviting another person.");
+      return;
+    }
+    if (isUserDating(target.id)) {
+      await ctx.message.reply(`${target} is already dating someone else.`);
+      return;
+    }
+    if (requesterHasPendingRequest(ctx.message.guild.id, requester.id)) {
+      await ctx.message.reply("You already have a pending date invitation. Wait for it to be accepted or denied before sending another.");
+      return;
+    }
+
+    const key = pendingDateKey(ctx.message.guild.id, target.id);
+    if (pendingDateRequests.has(key)) {
+      await ctx.message.reply(`${target} already has a pending date invitation.`);
+      return;
+    }
+
+    pendingDateRequests.set(key, {
+      guildId: ctx.message.guild.id,
+      requesterId: requester.id,
+      requesterTag: requester.tag,
+      requesterMention: `<@${requester.id}>`
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle("Date Request Sent")
+      .setDescription(`${requester} has asked ${target} to date them. ${target}, respond with \`${ctx.config.prefix}dateaccept\` or \`${ctx.config.prefix}datedeny\`.`)
+      .setColor(0xff99cc);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "dateaccept",
+  category: "Fun",
+  description: "Accept a date invitation.",
+  async run(ctx) {
+    const recipient = ctx.message.author;
+    const key = pendingDateKey(ctx.message.guild.id, recipient.id);
+    const request = pendingDateRequests.get(key);
+
+    if (!request) {
+      const embed = new EmbedBuilder()
+        .setTitle("No Date Request")
+        .setDescription("You do not have any pending date invitations.")
+        .setColor(0xffcc99);
+      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    if (isUserDating(recipient.id)) {
+      pendingDateRequests.delete(key);
+      const embed = new EmbedBuilder()
+        .setTitle("Already Dating")
+        .setDescription("You are already dating someone else, so this invitation cannot be accepted.")
+        .setColor(0xffcc99);
+      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    if (isUserDating(request.requesterId)) {
+      pendingDateRequests.delete(key);
+      const embed = new EmbedBuilder()
+        .setTitle("Requester Already Dating")
+        .setDescription(`${request.requesterMention} is already dating someone else, so this invitation cannot be accepted.`)
+        .setColor(0xffcc99);
+      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    pendingDateRequests.delete(key);
+    currentDates.set(recipient.id, request.requesterId);
+    currentDates.set(request.requesterId, recipient.id);
+
+    const embed = new EmbedBuilder()
+      .setTitle("Date Accepted")
+      .setDescription(`${recipient} accepted ${request.requesterMention}'s date invitation. You are now officially dating.`)
+      .setColor(0x99ffcc);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "datedeny",
+  category: "Fun",
+  description: "Deny a date invitation.",
+  async run(ctx) {
+    const recipient = ctx.message.author;
+    const key = pendingDateKey(ctx.message.guild.id, recipient.id);
+    const request = pendingDateRequests.get(key);
+
+    if (!request) {
+      const embed = new EmbedBuilder()
+        .setTitle("No Date Request")
+        .setDescription("You do not have any pending date invitations.")
+        .setColor(0xffcc99);
+      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    pendingDateRequests.delete(key);
+    const embed = new EmbedBuilder()
+      .setTitle("Date Denied")
+      .setDescription(`${recipient} declined ${request.requesterMention}'s date invitation. Maybe the artifact will bless someone else.`)
+      .setColor(0xff6666);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "datebreak",
+  category: "Fun",
+  description: "End your current dating relationship.",
+  async run(ctx) {
+    const requester = ctx.message.author;
+    const partnerId = currentDatePartner(requester.id);
+
+    if (!partnerId) {
+      const embed = new EmbedBuilder()
+        .setTitle("No Relationship")
+        .setDescription("You are not currently dating anyone.")
+        .setColor(0xffcc99);
+      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    clearDatePair(requester.id);
+    const embed = new EmbedBuilder()
+      .setTitle("Date Broken")
+      .setDescription(`${requester} has ended their dating relationship with <@${partnerId}>. The ceremony is over.`)
+      .setColor(0xff9999);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "datehelp",
+  category: "Fun",
+  description: "List all date-related commands.",
+  async run(ctx) {
+    const embed = new EmbedBuilder()
+      .setTitle("Date Commands")
+      .setDescription("Use these commands to send requests, accept, deny, break up, or announce a cheating scandal.")
+      .addFields([
+        { name: `${ctx.config.prefix}date @user`, value: "Invite one person to date you.", inline: false },
+        { name: `${ctx.config.prefix}dateaccept`, value: "Accept a pending date invitation.", inline: false },
+        { name: `${ctx.config.prefix}datedeny`, value: "Decline a pending date invitation.", inline: false },
+        { name: `${ctx.config.prefix}datebreak`, value: "End your current dating relationship.", inline: false },
+        { name: `${ctx.config.prefix}datehelp`, value: "Show this help message.", inline: false },
+        { name: `${ctx.config.prefix}cheat @user`, value: "Announce you cheated on your partner with someone else.", inline: false }
+      ])
+      .setColor(0x99ccff);
+
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "cheat",
+  category: "Fun",
+  description: "Cheat on your partner with someone else.",
+  usage: "cheat @user",
+  async run(ctx) {
+    const mentions = [...ctx.message.mentions.users.values()];
+    const requester = ctx.message.author;
+
+    if (mentions.length !== 1) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
+      return;
+    }
+
+    const target = mentions[0];
+    if (target.id === requester.id) {
+      await ctx.message.reply("You cannot cheat with yourself.");
+      return;
+    }
+    if (!isUserDating(requester.id)) {
+      await ctx.message.reply("You are not currently dating anyone.");
+      return;
+    }
+
+    const partnerId = currentDatePartner(requester.id);
+    const embed = new EmbedBuilder()
+      .setTitle("Cheating Scandal")
+      .setDescription(`${requester} cheated on <@${partnerId}> with ${target}. The artifact is watching.`)
+      .setColor(0xff3366);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
   }
 });
 
