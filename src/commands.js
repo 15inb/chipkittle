@@ -896,6 +896,10 @@ define({
         { name: `${ctx.config.prefix}dateaccept`, value: "Accept a pending date invitation.", inline: false },
         { name: `${ctx.config.prefix}datedeny`, value: "Decline a pending date invitation.", inline: false },
         { name: `${ctx.config.prefix}datebreak`, value: "End your current dating relationship.", inline: false },
+        { name: `${ctx.config.prefix}kiss @user`, value: "Send a Chipkittle kiss to someone.", inline: false },
+        { name: `${ctx.config.prefix}hug @user`, value: "Wrap someone in a cozy Chipkittle hug.", inline: false },
+        { name: `${ctx.config.prefix}holdhands @user`, value: "Take someone's hand in a Chipkittle way.", inline: false },
+        { name: `${ctx.config.prefix}sex @user`, value: "Share a steamy moment with a partner or crush.", inline: false },
         { name: `${ctx.config.prefix}datehelp`, value: "Show this help message.", inline: false },
         { name: `${ctx.config.prefix}cheat @user`, value: "Announce you cheated on your partner with someone else.", inline: false }
       ])
@@ -934,6 +938,138 @@ define({
       .setTitle("Cheating Scandal")
       .setDescription(`${requester} cheated on <@${partnerId}> with ${target}. The artifact is watching.`)
       .setColor(0xff3366);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "kiss",
+  category: "Fun",
+  description: "Send a Chipkittle kiss to someone.",
+  usage: "kiss @user",
+  async run(ctx) {
+    const mentions = [...ctx.message.mentions.users.values()];
+    const requester = ctx.message.author;
+
+    if (mentions.length !== 1) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
+      return;
+    }
+
+    const target = mentions[0];
+    if (target.id === requester.id) {
+      await ctx.message.reply("You cannot kiss yourself.");
+      return;
+    }
+    if (target.bot) {
+      await ctx.message.reply("Bots do not return kisses.");
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle("Sweet Kiss")
+      .setDescription(`${requester} gives ${target} a gentle Chipkittle kiss. Romance is in the air.`)
+      .setColor(0xff99cc);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "hug",
+  category: "Fun",
+  description: "Wrap someone in a cozy Chipkittle hug.",
+  usage: "hug @user",
+  async run(ctx) {
+    const mentions = [...ctx.message.mentions.users.values()];
+    const requester = ctx.message.author;
+
+    if (mentions.length !== 1) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
+      return;
+    }
+
+    const target = mentions[0];
+    if (target.id === requester.id) {
+      await ctx.message.reply("You cannot hug yourself.");
+      return;
+    }
+    if (target.bot) {
+      await ctx.message.reply("Bots do not feel warm hugs.");
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle("Warm Hug")
+      .setDescription(`${requester} wraps ${target} in a comforting Chipkittle hug. Cozy vibes all around.`)
+      .setColor(0x99ccff);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "holdhands",
+  category: "Fun",
+  description: "Take someone's hand in a Chipkittle way.",
+  usage: "holdhands @user",
+  async run(ctx) {
+    const mentions = [...ctx.message.mentions.users.values()];
+    const requester = ctx.message.author;
+
+    if (mentions.length !== 1) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
+      return;
+    }
+
+    const target = mentions[0];
+    if (target.id === requester.id) {
+      await ctx.message.reply("You cannot hold hands with yourself.");
+      return;
+    }
+    if (target.bot) {
+      await ctx.message.reply("Bots do not have hands to hold.");
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle("Hand Holding")
+      .setDescription(`${requester} takes ${target}'s hand and walks in silent Chipkittle solidarity.`)
+      .setColor(0xccaaff);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "sex",
+  category: "Fun",
+  description: "Share a flirty Chipkittle moment with someone.",
+  usage: "sex @user",
+  async run(ctx) {
+    const mentions = [...ctx.message.mentions.users.values()];
+    const requester = ctx.message.author;
+
+    if (mentions.length !== 1) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
+      return;
+    }
+
+    const target = mentions[0];
+    if (target.id === requester.id) {
+      await ctx.message.reply("You cannot do that to yourself.");
+      return;
+    }
+    if (target.bot) {
+      await ctx.message.reply("Bots are not part of Chipkittle romance.");
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle("Hot Chipkittle Moment")
+      .setDescription(`${requester} and ${target} shared a very intimate Chipkittle moment. Keep it spicy.`)
+      .setColor(0xff3399);
 
     await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
   }
