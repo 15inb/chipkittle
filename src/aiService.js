@@ -72,6 +72,35 @@ export class AiService {
     return output;
   }
 
+  async chipkittleName(message, config, inspiration = "") {
+    if (!this.client) {
+      return "AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.";
+    }
+
+    const model = config.ai.model || this.defaultModel;
+    const seed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const prompt = [
+      "Generate one brand-new ceremonial Chipkittle name.",
+      "The name should feel strange, funny, ancient, and family-lore flavored.",
+      "Return only the name, no explanation, no quotes, no markdown.",
+      "Keep it safe for Discord and under 60 characters.",
+      inspiration ? `Optional inspiration: ${inspiration}` : "",
+      `Random seed: ${seed}`
+    ].filter(Boolean).join("\n");
+
+    const response = await this.client.responses.create({
+      model,
+      instructions: chipkittlePrompt(config.ai.personality),
+      input: [{ role: "user", content: prompt }],
+      max_output_tokens: 80
+    });
+
+    const name = neutralizeMentions(trimDiscordMessage(response.output_text, 120))
+      .split("\n")[0]
+      .replace(/^[\s"'`]+|[\s"'`]+$/g, "");
+    return name || "Mucklehorn Crumbwrit";
+  }
+
   async chipifyImage({ imageBuffer, mimeType, filename, userId }) {
     if (!this.client) {
       throw new Error("AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");

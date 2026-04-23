@@ -20,7 +20,6 @@ import {
 } from "./applicationTickets.js";
 import {
   CHIPKITTLE_LORE,
-  randomChipkittleName,
   randomChipkittleQuote
 } from "./chipkittleLore.js";
 import { NO_MENTIONS } from "./discordSafety.js";
@@ -1781,9 +1780,36 @@ define({
   name: "chipname",
   aliases: ["name"],
   category: "Chipkittle",
-  description: "Generate a safe Chipkittle name.",
+  description: "Use AI to generate a random Chipkittle name.",
+  usage: "chipname [inspiration]",
   async run(ctx) {
-    await ctx.message.reply(`Your Chipkittle name is **${randomChipkittleName()}**.`);
+    if (isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
+      await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
+      return;
+    }
+    if (!ctx.ai.enabled) {
+      await ctx.message.reply("AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");
+      return;
+    }
+
+    const rateLimit = checkAiRateLimit({
+      guildId: ctx.message.guild.id,
+      userId: ctx.message.author.id,
+      cooldownSeconds: ctx.config.ai.apiCooldownSeconds,
+      bucket: "chat"
+    });
+
+    if (rateLimit.limited) {
+      await ctx.message.reply({
+        content: `The artifact is cooling down. Try again in ${rateLimit.retryAfterSeconds}s.`,
+        allowedMentions: NO_MENTIONS
+      });
+      return;
+    }
+
+    await ctx.message.channel.sendTyping();
+    const name = await ctx.ai.chipkittleName(ctx.message, ctx.config, ctx.rest);
+    await ctx.message.reply(`Your Chipkittle name is **${name}**.`);
   }
 });
 
