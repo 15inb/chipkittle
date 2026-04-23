@@ -756,7 +756,7 @@ define({
 
 define({
   name: "date",
-  category: "Fun",
+  category: "Dating",
   description: "Invite someone to date you in the server.",
   usage: "date @user",
   async run(ctx) {
@@ -814,7 +814,7 @@ define({
 
 define({
   name: "dateaccept",
-  category: "Fun",
+  category: "Dating",
   description: "Accept a date invitation.",
   async run(ctx) {
     const recipient = ctx.message.author;
@@ -865,7 +865,7 @@ define({
 
 define({
   name: "datedeny",
-  category: "Fun",
+  category: "Dating",
   description: "Deny a date invitation.",
   async run(ctx) {
     const recipient = ctx.message.author;
@@ -893,7 +893,7 @@ define({
 
 define({
   name: "datebreak",
-  category: "Fun",
+  category: "Dating",
   description: "End your current dating relationship.",
   async run(ctx) {
     const requester = ctx.message.author;
@@ -920,7 +920,7 @@ define({
 
 define({
   name: "datehelp",
-  category: "Fun",
+  category: "Dating",
   description: "List all date-related commands.",
   usage: "datehelp",
   async run(ctx) {
@@ -959,7 +959,7 @@ define({
 
 define({
   name: "cheat",
-  category: "Fun",
+  category: "Dating",
   description: "Cheat on your partner with someone else.",
   usage: "cheat @user",
   async run(ctx) {
@@ -993,7 +993,7 @@ define({
 
 define({
   name: "kiss",
-  category: "Fun",
+  category: "Dating",
   description: "Send a Chipkittle kiss to someone.",
   usage: "kiss @user",
   async run(ctx) {
@@ -1026,7 +1026,7 @@ define({
 
 define({
   name: "hug",
-  category: "Fun",
+  category: "Dating",
   description: "Wrap someone in a cozy Chipkittle hug.",
   usage: "hug @user",
   async run(ctx) {
@@ -1059,7 +1059,7 @@ define({
 
 define({
   name: "holdhands",
-  category: "Fun",
+  category: "Dating",
   description: "Take someone's hand in a Chipkittle way.",
   usage: "holdhands @user",
   async run(ctx) {
@@ -1092,7 +1092,7 @@ define({
 
 define({
   name: "sex",
-  category: "Fun",
+  category: "Dating",
   description: "Share a flirty Chipkittle moment with someone.",
   usage: "sex @user",
   async run(ctx) {
@@ -1125,7 +1125,7 @@ define({
 
 define({
   name: "dateinfo",
-  category: "Fun",
+  category: "Dating",
   description: "Check who you're actively dating.",
   async run(ctx) {
     const requester = ctx.message.author;
@@ -1151,7 +1151,7 @@ define({
 
 define({
   name: "homewreck",
-  category: "Fun",
+  category: "Dating",
   description: "Homewreck someone's relationship with a steamy moment.",
   usage: "homewreck @user",
   async run(ctx) {
