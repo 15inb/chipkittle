@@ -939,6 +939,29 @@ define({
 });
 
 define({
+  name: "creampie",
+  category: "Dating",
+  description: "Make a lil Chipkittle for someone.",
+  usage: "creampie @user",
+  async run(ctx) {
+    const member = mentionUser(ctx.message);
+    await ctx.message.reply(`${member} made a lil Chipkittle.`);
+  }
+});
+
+define({
+  name: "rape",
+  category: "Dating",
+  description: "lil rape.",
+  usage: "rape @user",
+  async run(ctx) {
+    const member = mentionUser(ctx.message);
+    await ctx.message.reply(`${member} has been raped.`);
+  }
+});
+
+
+define({
   name: "date",
   category: "Dating",
   description: "Invite someone to date you in the server.",
