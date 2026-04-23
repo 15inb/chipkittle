@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, rm } from "node:fs/promises";
+import { access, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -16,6 +16,14 @@ import { ChannelType, PermissionsBitField } from "discord.js";
 const TTS_TEXT_CHANNEL_NAME = "ttsbot";
 const MAX_TTS_QUEUE = 10;
 const TTS_TMP_DIR = path.join(tmpdir(), "chipkittle-tts");
+const TTS_PROVIDER = (process.env.TTS_PROVIDER || "piper").toLowerCase();
+const PIPER_COMMAND = process.env.TTS_PIPER_COMMAND || "piper";
+const PIPER_MODEL = process.env.TTS_PIPER_MODEL || "";
+const PIPER_CONFIG = process.env.TTS_PIPER_CONFIG || "";
+const PIPER_SPEAKER = process.env.TTS_PIPER_SPEAKER || "";
+const PIPER_LENGTH_SCALE = process.env.TTS_PIPER_LENGTH_SCALE || "";
+const PIPER_NOISE_SCALE = process.env.TTS_PIPER_NOISE_SCALE || "";
+const PIPER_NOISE_WIDTH = process.env.TTS_PIPER_NOISE_WIDTH || "";
 const ESPEAK_COMMAND = process.env.TTS_ESPEAK_COMMAND || "espeak-ng";
 const ESPEAK_VOICE = process.env.TTS_ESPEAK_VOICE || "en-us";
 const ESPEAK_SPEED = process.env.TTS_ESPEAK_SPEED || "175";
@@ -37,10 +45,57 @@ function findTtsTextChannel(guild) {
 }
 
 async function createLocalSpeechFile(text) {
+  if (TTS_PROVIDER === "espeak") return createEspeakSpeechFile(text);
+  return createPiperSpeechFile(text);
+}
+
+async function createPiperSpeechFile(text) {
   await mkdir(TTS_TMP_DIR, { recursive: true });
   const filePath = path.join(TTS_TMP_DIR, `${randomUUID()}.wav`);
 
   await new Promise((resolve, reject) => {
+    const args = [
+      "--model",
+      PIPER_MODEL,
+      "--output_file",
+      filePath
+    ];
+
+    if (PIPER_CONFIG) args.push("--config", PIPER_CONFIG);
+    if (PIPER_SPEAKER) args.push("--speaker", PIPER_SPEAKER);
+    if (PIPER_LENGTH_SCALE) args.push("--length_scale", PIPER_LENGTH_SCALE);
+    if (PIPER_NOISE_SCALE) args.push("--noise_scale", PIPER_NOISE_SCALE);
+    if (PIPER_NOISE_WIDTH) args.push("--noise_w", PIPER_NOISE_WIDTH);
+
+    const child = spawn(PIPER_COMMAND, args, {
+      windowsHide: true
+    });
+
+    let errorOutput = "";
+    child.stderr.on("data", (chunk) => {
+      errorOutput += chunk.toString();
+    });
+    child.on("error", (error) => {
+      reject(new Error(`Could not start ${PIPER_COMMAND}: ${error.message}`));
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${PIPER_COMMAND} exited with code ${code}: ${errorOutput.trim()}`));
+    });
+    child.stdin.end(text);
+  });
+
+  return filePath;
+}
+
+async function createEspeakSpeechFile(text) {
+  await mkdir(TTS_TMP_DIR, { recursive: true });
+  const filePath = path.join(TTS_TMP_DIR, `${randomUUID()}.wav`);
+
+  return new Promise((resolve, reject) => {
     const child = spawn(ESPEAK_COMMAND, [
       "-v",
       ESPEAK_VOICE,
@@ -62,22 +117,47 @@ async function createLocalSpeechFile(text) {
     });
     child.on("close", (code) => {
       if (code === 0) {
-        resolve();
+        resolve(filePath);
         return;
       }
       reject(new Error(`${ESPEAK_COMMAND} exited with code ${code}: ${errorOutput.trim()}`));
     });
   });
-
-  return filePath;
 }
 
-async function localTtsAvailable() {
+async function commandAvailable(command) {
   return new Promise((resolve) => {
-    const child = spawn(ESPEAK_COMMAND, ["--version"], { windowsHide: true });
+    const child = spawn(command, ["--help"], { windowsHide: true });
     child.on("error", () => resolve(false));
     child.on("close", (code) => resolve(code === 0));
   });
+}
+
+async function localTtsStatus() {
+  if (TTS_PROVIDER === "espeak") {
+    if (await commandAvailable(ESPEAK_COMMAND)) return null;
+    return `Local TTS is not installed. Install eSpeak NG on the VPS with \`sudo apt install -y espeak-ng\`, or set TTS_ESPEAK_COMMAND to the right binary.`;
+  }
+
+  if (TTS_PROVIDER !== "piper") {
+    return `Unknown TTS_PROVIDER \`${TTS_PROVIDER}\`. Use \`piper\` or \`espeak\`.`;
+  }
+
+  if (!PIPER_MODEL) {
+    return "Piper TTS needs a voice model. Set `TTS_PIPER_MODEL=/path/to/voice.onnx` in `.env`, then restart the bot.";
+  }
+
+  if (!(await commandAvailable(PIPER_COMMAND))) {
+    return `Piper TTS is not installed or not on PATH. Install Piper, or set TTS_PIPER_COMMAND to the piper binary.`;
+  }
+
+  try {
+    await access(PIPER_MODEL);
+  } catch {
+    return `Piper voice model was not found at \`${PIPER_MODEL}\`. Check TTS_PIPER_MODEL in \`.env\`.`;
+  }
+
+  return null;
 }
 
 export class TtsVoiceService {
@@ -99,9 +179,8 @@ export class TtsVoiceService {
       return "Join a voice channel first, then run `/tts join`.";
     }
 
-    if (!(await localTtsAvailable())) {
-      return `Local TTS is not installed. Install eSpeak NG on the VPS with \`sudo apt install -y espeak-ng\`, or set TTS_ESPEAK_COMMAND to the right binary.`;
-    }
+    const ttsError = await localTtsStatus();
+    if (ttsError) return ttsError;
 
     const botMember = guildMember.guild.members.me;
     const voicePermissions = botMember?.permissionsIn(voiceChannel);

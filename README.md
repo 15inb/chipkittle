@@ -77,18 +77,42 @@ Highlights:
 
 ## Voice TTS
 
-Create a text channel named `#ttsbot`, join a voice channel, then run `/tts join`. After that, normal messages posted in `#ttsbot` are read aloud in the joined voice channel until `/tts leave` is run. TTS uses local `espeak-ng` on the server, so it does not use OpenAI API usage.
+Create a text channel named `#ttsbot`, join a voice channel, then run `/tts join`. After that, normal messages posted in `#ttsbot` are read aloud in the joined voice channel until `/tts leave` is run. TTS uses local Piper on the server, so it does not use OpenAI API usage.
 
-On Ubuntu/VPS hosting, install eSpeak NG before starting the bot:
+On Ubuntu/VPS hosting, install Piper and a voice model before starting the bot. This example uses the `en_US-lessac-medium` voice:
 
 ```bash
-sudo apt update
-sudo apt install -y espeak-ng
+mkdir -p ~/piper/voices
+cd ~/piper
+
+wget -O piper.tar.gz https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz
+tar -xzf piper.tar.gz
+
+cd ~/piper/voices
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
 ```
 
-Optional environment variables:
+Add these to `.env`:
 
 ```env
+TTS_PROVIDER=piper
+TTS_PIPER_COMMAND=/home/ubuntu/piper/piper/piper
+TTS_PIPER_MODEL=/home/ubuntu/piper/voices/en_US-lessac-medium.onnx
+```
+
+Optional tuning:
+
+```env
+TTS_PIPER_LENGTH_SCALE=1.0
+TTS_PIPER_NOISE_SCALE=0.667
+TTS_PIPER_NOISE_WIDTH=0.8
+```
+
+You can still force the old eSpeak backend if you need a no-model fallback:
+
+```env
+TTS_PROVIDER=espeak
 TTS_ESPEAK_COMMAND=espeak-ng
 TTS_ESPEAK_VOICE=en-us
 TTS_ESPEAK_SPEED=175
