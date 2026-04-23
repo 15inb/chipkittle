@@ -462,12 +462,42 @@ textarea:focus {
   gap: 10px;
 }
 
+.permission-category,
 .permission-row,
 .command-group {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface-2);
   overflow: hidden;
+}
+
+.permission-category {
+  background: rgba(21, 26, 34, 0.72);
+}
+
+.permission-category > summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 16px;
+  font-weight: 950;
+}
+
+.permission-category > summary span {
+  color: var(--accent);
+}
+
+.permission-category > summary small {
+  color: var(--muted);
+}
+
+.permission-category-body {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding: 12px;
 }
 
 .permission-row summary,
