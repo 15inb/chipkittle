@@ -36,6 +36,7 @@ const eightBallAnswers = [
 const IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_CHIPIFY_IMAGE_BYTES = 20 * 1024 * 1024;
 const PLAIN_OUTPUT_COMMANDS = new Set(["ask", "chipify"]);
+const MAX_REMINDER_TIMEOUT_MS = 2_147_000_000;
 
 const pendingDateRequests = new Map();
 const currentDates = new Map();
@@ -207,12 +208,24 @@ function closeThreadLater(client, channelId, reason, delayMs) {
 }
 
 function parseDuration(input = "") {
-  const match = input.match(/^(\d+)(s|m|h|d)$/i);
+  const exactMs = input.match(/^ms:(\d+)$/i);
+  if (exactMs) return Number(exactMs[1]);
+
+  const match = input.match(/^(\d+)(s|m|h|d|w|mo|y)$/i);
   if (!match) return null;
 
   const amount = Number(match[1]);
   const unit = match[2].toLowerCase();
-  const multipliers = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+  const day = 86_400_000;
+  const multipliers = {
+    s: 1000,
+    m: 60_000,
+    h: 3_600_000,
+    d: day,
+    w: 7 * day,
+    mo: 30 * day,
+    y: 365 * day
+  };
   return amount * multipliers[unit];
 }
 
@@ -223,7 +236,29 @@ function formatDuration(ms) {
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  if (days < 30) return `${weeks}w`;
+  const months = Math.floor(days / 30);
+  if (days < 365) return `${months}mo`;
+  return `${Math.floor(days / 365)}y`;
+}
+
+function scheduleReminder(callback, delayMs) {
+  const startedAt = Date.now();
+
+  function scheduleNext() {
+    const remaining = delayMs - (Date.now() - startedAt);
+    if (remaining <= 0) {
+      callback();
+      return;
+    }
+
+    setTimeout(scheduleNext, Math.min(remaining, MAX_REMINDER_TIMEOUT_MS));
+  }
+
+  scheduleNext();
 }
 
 function formatUptime(totalSeconds) {
@@ -1536,9 +1571,9 @@ define({
       return;
     }
 
-    setTimeout(() => {
+    scheduleReminder(() => {
       ctx.message.channel.send(`${ctx.message.author}, reminder: ${safeContent(reminder)}`).catch(() => {});
-    }, Math.min(duration, 7 * 86_400_000));
+    }, duration);
     await ctx.message.reply(`Reminder set for ${formatDuration(duration)}.`);
   }
 });

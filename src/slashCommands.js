@@ -18,11 +18,66 @@ function commandAcceptsInput(command) {
   return Boolean(command.usage);
 }
 
+function addReminderMessageOption(subcommand) {
+  return subcommand.addStringOption((option) =>
+    option
+      .setName("message")
+      .setDescription("What I should remind you about.")
+      .setRequired(true)
+  );
+}
+
+function addReminderAmountSubcommand(builder, name, description) {
+  return builder.addSubcommand((subcommand) =>
+    addReminderMessageOption(
+      subcommand
+        .setName(name)
+        .setDescription(description)
+        .addIntegerOption((option) =>
+          option
+            .setName("amount")
+            .setDescription(`Number of ${name}.`)
+            .setMinValue(1)
+            .setRequired(true)
+        )
+    )
+  );
+}
+
+function addReminderSubcommands(builder) {
+  builder.addSubcommand((subcommand) =>
+    addReminderMessageOption(
+      subcommand
+        .setName("specific-date")
+        .setDescription("Remind you on a specific date and time.")
+        .addStringOption((option) =>
+          option
+            .setName("when")
+            .setDescription("Date/time, like 2026-05-01 14:30 or 2026-05-01.")
+            .setRequired(true)
+        )
+    )
+  );
+
+  addReminderAmountSubcommand(builder, "minutes", "Remind you after a number of minutes.");
+  addReminderAmountSubcommand(builder, "hours", "Remind you after a number of hours.");
+  addReminderAmountSubcommand(builder, "days", "Remind you after a number of days.");
+  addReminderAmountSubcommand(builder, "weeks", "Remind you after a number of weeks.");
+  addReminderAmountSubcommand(builder, "months", "Remind you after a number of months.");
+  addReminderAmountSubcommand(builder, "years", "Remind you after a number of years.");
+
+  return builder;
+}
+
 export function buildSlashCommands(commandList) {
   return commandList.map((command) => {
     const builder = new SlashCommandBuilder()
       .setName(command.name)
       .setDescription(slashDescription(command));
+
+    if (command.name === "remind") {
+      return addReminderSubcommands(builder).toJSON();
+    }
 
     if (commandAcceptsInput(command)) {
       builder.addStringOption((option) =>
@@ -106,6 +161,46 @@ function normalizeReplyPayload(payload) {
   return typeof payload === "string" ? { content: payload } : payload;
 }
 
+function parseReminderDate(input) {
+  const value = String(input || "").trim();
+  if (!value) return null;
+
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const delayMs = date.getTime() - Date.now();
+  return delayMs > 0 ? delayMs : null;
+}
+
+function reminderInput(interaction) {
+  const subcommand = interaction.options.getSubcommand();
+  const message = interaction.options.getString("message", true).trim();
+  if (!message) return "";
+
+  if (subcommand === "specific-date") {
+    const delayMs = parseReminderDate(interaction.options.getString("when", true));
+    return delayMs ? `ms:${delayMs} ${message}` : "";
+  }
+
+  const amount = interaction.options.getInteger("amount", true);
+  const units = {
+    minutes: "m",
+    hours: "h",
+    days: "d",
+    weeks: "w",
+    months: "mo",
+    years: "y"
+  };
+
+  return `${amount}${units[subcommand]} ${message}`;
+}
+
+function inputForInteraction(interaction) {
+  if (interaction.commandName === "remind") return reminderInput(interaction);
+  return interaction.options.getString("input") || "";
+}
+
 function createInteractionMessage(interaction, input) {
   const content = `/${interaction.commandName}${input ? ` ${input}` : ""}`;
   const mentions = parseMentions(input, interaction.guild);
@@ -153,7 +248,7 @@ export async function handleSlashCommand(interaction, { handleCommandByName, sto
   if (!interaction.isChatInputCommand() || !interaction.guild) return false;
 
   const config = store.getGuild(interaction.guild.id);
-  const input = interaction.options.getString("input") || "";
+  const input = inputForInteraction(interaction);
   const message = createInteractionMessage(interaction, input.trim());
 
   if (SLOW_COMMANDS.has(interaction.commandName)) {
