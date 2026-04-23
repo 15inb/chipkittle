@@ -30,8 +30,6 @@ jobs:
           import json
           import os
           import sys
-          import urllib.error
-          import urllib.request
 
           webhook_url = os.environ["DISCORD_WEBHOOK_URL"].strip()
           if not webhook_url.startswith("https://discord.com/api/webhooks/"):
@@ -65,19 +63,16 @@ jobs:
               ]
           }
 
-          request = urllib.request.Request(
-              webhook_url,
-              data=json.dumps(payload).encode("utf-8"),
-              headers={"Content-Type": "application/json"},
-              method="POST",
-          )
-          try:
-              with urllib.request.urlopen(request, timeout=20) as response:
-                  response.read()
-          except urllib.error.HTTPError as error:
-              body = error.read().decode("utf-8", "replace")
-              print(f"Discord webhook request failed with HTTP {error.code}: {body}")
-              if error.code in {401, 403, 404}:
-                  print("The webhook secret is probably invalid, revoked, deleted, or missing permission to post in that Discord channel.")
-              raise
+          with open("discord-payload.json", "w", encoding="utf-8") as file:
+              json.dump(payload, file)
           PY
+
+          curl --fail-with-body \
+            --show-error \
+            --silent \
+            --retry 3 \
+            --retry-delay 2 \
+            --user-agent "GitHubActions-Chipkittle/1.0" \
+            --header "Content-Type: application/json" \
+            --data @discord-payload.json \
+            "$DISCORD_WEBHOOK_URL"
