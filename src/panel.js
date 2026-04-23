@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
 const UPDATE_STALE_MS = 10 * 60 * 1000;
 const ACTIVE_UPDATE_STATUSES = new Set(["running", "updating", "restarting"]);
 const SETTINGS_SECTIONS = [
-  { id: "general", label: "General", description: "Prefix, welcome, autorole, and public directory." },
+  { id: "general", label: "General", description: "Slash commands, legacy prefix, welcome, autorole, and public directory." },
   { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
   { id: "ai", label: "AI", description: "Chipkittle AI channels, model, cooldowns, and personality." },
   { id: "applications", label: "Applications", description: "DM questions, review threads, roles, and cooldowns." },
@@ -103,6 +103,11 @@ async function recentCommits(limit = 25) {
       const [hash, shortHash, author, date, subject] = entry.split("\x1f");
       return { hash, shortHash, author, date, subject };
     });
+}
+
+function displayCommitAuthor(author) {
+  const name = String(author || "").trim();
+  return name.toLowerCase() === "elijahenglish" ? "English" : name || "Unknown";
 }
 
 function commitUrl(hash) {
@@ -386,7 +391,7 @@ function commitsPage({ commits, error = "" }) {
                         <a class="commit-row" href="${commitUrl(commit.hash)}" target="_blank" rel="noreferrer">
                           <div>
                             <strong>${escapeHtml(commit.subject)}</strong>
-                            <small>${escapeHtml(commit.author)} on ${escapeHtml(commit.date)}</small>
+                            <small>${escapeHtml(displayCommitAuthor(commit.author))} on ${escapeHtml(commit.date)}</small>
                           </div>
                           <code>${escapeHtml(commit.shortHash)}</code>
                         </a>`
@@ -427,8 +432,8 @@ function commandCatalog(commandList, prefix) {
               .map(
                 (command) => `
                   <div>
-                    <strong>${escapeHtml(prefix)}${escapeHtml(command.name)}</strong>
-                    <small>${escapeHtml(command.description)}</small>
+                    <strong>/${escapeHtml(command.name)}</strong>
+                    <small>${escapeHtml(command.description)} Legacy text: ${escapeHtml(prefix)}${escapeHtml(command.name)}</small>
                   </div>`
               )
               .join("")}
@@ -545,10 +550,10 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
                 <section class="panel-section">
                   <div class="section-heading">
                     <h2>Command Settings</h2>
-                    <p>Set the prefix used by text commands.</p>
+                    <p>Slash commands use Discord's built-in / menu. This only changes the legacy text-command prefix.</p>
                   </div>
                   <label>
-                    Prefix
+                    Legacy text prefix
                     <input name="prefix" maxlength="5" value="${escapeHtml(config.prefix)}" required>
                   </label>
                 </section>
@@ -765,7 +770,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
             <section class="panel-section command-catalog">
               <div class="section-heading">
                 <h2>Command Catalog</h2>
-                <p>${commandList.length} commands are available with this server's prefix.</p>
+                <p>${commandList.length} slash commands are available. Legacy text commands still use this server's prefix.</p>
               </div>
               ${commandCatalog(commandList, config.prefix)}
             </section>
