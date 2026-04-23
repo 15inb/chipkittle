@@ -30,7 +30,7 @@ const ai = new AiService({
   apiKey: process.env.OPENAI_API_KEY,
   defaultModel: defaultAiModel
 });
-const client = createBot({ store, publicUrl, clientId, ai, defaultAiModel });
+const client = createBot({ store, publicUrl, clientId, guildId, token, ai, defaultAiModel });
 const app = createPanel({
   client,
   store,

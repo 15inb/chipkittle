@@ -41,8 +41,9 @@ export function buildPrettyEmbed({ title, description, color = DEFAULT_COLOR, fo
 }
 
 export function commandEmbedMeta({ command, config, message }) {
+  const prefix = message.commandPrefix || config.prefix;
   return {
-    title: `${config.prefix}${command.name}`,
+    title: `${prefix}${command.name}`,
     color: CATEGORY_COLORS[command.category] || DEFAULT_COLOR,
     footer: `Requested by ${message.author.tag}`
   };

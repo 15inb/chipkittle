@@ -2516,13 +2516,7 @@ export function createCommandHandler(options) {
     }
   }
 
-  async function handleCommand(message, config) {
-    if (!message.content.startsWith(config.prefix)) return false;
-
-    const { commandName, args, rest } = splitArgs(message.content, config.prefix);
-    const command = aliases.get(commandName);
-    if (!command) return false;
-
+  async function runCommand(command, message, config, args, rest) {
     const commandMessage = PLAIN_OUTPUT_COMMANDS.has(command.name)
       ? message
       : createEmbedMessageProxy(message, commandEmbedMeta({ command, config, message }));
@@ -2551,8 +2545,27 @@ export function createCommandHandler(options) {
     return true;
   }
 
+  async function handleCommand(message, config) {
+    if (!message.content.startsWith(config.prefix)) return false;
+
+    const { commandName, args, rest } = splitArgs(message.content, config.prefix);
+    const command = aliases.get(commandName);
+    if (!command) return false;
+
+    return runCommand(command, message, config, args, rest);
+  }
+
+  async function handleCommandByName(commandName, message, config, input = "") {
+    const command = aliases.get(commandName);
+    if (!command) return false;
+
+    const parts = input ? input.split(/\s+/) : [];
+    return runCommand(command, message, config, parts, input);
+  }
+
   return {
     handleCommand,
+    handleCommandByName,
     commandList: commandDefinitions
   };
 }

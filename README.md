@@ -6,7 +6,8 @@ This project runs a Discord bot and a password-protected web panel in one Node.j
 
 - Web panel login with `PANEL_PASSWORD`
 - Per-server config stored in `data/config.json`
-- Prefix commands: `help`, `ping`, `config`
+- Slash commands: `/help`, `/ping`, `/config`
+- Legacy prefix commands: `help`, `ping`, `config`
 - Expanded command catalog for info, fun, moderation, configuration, and Chipkittle lore
 - Chipkittle AI chat mode powered by OpenAI once you add an API key
 - Welcome messages with placeholders
@@ -58,7 +59,9 @@ This project runs a Discord bot and a password-protected web panel in one Node.j
 
 ## Commands
 
-Use `!help` in Discord to see the full command catalog. The panel also shows all available commands per server.
+Use `/help` in Discord to see the full command catalog. The bot still accepts the configured legacy text prefix, but slash commands are the recommended way to use it because Discord shows command suggestions and input prompts.
+
+Slash commands are registered automatically when the bot starts. Set `GUILD_ID` in `.env` while testing if you want command updates to appear quickly in one server. If `GUILD_ID` is empty, commands are registered globally and Discord may take longer to show updates.
 
 Highlights:
 

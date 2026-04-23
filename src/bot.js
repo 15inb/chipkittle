@@ -11,6 +11,7 @@ import { handleApplicationDm } from "./applicationTickets.js";
 import { commandList, createCommandHandler } from "./commands.js";
 import { NO_MENTIONS } from "./discordSafety.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
+import { handleSlashCommand, registerSlashCommands } from "./slashCommands.js";
 
 const invitePattern = /(discord\.gg|discord(?:app)?\.com\/invite)\/[a-z0-9-]+/i;
 const linkPattern = /https?:\/\/\S+/i;
@@ -74,7 +75,7 @@ function cleanAiPrompt(message, clientUserId) {
   return message.content.replaceAll(`<@${clientUserId}>`, "").replaceAll(`<@!${clientUserId}>`, "").trim();
 }
 
-export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
+export function createBot({ store, publicUrl, clientId, guildId, token, ai, defaultAiModel }) {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -85,7 +86,7 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
     ],
     partials: [Partials.Channel]
   });
-  const { handleCommand, commandList } = createCommandHandler({
+  const { handleCommand, handleCommandByName, commandList } = createCommandHandler({
     client,
     store,
     publicUrl,
@@ -98,6 +99,9 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
     await Promise.all(
       readyClient.guilds.cache.map((guild) => store.ensureGuild(guild.id))
     );
+    await registerSlashCommands({ token, clientId, guildId, commandList }).catch((error) => {
+      console.error("Slash command registration failed:", error);
+    });
     console.log(`Discord bot online as ${readyClient.user.tag}`);
   });
 
@@ -120,6 +124,23 @@ export function createBot({ store, publicUrl, clientId, ai, defaultAiModel }) {
     await channel
       .send({ content: formatWelcomeMessage(config.welcome.message, member) })
       .catch(() => {});
+  });
+
+  client.on(Events.InteractionCreate, async (interaction) => {
+    await handleSlashCommand(interaction, { handleCommandByName, store }).catch((error) => {
+      console.error("Slash command handling failed:", error);
+      if (interaction.isRepliable()) {
+        const payload = {
+          content: "That slash command failed. Check my permissions and try again.",
+          allowedMentions: NO_MENTIONS
+        };
+        if (interaction.replied || interaction.deferred) {
+          interaction.followUp(payload).catch(() => {});
+        } else {
+          interaction.reply({ ...payload, ephemeral: true }).catch(() => {});
+        }
+      }
+    });
   });
 
   client.on(Events.MessageCreate, async (message) => {
