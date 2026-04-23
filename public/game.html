@@ -103,7 +103,9 @@
     let lastTime = 0;
     let artifactTimer = 0;
     let stoneTimer = 0;
+    let bonusTimer = 0;
     let scorePrompted = false;
+    let elapsedTime = 0;
 
     bestValue.textContent = best;
 
@@ -206,6 +208,8 @@
       bread = 0;
       artifactTimer = 0;
       stoneTimer = 0;
+      bonusTimer = 120 + Math.random() * 30;
+      elapsedTime = 0;
       gameOver = false;
       scorePrompted = false;
       scoreForm.hidden = true;
@@ -223,6 +227,10 @@
       return padding + Math.random() * (canvas.height - padding * 2);
     }
 
+    function timeMultiplier() {
+      return 1 + Math.min(1.4, elapsedTime / 60);
+    }
+
     function spawnArtifact() {
       const breadDrop = Math.random() > 0.72;
       artifacts.push({
@@ -235,14 +243,29 @@
       });
     }
 
-    function spawnStone() {
-      stones.push({
-        x: canvas.width + 48,
-        y: randomY(52),
-        radius: 22 + Math.random() * 10,
-        speed: 210 + Math.random() * 110,
-        wobble: Math.random() * Math.PI * 2
+    function spawnBonusArtifact() {
+      artifacts.push({
+        x: canvas.width + 40,
+        y: randomY(),
+        radius: 20,
+        speed: 210 + Math.random() * 80,
+        bonus: true,
+        spin: Math.random() * Math.PI
       });
+    }
+
+    function spawnStone() {
+      const difficulty = timeMultiplier();
+      const stoneCount = elapsedTime > 90 && Math.random() < 0.22 ? 2 : 1;
+      for (let i = 0; i < stoneCount; i += 1) {
+        stones.push({
+          x: canvas.width + 48 + i * 28,
+          y: randomY(52),
+          radius: 22 + Math.random() * 10 + difficulty * 1.6,
+          speed: (210 + Math.random() * 110) * difficulty,
+          wobble: Math.random() * Math.PI * 2
+        });
+      }
     }
 
     function distance(a, b) {
@@ -276,15 +299,21 @@
       player.x = Math.max(player.radius + 8, Math.min(canvas.width - player.radius - 8, player.x));
       player.y = Math.max(player.radius + 8, Math.min(canvas.height - player.radius - 8, player.y));
 
+      elapsedTime += dt;
       artifactTimer -= dt;
       stoneTimer -= dt;
+      bonusTimer -= dt;
       if (artifactTimer <= 0) {
         spawnArtifact();
         artifactTimer = 0.7 + Math.random() * 0.55;
       }
       if (stoneTimer <= 0) {
         spawnStone();
-        stoneTimer = Math.max(0.48, 1.15 - score * 0.006) + Math.random() * 0.5;
+        stoneTimer = Math.max(0.34, 1.15 - elapsedTime * 0.015) / timeMultiplier() + Math.random() * 0.45;
+      }
+      if (bonusTimer <= 0) {
+        spawnBonusArtifact();
+        bonusTimer = 120 + Math.random() * 40;
       }
 
       artifacts.forEach((item) => {
@@ -299,7 +328,7 @@
       artifacts = artifacts.filter((item) => {
         if (distance(player, item) < player.radius + item.radius) {
           if (item.bread) bread += 1;
-          score += item.bread ? 5 : 10;
+          score += item.bonus ? 20 : item.bread ? 5 : 10;
           if (score > best) {
             best = score;
             localStorage.setItem(storageKey, String(best));
@@ -351,33 +380,51 @@
     function drawChipkittle() {
       ctx.save();
       ctx.translate(player.x, player.y);
-      ctx.fillStyle = "#2c3331";
+
+      ctx.fillStyle = "#111917";
       ctx.beginPath();
-      ctx.ellipse(-30, -16, 12, 34, 0.45, 0, Math.PI * 2);
-      ctx.ellipse(30, -16, 12, 34, -0.45, 0, Math.PI * 2);
+      ctx.moveTo(-20, -18);
+      ctx.quadraticCurveTo(-68, -92, -18, -122);
+      ctx.quadraticCurveTo(-14, -86, -12, -56);
+      ctx.quadraticCurveTo(-12, -44, -20, -18);
       ctx.fill();
-      const fur = ctx.createRadialGradient(-8, -10, 6, 0, 0, 42);
+      ctx.beginPath();
+      ctx.moveTo(20, -18);
+      ctx.quadraticCurveTo(68, -92, 18, -122);
+      ctx.quadraticCurveTo(14, -86, 12, -56);
+      ctx.quadraticCurveTo(12, -44, 20, -18);
+      ctx.fill();
+
+      const fur = ctx.createRadialGradient(0, -4, 6, 0, 0, 44);
       fur.addColorStop(0, "#ffffff");
-      fur.addColorStop(0.58, "#edf0e9");
+      fur.addColorStop(0.55, "#eef0ed");
       fur.addColorStop(1, "#cfd4cc");
       ctx.fillStyle = fur;
       ctx.beginPath();
-      ctx.arc(0, 0, 32, 0, Math.PI * 2);
+      ctx.ellipse(0, 2, 40, 44, 0, 0, Math.PI * 2);
       ctx.fill();
+
+      ctx.fillStyle = "#2c3331";
+      ctx.beginPath();
+      ctx.ellipse(-34, -10, 13, 40, 0.55, 0, Math.PI * 2);
+      ctx.ellipse(34, -10, 13, 40, -0.55, 0, Math.PI * 2);
+      ctx.fill();
+
       ctx.fillStyle = "#111917";
       ctx.beginPath();
-      ctx.arc(-12, -10, 5, 0, Math.PI * 2);
-      ctx.arc(12, -10, 5, 0, Math.PI * 2);
+      ctx.arc(-12, -16, 7, 0, Math.PI * 2);
+      ctx.arc(14, -16, 7, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#90f37a";
       ctx.beginPath();
-      ctx.arc(-10, -11, 2, 0, Math.PI * 2);
-      ctx.arc(14, -11, 2, 0, Math.PI * 2);
+      ctx.arc(-12, -16, 2.5, 0, Math.PI * 2);
+      ctx.arc(14, -16, 2.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#f1d0bd";
       ctx.beginPath();
-      ctx.ellipse(0, 8, 13, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 13, 15, 11, 0, 0, Math.PI * 2);
       ctx.fill();
+
       ctx.restore();
     }
 
@@ -395,6 +442,33 @@
         ctx.stroke();
         ctx.fillStyle = "rgba(255,255,255,0.45)";
         ctx.fillRect(-9, -6, 18, 4);
+      } else if (item.bonus) {
+        ctx.shadowColor = "#f0d54b";
+        ctx.shadowBlur = 26;
+        ctx.fillStyle = "#f7d25a";
+        ctx.beginPath();
+        ctx.moveTo(0, -28);
+        ctx.lineTo(10, -4);
+        ctx.lineTo(28, -2);
+        ctx.lineTo(14, 10);
+        ctx.lineTo(18, 26);
+        ctx.lineTo(0, 18);
+        ctx.lineTo(-18, 26);
+        ctx.lineTo(-14, 10);
+        ctx.lineTo(-28, -2);
+        ctx.lineTo(-10, -4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#8b6a11";
+        ctx.beginPath();
+        ctx.moveTo(-6, -8);
+        ctx.lineTo(0, 4);
+        ctx.lineTo(6, -4);
+        ctx.lineTo(4, 12);
+        ctx.lineTo(0, 2);
+        ctx.lineTo(-6, 4);
+        ctx.closePath();
+        ctx.fill();
       } else {
         ctx.shadowColor = "#65d64a";
         ctx.shadowBlur = 24;
