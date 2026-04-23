@@ -739,7 +739,7 @@ define({
       return;
     }
     if (target.bot) {
-      await ctx.message.reply("You cannot invite a bot to date.");
+      await ctx.message.reply("You cannot invite a bot to date. ");
       return;
     }
     if (isUserDating(requester.id)) {
