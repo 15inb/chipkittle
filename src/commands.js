@@ -1939,7 +1939,7 @@ define({
       return;
     }
 
-    if (isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
+    if (ctx.message.guild && isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
       await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
       return;
     }
@@ -1951,7 +1951,7 @@ define({
     }
 
     const rateLimit = checkAiRateLimit({
-      guildId: ctx.message.guild.id,
+      guildId: ctx.message.guild?.id || "dm",
       userId: ctx.message.author.id,
       cooldownSeconds: ctx.config.ai.imageCooldownSeconds,
       bucket: "image"
@@ -3001,6 +3001,16 @@ export function createCommandHandler(options) {
     return runCommand(command, message, config, args, rest);
   }
 
+  async function handleDmCommand(message, config) {
+    if (!message.content.startsWith(config.prefix)) return false;
+
+    const { commandName, args, rest } = splitArgs(message.content, config.prefix);
+    const command = aliases.get(commandName);
+    if (command?.name !== "chipify") return false;
+
+    return runCommand(command, message, config, args, rest);
+  }
+
   async function handleCommandByName(commandName, message, config, input = "") {
     const command = aliases.get(commandName);
     if (!command) return false;
@@ -3012,6 +3022,7 @@ export function createCommandHandler(options) {
   return {
     handleCommand,
     handleCommandByName,
+    handleDmCommand,
     commandList: commandDefinitions
   };
 }

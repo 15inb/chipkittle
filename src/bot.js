@@ -89,7 +89,7 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
     partials: [Partials.Channel]
   });
   const tts = new TtsVoiceService({ ai });
-  const { handleCommand, handleCommandByName, commandList } = createCommandHandler({
+  const { handleCommand, handleCommandByName, handleDmCommand, commandList } = createCommandHandler({
     client,
     store,
     publicUrl,
@@ -98,6 +98,13 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
     tts,
     defaultAiModel
   });
+
+  function configForDirectMessage() {
+    const guild = guildId
+      ? client.guilds.cache.get(guildId)
+      : client.guilds.cache.first();
+    return guild ? store.getGuild(guild.id) : null;
+  }
 
   client.once(Events.ClientReady, async (readyClient) => {
     await Promise.all(
@@ -167,6 +174,9 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
     if (message.author.bot) return;
 
     if (!message.guild) {
+      const dmConfig = configForDirectMessage();
+      if (dmConfig && await handleDmCommand(message, dmConfig)) return;
+
       await handleApplicationDm({ client, store, message }).catch((error) => {
         console.error("Application DM handling failed:", error);
       });
