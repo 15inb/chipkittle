@@ -46,7 +46,12 @@ export function buildSlashCommands(commandList) {
   });
 }
 
-export async function registerSlashCommands({ token, clientId, guildId, commandList }) {
+async function registerGuildSlashCommands(rest, clientId, guildId, body) {
+  await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body });
+  console.log(`Registered ${body.length} slash command(s) for guild ${guildId}.`);
+}
+
+export async function registerSlashCommands({ token, clientId, guildId, guilds, commandList }) {
   if (!token || !clientId) {
     console.warn("Slash commands were not registered because DISCORD_TOKEN or CLIENT_ID is missing.");
     return;
@@ -54,14 +59,20 @@ export async function registerSlashCommands({ token, clientId, guildId, commandL
 
   const rest = new REST({ version: "10" }).setToken(token);
   const body = buildSlashCommands(commandList);
-  const route = guildId
-    ? Routes.applicationGuildCommands(clientId, guildId)
-    : Routes.applicationCommands(clientId);
 
-  await rest.put(route, { body });
-  console.log(
-    `Registered ${body.length} slash command(s) ${guildId ? `for guild ${guildId}` : "globally"}.`
-  );
+  if (guildId) {
+    await registerGuildSlashCommands(rest, clientId, guildId, body);
+    return;
+  }
+
+  const guildIds = [...(guilds?.keys?.() || [])];
+  if (guildIds.length) {
+    await Promise.all(guildIds.map((id) => registerGuildSlashCommands(rest, clientId, id, body)));
+    return;
+  }
+
+  await rest.put(Routes.applicationCommands(clientId), { body });
+  console.log(`Registered ${body.length} slash command(s) globally.`);
 }
 
 function parseMentions(input, guild) {

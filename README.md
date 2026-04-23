@@ -61,7 +61,7 @@ This project runs a Discord bot and a password-protected web panel in one Node.j
 
 Use `/help` in Discord to see the full command catalog. The bot still accepts the configured legacy text prefix, but slash commands are the recommended way to use it because Discord shows command suggestions and input prompts.
 
-Slash commands are registered automatically when the bot starts. Set `GUILD_ID` in `.env` while testing if you want command updates to appear quickly in one server. If `GUILD_ID` is empty, commands are registered globally and Discord may take longer to show updates.
+Slash commands are registered automatically when the bot starts. If `GUILD_ID` is set, commands are registered only for that server. If `GUILD_ID` is empty, the bot registers commands directly in every server it has joined so updates appear quickly after restart.
 
 Highlights:
 

@@ -99,7 +99,13 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
     await Promise.all(
       readyClient.guilds.cache.map((guild) => store.ensureGuild(guild.id))
     );
-    await registerSlashCommands({ token, clientId, guildId, commandList }).catch((error) => {
+    await registerSlashCommands({
+      token,
+      clientId,
+      guildId,
+      guilds: readyClient.guilds.cache,
+      commandList
+    }).catch((error) => {
       console.error("Slash command registration failed:", error);
     });
     console.log(`Discord bot online as ${readyClient.user.tag}`);
@@ -107,6 +113,16 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
 
   client.on(Events.GuildCreate, async (guild) => {
     await store.ensureGuild(guild.id);
+    if (!guildId || guildId === guild.id) {
+      await registerSlashCommands({
+        token,
+        clientId,
+        guildId: guild.id,
+        commandList
+      }).catch((error) => {
+        console.error(`Slash command registration failed for guild ${guild.id}:`, error);
+      });
+    }
   });
 
   client.on(Events.GuildMemberAdd, async (member) => {
