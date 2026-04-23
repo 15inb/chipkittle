@@ -1,4 +1,13 @@
-import { AttachmentBuilder, ChannelType, EmbedBuilder, PermissionsBitField } from "discord.js";
+import {
+  ActionRowBuilder,
+  AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  EmbedBuilder,
+  PermissionsBitField,
+  StringSelectMenuBuilder
+} from "discord.js";
 import { checkAiRateLimit } from "./aiRateLimit.js";
 import {
   applicantIdFromChannel,
@@ -79,6 +88,104 @@ function define(command) {
 
 function usage(config, command) {
   return `${config.prefix}${command.usage || command.name}`;
+}
+
+const HELP_COMMANDS_PER_PAGE = 8;
+
+function commandCategoryMap(commandList) {
+  const byCategory = new Map();
+  for (const item of commandList) {
+    const category = item.category || "Other";
+    byCategory.set(category, [...(byCategory.get(category) || []), item]);
+  }
+  return byCategory;
+}
+
+function chunkItems(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function helpCustomId(messageId, action) {
+  return `help:${messageId}:${action}`;
+}
+
+function formatHelpCommand(config, command) {
+  const aliases = command.aliases?.length ? ` Aliases: ${command.aliases.join(", ")}.` : "";
+  return `\`${config.prefix}${command.name}\` - ${command.description || "No description."}${aliases}`;
+}
+
+function helpOverviewEmbed(ctx, byCategory) {
+  const categories = [...byCategory.entries()]
+    .map(([category, items]) => `**${category}** - ${items.length} command${items.length === 1 ? "" : "s"}`)
+    .join("\n");
+
+  return buildPrettyEmbed({
+    title: "Chipkittle Help",
+    description: [
+      `Commands for this server use \`${ctx.config.prefix}\` or Discord slash commands.`,
+      "Use the dropdown below to view a command category.",
+      "",
+      categories,
+      "",
+      `Use \`${ctx.config.prefix}help command\` for details about one command.`
+    ].join("\n"),
+    color: 0x65d6ad,
+    footer: `Requested by ${ctx.message.author.tag}`
+  });
+}
+
+function helpCategoryEmbed(ctx, category, commands, page) {
+  const pages = chunkItems(commands, HELP_COMMANDS_PER_PAGE);
+  const pageItems = pages[page] || pages[0] || [];
+  const commandLines = pageItems.map((command) => formatHelpCommand(ctx.config, command)).join("\n");
+
+  return buildPrettyEmbed({
+    title: `${category} Commands`,
+    description: commandLines || "No commands in this category.",
+    color: 0x65d6ad,
+    footer: `Page ${page + 1}/${Math.max(pages.length, 1)} - Requested by ${ctx.message.author.tag}`
+  });
+}
+
+function helpComponents(ctx, byCategory, selectedCategory = "", page = 0, disabled = false) {
+  const categories = [...byCategory.keys()];
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(helpCustomId(ctx.message.id, "category"))
+    .setPlaceholder("Choose a command category")
+    .setDisabled(disabled)
+    .addOptions(
+      categories.slice(0, 25).map((category) => ({
+        label: category,
+        value: category,
+        description: `${byCategory.get(category).length} command${byCategory.get(category).length === 1 ? "" : "s"}`,
+        default: category === selectedCategory
+      }))
+    );
+
+  const components = [new ActionRowBuilder().addComponents(select)];
+  if (selectedCategory) {
+    const pages = chunkItems(byCategory.get(selectedCategory) || [], HELP_COMMANDS_PER_PAGE);
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(helpCustomId(ctx.message.id, "prev"))
+          .setLabel("Previous")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(disabled || page <= 0),
+        new ButtonBuilder()
+          .setCustomId(helpCustomId(ctx.message.id, "next"))
+          .setLabel("Next")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(disabled || page >= pages.length - 1)
+      )
+    );
+  }
+
+  return components;
 }
 
 function mentionUser(message) {
@@ -471,20 +578,48 @@ define({
       return;
     }
 
-    const byCategory = new Map();
-    for (const item of ctx.commandList) {
-      const category = item.category || "Other";
-      byCategory.set(category, [...(byCategory.get(category) || []), item]);
-    }
-
-    const lines = [...byCategory.entries()].map(([category, items]) => {
-      const names = items.map((item) => `\`${ctx.config.prefix}${item.name}\``).join(" ");
-      return `**${category}**\n${names}`;
+    const byCategory = commandCategoryMap(ctx.commandList);
+    let selectedCategory = "";
+    let page = 0;
+    const sent = await ctx.message.reply({
+      embeds: [helpOverviewEmbed(ctx, byCategory)],
+      components: helpComponents(ctx, byCategory)
     });
 
-    await ctx.message.reply(
-      `Commands for this server use \`${ctx.config.prefix}\`.\n\n${lines.join("\n\n")}\n\nUse \`${ctx.config.prefix}help command\` for details.`
-    );
+    const collector = sent.createMessageComponentCollector({ time: 180_000 });
+    collector.on("collect", async (interaction) => {
+      if (interaction.user.id !== ctx.message.author.id) {
+        await interaction.reply({
+          content: "Only the person who opened this help menu can use it.",
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.isStringSelectMenu()) {
+        selectedCategory = interaction.values[0];
+        page = 0;
+      } else if (interaction.isButton() && selectedCategory) {
+        const pages = chunkItems(byCategory.get(selectedCategory) || [], HELP_COMMANDS_PER_PAGE);
+        if (interaction.customId.endsWith(":prev")) page = Math.max(page - 1, 0);
+        if (interaction.customId.endsWith(":next")) page = Math.min(page + 1, pages.length - 1);
+      }
+
+      await interaction.update({
+        embeds: [
+          selectedCategory
+            ? helpCategoryEmbed(ctx, selectedCategory, byCategory.get(selectedCategory) || [], page)
+            : helpOverviewEmbed(ctx, byCategory)
+        ],
+        components: helpComponents(ctx, byCategory, selectedCategory, page)
+      });
+    });
+
+    collector.on("end", () => {
+      sent.edit({
+        components: helpComponents(ctx, byCategory, selectedCategory, page, true)
+      }).catch(() => {});
+    });
   }
 });
 
