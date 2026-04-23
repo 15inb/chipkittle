@@ -887,24 +887,35 @@ define({
   name: "datehelp",
   category: "Fun",
   description: "List all date-related commands.",
+  usage: "datehelp",
   async run(ctx) {
+    const commandNames = [
+      "date",
+      "dateaccept",
+      "datedeny",
+      "datebreak",
+      "dateinfo",
+      "kiss",
+      "hug",
+      "holdhands",
+      "sex",
+      "homewreck",
+      "cheat"
+    ];
+    const commands = commandNames
+      .map((name) => ctx.commandList.find((command) => command.name === name))
+      .filter(Boolean);
+
+    const fields = commands.map((command) => ({
+      name: `${ctx.config.prefix}${command.usage || command.name}`,
+      value: command.description || "No description available.",
+      inline: false
+    }));
+
     const embed = new EmbedBuilder()
       .setTitle("Date Commands")
-      .setDescription("Use these commands to send requests, accept, deny, break up, or announce a cheating scandal.")
-      .addFields([
-        { name: `${ctx.config.prefix}date @user`, value: "Invite one person to date you.", inline: false },
-        { name: `${ctx.config.prefix}dateaccept`, value: "Accept a pending date invitation.", inline: false },
-        { name: `${ctx.config.prefix}datedeny`, value: "Decline a pending date invitation.", inline: false },
-        { name: `${ctx.config.prefix}datebreak`, value: "End your current dating relationship.", inline: false },
-        { name: `${ctx.config.prefix}dateinfo`, value: "Check who you're dating.", inline: false },
-        { name: `${ctx.config.prefix}kiss @user`, value: "Send a Chipkittle kiss to someone.", inline: false },
-        { name: `${ctx.config.prefix}hug @user`, value: "Wrap someone in a cozy Chipkittle hug.", inline: false },
-        { name: `${ctx.config.prefix}holdhands @user`, value: "Take someone's hand in a Chipkittle way.", inline: false },
-        { name: `${ctx.config.prefix}sex @user`, value: "Share a steamy moment with a partner or crush.", inline: false },
-        { name: `${ctx.config.prefix}homewreck @user`, value: "Homewreck someone's relationship with a steamy moment.", inline: false },
-        { name: `${ctx.config.prefix}datehelp`, value: "Show this help message.", inline: false },
-        { name: `${ctx.config.prefix}cheat @user`, value: "Announce you cheated on your partner with someone else.", inline: false }
-      ])
+      .setDescription("Use these commands to send requests, accept, deny, break up, or announce a dating scandal.")
+      .addFields(fields)
       .setColor(0x99ccff);
 
     await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
