@@ -896,10 +896,12 @@ define({
         { name: `${ctx.config.prefix}dateaccept`, value: "Accept a pending date invitation.", inline: false },
         { name: `${ctx.config.prefix}datedeny`, value: "Decline a pending date invitation.", inline: false },
         { name: `${ctx.config.prefix}datebreak`, value: "End your current dating relationship.", inline: false },
+        { name: `${ctx.config.prefix}dateinfo`, value: "Check who you're dating.", inline: false },
         { name: `${ctx.config.prefix}kiss @user`, value: "Send a Chipkittle kiss to someone.", inline: false },
         { name: `${ctx.config.prefix}hug @user`, value: "Wrap someone in a cozy Chipkittle hug.", inline: false },
         { name: `${ctx.config.prefix}holdhands @user`, value: "Take someone's hand in a Chipkittle way.", inline: false },
         { name: `${ctx.config.prefix}sex @user`, value: "Share a steamy moment with a partner or crush.", inline: false },
+        { name: `${ctx.config.prefix}homewreck @user`, value: "Homewreck someone's relationship with a steamy moment.", inline: false },
         { name: `${ctx.config.prefix}datehelp`, value: "Show this help message.", inline: false },
         { name: `${ctx.config.prefix}cheat @user`, value: "Announce you cheated on your partner with someone else.", inline: false }
       ])
@@ -1070,6 +1072,70 @@ define({
       .setTitle("Hot Chipkittle Moment")
       .setDescription(`${requester} and ${target} shared a very intimate Chipkittle moment. Keep it spicy.`)
       .setColor(0xff3399);
+
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "dateinfo",
+  category: "Fun",
+  description: "Check who you're actively dating.",
+  async run(ctx) {
+    const requester = ctx.message.author;
+    const partnerId = currentDatePartner(requester.id);
+
+    if (!partnerId) {
+      const embed = new EmbedBuilder()
+        .setTitle("Dating Status")
+        .setDescription("You are not currently dating anyone.")
+        .setColor(0xffcc99);
+      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle("Dating Status")
+      .setDescription(`You are dating <@${partnerId}>.`)
+      .setColor(0x99ffcc);
+
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "homewreck",
+  category: "Fun",
+  description: "Homewreck someone's relationship with a steamy moment.",
+  usage: "homewreck @user",
+  async run(ctx) {
+    const mentions = [...ctx.message.mentions.users.values()];
+    const requester = ctx.message.author;
+
+    if (mentions.length !== 1) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
+      return;
+    }
+
+    const target = mentions[0];
+    if (target.id === requester.id) {
+      await ctx.message.reply("You cannot homewreck yourself.");
+      return;
+    }
+    if (target.bot) {
+      await ctx.message.reply("Bots are not part of Chipkittle romance.");
+      return;
+    }
+    if (!isUserDating(target.id)) {
+      await ctx.message.reply(`${target} is not in a relationship. Use !sex instead.`);
+      return;
+    }
+
+    const partnerId = currentDatePartner(target.id);
+    const embed = new EmbedBuilder()
+      .setTitle("Homewrecking Scandal")
+      .setDescription(`${requester} homewrecked ${target}'s relationship with <@${partnerId}> in a steamy Chipkittle moment. Drama ensues.`)
+      .setColor(0xff3366);
 
     await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
   }
