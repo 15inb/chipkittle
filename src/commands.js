@@ -633,6 +633,48 @@ define({
 });
 
 define({
+  name: "insult",
+  category: "Fun",
+  description: "Deliver a Chipkittle insult to a member.",
+  usage: "insult @user",
+  async run(ctx) {
+    const insults = [
+      "doesn't have the horns for this family",
+      "is unworthy of the suit",
+      "lacks the artifact's blessing",
+      "is too weak to join the Round Table",
+      "will never understand the ceremony",
+      "is a stain on the Chipkittle name",
+      "doesn't deserve a Chipkittle name",
+      "failed the silence test",
+      "has betrayed the principles",
+      "is banned from the bakery",
+      "will never wear the suit",
+      "lacks respect for the family",
+      "will never comprehend the lore",
+      "is cursed by the artifact",
+      "doesn't have what it takes",
+      "is forever banned from bread",
+      "will never rise in rank",
+      "is a disappointment to the horns",
+      "lacks the silent strength",
+      "is not worthy of Chipkittle honor"
+    ];
+
+    const member = mentionUser(ctx.message);
+    const insult = insults[Math.floor(Math.random() * insults.length)];
+    
+    const embed = new EmbedBuilder()
+      .setColor(0xef4444)
+      .setTitle("Chipkittle Judgment")
+      .setDescription(`${member} ${insult}.`)
+      .setFooter({ text: "The artifact has spoken." });
+    
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
   name: "ship",
   category: "Fun",
   description: "Calculate fake compatibility.",
