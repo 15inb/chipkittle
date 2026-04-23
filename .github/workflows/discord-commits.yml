@@ -71,10 +71,9 @@ jobs:
                       "title": "Chipkittle Commit",
                       "url": commits_url,
                       "description": (
-                          f"**{relative_time}**\n"
-                          "Check out the latest developments and changes on:\n"
-                          f"{commits_url}\n"
-                          "Changes might not always be reflected immediately, the server may need to restart to apply any updates.\n\n"
+                          f"**{relative_time}**\n\n"
+                          "Latest public changes:\n"
+                          f"[View the commit log]({commits_url})\n\n"
                           f"```diff\n+ {head_message}\n```"
                       ),
                       "color": 3447003,
