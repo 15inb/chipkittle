@@ -429,8 +429,90 @@ a {
 }
 
 .directory,
-.commit-shell {
+.commit-shell,
+.game-shell {
   padding-bottom: clamp(56px, 8vw, 104px);
+}
+
+.game-page {
+  background-attachment: fixed;
+}
+
+.game-head {
+  padding-bottom: 24px;
+}
+
+.game-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 18px;
+  align-items: stretch;
+  padding-inline: clamp(20px, 5vw, 80px);
+}
+
+.game-stage {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 14px;
+  background: var(--card-bg);
+  box-shadow: 0 30px 86px rgba(16, 25, 21, 0.16);
+  backdrop-filter: blur(18px);
+}
+
+.game-stage canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.game-panel {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 14px;
+  padding: 18px;
+  background: var(--panel);
+  box-shadow: 0 30px 86px rgba(16, 25, 21, 0.14);
+  backdrop-filter: blur(18px);
+}
+
+.game-stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.game-stat span {
+  color: var(--soft-ink);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.game-stat strong {
+  color: var(--green-dark);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.game-controls {
+  display: grid;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.game-controls .button {
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  cursor: pointer;
 }
 
 .member-grid,
@@ -537,8 +619,18 @@ a {
   }
 
   .member-card,
-  .commit-row {
+  .commit-row,
+  .game-shell {
     grid-template-columns: 1fr;
+  }
+
+  .game-panel {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .game-controls {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
@@ -571,5 +663,13 @@ a {
 
   .trusted strong {
     font-size: 16px;
+  }
+
+  .game-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .game-controls {
+    grid-template-columns: 1fr;
   }
 }
