@@ -222,6 +222,56 @@ function requirePermission(ctx, permission) {
   return false;
 }
 
+function botModerationPermissionMessage(action, permissionName) {
+  return `I cannot ${action} that member. Make sure my bot role is above their highest role and I have ${permissionName}.`;
+}
+
+async function canModerateTarget(ctx, member, action, botCapability, permissionName) {
+  if (member.id === ctx.message.author.id) {
+    await ctx.message.reply(`You cannot ${action} yourself.`);
+    return false;
+  }
+
+  if (member.id === ctx.client.user.id) {
+    await ctx.message.reply(`I cannot ${action} myself.`);
+    return false;
+  }
+
+  if (member.id === ctx.message.guild.ownerId) {
+    await ctx.message.reply(`I cannot ${action} the server owner.`);
+    return false;
+  }
+
+  if (ctx.message.author.id !== ctx.message.guild.ownerId) {
+    const actorRole = ctx.message.member?.roles.highest;
+    const targetRole = member.roles.highest;
+    if (actorRole && targetRole && targetRole.position >= actorRole.position) {
+      await ctx.message.reply(`You cannot ${action} a member with an equal or higher role.`);
+      return false;
+    }
+  }
+
+  if (!member[botCapability]) {
+    await ctx.message.reply(botModerationPermissionMessage(action, permissionName));
+    return false;
+  }
+
+  return true;
+}
+
+async function runModerationAction(ctx, member, action, callback, permissionName) {
+  try {
+    await callback();
+    return true;
+  } catch (error) {
+    if (error?.code === 50013) {
+      await ctx.message.reply(botModerationPermissionMessage(action, permissionName));
+      return false;
+    }
+    throw error;
+  }
+}
+
 function isAiChannelBlacklisted(config, channelId) {
   return (config.ai.blacklistedChannelIds || []).includes(channelId);
 }
@@ -2016,7 +2066,18 @@ define({
       return;
     }
 
-    await member.timeout(Math.min(duration, 28 * 86_400_000), reason);
+    if (!(await canModerateTarget(ctx, member, "timeout", "moderatable", "Moderate Members"))) return;
+
+    const timeoutDuration = Math.min(duration, 28 * 86_400_000);
+    const completed = await runModerationAction(
+      ctx,
+      member,
+      "timeout",
+      () => member.timeout(timeoutDuration, reason),
+      "Moderate Members"
+    );
+    if (!completed) return;
+
     const output = `${member} timed out for ${formatDuration(duration)}. Reason: ${reason}`;
     await ctx.message.reply(output);
     await sendModerationLog(ctx, output);
@@ -2036,7 +2097,17 @@ define({
       return;
     }
 
-    await member.timeout(null);
+    if (!(await canModerateTarget(ctx, member, "remove timeout from", "moderatable", "Moderate Members"))) return;
+
+    const completed = await runModerationAction(
+      ctx,
+      member,
+      "remove timeout from",
+      () => member.timeout(null),
+      "Moderate Members"
+    );
+    if (!completed) return;
+
     const output = `${member} is no longer timed out.`;
     await ctx.message.reply(output);
     await sendModerationLog(ctx, output);
@@ -2057,7 +2128,17 @@ define({
       return;
     }
 
-    await member.kick(reason);
+    if (!(await canModerateTarget(ctx, member, "kick", "kickable", "Kick Members"))) return;
+
+    const completed = await runModerationAction(
+      ctx,
+      member,
+      "kick",
+      () => member.kick(reason),
+      "Kick Members"
+    );
+    if (!completed) return;
+
     const output = `${member.user.tag} was kicked. Reason: ${reason}`;
     await ctx.message.reply(output);
     await sendModerationLog(ctx, output);
@@ -2078,7 +2159,17 @@ define({
       return;
     }
 
-    await member.ban({ reason });
+    if (!(await canModerateTarget(ctx, member, "ban", "bannable", "Ban Members"))) return;
+
+    const completed = await runModerationAction(
+      ctx,
+      member,
+      "ban",
+      () => member.ban({ reason }),
+      "Ban Members"
+    );
+    if (!completed) return;
+
     const output = `${member.user.tag} was banned. Reason: ${reason}`;
     await ctx.message.reply(output);
     await sendModerationLog(ctx, output);

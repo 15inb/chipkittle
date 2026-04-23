@@ -224,10 +224,11 @@ function createInteractionMessage(interaction, input) {
 
     if (!interaction.replied && !interaction.deferred) {
       firstReplySent = true;
-      return interaction.reply({ ...options, fetchReply: true });
+      await interaction.reply(options);
+      return interaction.fetchReply();
     }
     firstReplySent = true;
-    return interaction.followUp({ ...options, fetchReply: true });
+    return interaction.followUp(options);
   }
 
   return {
