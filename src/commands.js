@@ -633,12 +633,12 @@ define({
 });
 
 define({
-  name: "insult",
+  name: "curse",
   category: "Fun",
-  description: "Deliver a Chipkittle insult to a member.",
-  usage: "insult @user",
+  description: "Deliver a Chipkittle curse to a member.",
+  usage: "curse @user",
   async run(ctx) {
-    const insults = [
+    const curses = [
       "doesn't have the horns for this family",
       "is unworthy of the suit",
       "lacks the artifact's blessing",
@@ -661,16 +661,17 @@ define({
       "is not worthy of Chipkittle honor"
     ];
 
+    await ctx.message.delete().catch(() => {});
     const member = mentionUser(ctx.message);
-    const insult = insults[Math.floor(Math.random() * insults.length)];
+    const curse = curses[Math.floor(Math.random() * curses.length)];
     
     const embed = new EmbedBuilder()
       .setColor(0xef4444)
       .setTitle("Chipkittle Judgment")
-      .setDescription(`${member} ${insult}.`)
+      .setDescription(`${member} ${curse}.`)
       .setFooter({ text: "The artifact has spoken." });
     
-    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
   }
 });
 
