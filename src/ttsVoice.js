@@ -1,17 +1,19 @@
 import { randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { createWriteStream } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   AudioPlayerStatus,
+  StreamType,
   VoiceConnectionStatus,
   createAudioPlayer,
   createAudioResource,
   entersState,
   joinVoiceChannel
 } from "@discordjs/voice";
-import { ChannelType } from "discord.js";
+import { ChannelType, PermissionsBitField } from "discord.js";
 import { once } from "node:events";
 
 const TTS_TEXT_CHANNEL_NAME = "ttsbot";
@@ -66,9 +68,26 @@ export class TtsVoiceService {
       return "Join a voice channel first, then run `/tts join`.";
     }
 
+    const botMember = guildMember.guild.members.me;
+    const voicePermissions = botMember?.permissionsIn(voiceChannel);
+    if (
+      !voicePermissions?.has(PermissionsBitField.Flags.Connect) ||
+      !voicePermissions?.has(PermissionsBitField.Flags.Speak)
+    ) {
+      return "I need Connect and Speak permissions in your voice channel.";
+    }
+
     const textChannel = findTtsTextChannel(guildMember.guild);
     if (!textChannel) {
       return "Create a text channel named `#ttsbot` first.";
+    }
+
+    const textPermissions = botMember?.permissionsIn(textChannel);
+    if (
+      !textPermissions?.has(PermissionsBitField.Flags.ViewChannel) ||
+      !textPermissions?.has(PermissionsBitField.Flags.SendMessages)
+    ) {
+      return "I need View Channel and Send Messages permissions in `#ttsbot`.";
     }
 
     const existing = this.sessionFor(guildMember.guild.id);
@@ -96,8 +115,26 @@ export class TtsVoiceService {
     };
     this.sessions.set(guildMember.guild.id, session);
 
+    connection.on("error", (error) => {
+      console.error("TTS voice connection failed:", error);
+      channel.send("TTS voice connection failed. Check my voice channel permissions.").catch(() => {});
+      this.leave(guildMember.guild.id);
+    });
+
     connection.on(VoiceConnectionStatus.Disconnected, () => {
       this.leave(guildMember.guild.id);
+    });
+
+    player.on("error", (error) => {
+      console.error("TTS audio player failed:", error);
+      session.playing = false;
+      if (error.resource?.metadata?.filePath) {
+        rm(error.resource.metadata.filePath, { force: true }).catch(() => {});
+      }
+      channel.send("TTS audio playback failed.").catch(() => {});
+      this.playNext(guildMember.guild.id).catch((nextError) => {
+        console.error("TTS playback failed:", nextError);
+      });
     });
 
     player.on(AudioPlayerStatus.Idle, () => {
@@ -160,7 +197,10 @@ export class TtsVoiceService {
     session.playing = true;
     const audio = await this.ai.speech({ text: next.text });
     const filePath = await writeSpeechFile(audio);
-    const resource = createAudioResource(filePath);
+    const resource = createAudioResource(createReadStream(filePath), {
+      inputType: StreamType.OggOpus,
+      metadata: { filePath }
+    });
     session.player.play(resource);
 
     session.player.once(AudioPlayerStatus.Idle, () => {
