@@ -18,53 +18,37 @@ function commandAcceptsInput(command) {
   return Boolean(command.usage);
 }
 
-function addReminderMessageOption(subcommand) {
-  return subcommand.addStringOption((option) =>
+function addReminderAmountOption(builder, name) {
+  return builder.addIntegerOption((option) =>
     option
-      .setName("message")
-      .setDescription("What I should remind you about.")
-      .setRequired(true)
+      .setName(name)
+      .setDescription(`Number of ${name}.`)
+      .setMinValue(0)
+      .setRequired(false)
   );
 }
 
-function addReminderAmountSubcommand(builder, name, description) {
-  return builder.addSubcommand((subcommand) =>
-    addReminderMessageOption(
-      subcommand
-        .setName(name)
-        .setDescription(description)
-        .addIntegerOption((option) =>
-          option
-            .setName("amount")
-            .setDescription(`Number of ${name}.`)
-            .setMinValue(1)
-            .setRequired(true)
-        )
+function addReminderOptions(builder) {
+  builder
+    .addStringOption((option) =>
+      option
+        .setName("message")
+        .setDescription("What I should remind you about.")
+        .setRequired(true)
     )
-  );
-}
-
-function addReminderSubcommands(builder) {
-  builder.addSubcommand((subcommand) =>
-    addReminderMessageOption(
-      subcommand
+    .addStringOption((option) =>
+      option
         .setName("specific-date")
-        .setDescription("Remind you on a specific date and time.")
-        .addStringOption((option) =>
-          option
-            .setName("when")
-            .setDescription("Date/time, like 2026-05-01 14:30 or 2026-05-01.")
-            .setRequired(true)
-        )
-    )
-  );
+        .setDescription("Optional date/time, like 2026-05-01 14:30.")
+        .setRequired(false)
+    );
 
-  addReminderAmountSubcommand(builder, "minutes", "Remind you after a number of minutes.");
-  addReminderAmountSubcommand(builder, "hours", "Remind you after a number of hours.");
-  addReminderAmountSubcommand(builder, "days", "Remind you after a number of days.");
-  addReminderAmountSubcommand(builder, "weeks", "Remind you after a number of weeks.");
-  addReminderAmountSubcommand(builder, "months", "Remind you after a number of months.");
-  addReminderAmountSubcommand(builder, "years", "Remind you after a number of years.");
+  addReminderAmountOption(builder, "years");
+  addReminderAmountOption(builder, "months");
+  addReminderAmountOption(builder, "weeks");
+  addReminderAmountOption(builder, "days");
+  addReminderAmountOption(builder, "hours");
+  addReminderAmountOption(builder, "minutes");
 
   return builder;
 }
@@ -76,7 +60,7 @@ export function buildSlashCommands(commandList) {
       .setDescription(slashDescription(command));
 
     if (command.name === "remind") {
-      return addReminderSubcommands(builder).toJSON();
+      return addReminderOptions(builder).toJSON();
     }
 
     if (commandAcceptsInput(command)) {
@@ -174,26 +158,29 @@ function parseReminderDate(input) {
 }
 
 function reminderInput(interaction) {
-  const subcommand = interaction.options.getSubcommand();
   const message = interaction.options.getString("message", true).trim();
   if (!message) return "";
 
-  if (subcommand === "specific-date") {
-    const delayMs = parseReminderDate(interaction.options.getString("when", true));
+  const specificDate = interaction.options.getString("specific-date");
+  if (specificDate) {
+    const delayMs = parseReminderDate(specificDate);
     return delayMs ? `ms:${delayMs} ${message}` : "";
   }
 
-  const amount = interaction.options.getInteger("amount", true);
-  const units = {
-    minutes: "m",
-    hours: "h",
-    days: "d",
-    weeks: "w",
-    months: "mo",
-    years: "y"
+  const unitMilliseconds = {
+    years: 365 * 86_400_000,
+    months: 30 * 86_400_000,
+    weeks: 7 * 86_400_000,
+    days: 86_400_000,
+    hours: 3_600_000,
+    minutes: 60_000
   };
+  const duration = Object.entries(unitMilliseconds).reduce((total, [name, milliseconds]) => {
+    const amount = interaction.options.getInteger(name) || 0;
+    return total + amount * milliseconds;
+  }, 0);
 
-  return `${amount}${units[subcommand]} ${message}`;
+  return duration > 0 ? `ms:${duration} ${message}` : "";
 }
 
 function inputForInteraction(interaction) {
