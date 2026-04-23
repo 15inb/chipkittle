@@ -56,6 +56,7 @@
           <button class="button secondary" type="button" id="pauseGame">Pause</button>
           <button class="button secondary" type="button" id="resetGame">Reset</button>
         </div>
+        <div class="game-status" id="powerupStatus">Power-up: None</div>
         <form class="score-form" id="scoreForm" hidden>
           <label>
             Add your name
@@ -80,6 +81,7 @@
     const scoreValue = document.querySelector("#scoreValue");
     const breadValue = document.querySelector("#breadValue");
     const bestValue = document.querySelector("#bestValue");
+    const powerupStatus = document.querySelector("#powerupStatus");
     const startButton = document.querySelector("#startGame");
     const pauseButton = document.querySelector("#pauseGame");
     const resetButton = document.querySelector("#resetGame");
@@ -92,9 +94,30 @@
     const leaderboardKey = "chipkittle-dash-leaderboard";
     const keys = new Set();
     const pointer = { active: false, x: 0, y: 0 };
-    const player = { x: 150, y: 270, radius: 28, speed: 320 };
-    let artifacts = [];
-    let stones = [];
+    const player = {
+      x: 150,
+      y: 270,
+      radius: 28,
+      speed: 320,
+      baseSpeed: 320,
+      shield: false,
+      shieldTimer: 0,
+      speedTimer: 0
+    };
+    const playerFurGradient = (() => {
+      const gradient = ctx.createRadialGradient(0, -4, 6, 0, 0, 44);
+      gradient.addColorStop(0, "#ffffff");
+      gradient.addColorStop(0.55, "#eef0ed");
+      gradient.addColorStop(1, "#cfd4cc");
+      return gradient;
+    })();
+    const backgroundPresets = [
+      { colors: ["#eef6ed", "#d5ddd6", "#8f9898"], stroke: "rgba(26, 138, 56, 0.11)" },
+      { colors: ["#f4f2ea", "#d9c7a2", "#a37a38"], stroke: "rgba(142, 95, 23, 0.12)" },
+      { colors: ["#e8f1fa", "#cbddee", "#8ba6c7"], stroke: "rgba(55, 96, 148, 0.13)" },
+      { colors: ["#f6eaef", "#dfc6d2", "#b67b98"], stroke: "rgba(141, 86, 107, 0.13)" }
+    ];
+    let powerups = [];
     let score = 0;
     let bread = 0;
     let best = Number(localStorage.getItem(storageKey) || 0);
@@ -104,8 +127,10 @@
     let artifactTimer = 0;
     let stoneTimer = 0;
     let bonusTimer = 0;
+    let powerupTimer = 0;
     let scorePrompted = false;
     let elapsedTime = 0;
+    let audioContext;
 
     bestValue.textContent = best;
 
@@ -124,6 +149,185 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+    }
+
+    function ensureAudio() {
+      if (!audioContext && typeof AudioContext !== "undefined") {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    function resumeAudio() {
+      ensureAudio();
+      if (audioContext && audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+    }
+
+    function playTone(freq, type = "sine", duration = 0.12, volume = 0.16) {
+      try {
+        ensureAudio();
+        if (!audioContext) return;
+        const now = audioContext.currentTime;
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.start(now);
+        osc.stop(now + duration + 0.02);
+      } catch (error) {
+        // ignore audio errors
+      }
+    }
+
+    function playSound(name) {
+      switch (name) {
+        case "pickup":
+          playTone(760, "triangle", 0.08, 0.18);
+          break;
+        case "bonus":
+          playTone(980, "sawtooth", 0.16, 0.22);
+          break;
+        case "powerup":
+          playTone(620, "square", 0.16, 0.2);
+          break;
+        case "hit":
+          playTone(180, "sine", 0.24, 0.24);
+          break;
+        case "background":
+          playTone(520, "triangle", 0.14, 0.14);
+          break;
+      }
+    }
+
+    function currentBackgroundPreset() {
+      const index = Math.floor(score / 500) % backgroundPresets.length;
+      return backgroundPresets[index];
+    }
+
+    function spawnPowerup() {
+      const type = Math.random() < 0.5 ? "shield" : "speed";
+      powerups.push({
+        x: canvas.width + 40,
+        y: randomY(60),
+        radius: 18,
+        speed: 160 + Math.random() * 60,
+        type
+      });
+    }
+
+    function spawnBonusArtifact() {
+      artifacts.push({
+        x: canvas.width + 40,
+        y: randomY(),
+        radius: 20,
+        speed: 210 + Math.random() * 80,
+        bonus: true,
+        spin: Math.random() * Math.PI
+      });
+    }
+
+    function applyPowerup(item) {
+      if (item.type === "shield") {
+        player.shield = true;
+        player.shieldTimer = 8;
+      } else {
+        player.speed = player.baseSpeed * 1.55;
+        player.speedTimer = 6;
+      }
+      playSound("powerup");
+    }
+
+    function updatePowerupState(dt) {
+      if (player.shieldTimer > 0) {
+        player.shieldTimer -= dt;
+        if (player.shieldTimer <= 0) {
+          player.shield = false;
+        }
+      }
+      if (player.speedTimer > 0) {
+        player.speedTimer -= dt;
+        if (player.speedTimer <= 0) {
+          player.speed = player.baseSpeed;
+        }
+      }
+    }
+
+    function updatePowerupDisplay() {
+      if (player.shield) {
+        powerupStatus.textContent = `Power-up: Shield ${Math.ceil(player.shieldTimer)}s`;
+      } else if (player.speedTimer > 0) {
+        powerupStatus.textContent = `Power-up: Speed ${Math.ceil(player.speedTimer)}s`;
+      } else {
+        powerupStatus.textContent = "Power-up: None";
+      }
+    }
+
+    function drawPowerup(item) {
+      ctx.save();
+      ctx.translate(item.x, item.y);
+      if (item.type === "shield") {
+        ctx.fillStyle = "#4f91f2";
+        ctx.strokeStyle = "#c3e1ff";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, item.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "#f2d34f";
+        ctx.strokeStyle = "#c18f1f";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, -item.radius);
+        ctx.lineTo(item.radius * 0.45, -item.radius * 0.2);
+        ctx.lineTo(item.radius, 0);
+        ctx.lineTo(item.radius * 0.35, item.radius * 0.1);
+        ctx.lineTo(item.radius * 0.55, item.radius);
+        ctx.lineTo(0, item.radius * 0.35);
+        ctx.lineTo(-item.radius * 0.55, item.radius);
+        ctx.lineTo(-item.radius * 0.35, item.radius * 0.1);
+        ctx.lineTo(-item.radius, 0);
+        ctx.lineTo(-item.radius * 0.45, -item.radius * 0.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawBackground() {
+      const preset = currentBackgroundPreset();
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, preset.colors[0]);
+      gradient.addColorStop(0.55, preset.colors[1]);
+      gradient.addColorStop(1, preset.colors[2]);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = preset.stroke;
+      ctx.lineWidth = 2;
+      const lineGap = 72 - Math.min(30, Math.floor(score / 500) * 4);
+      for (let x = -80; x < canvas.width + 120; x += lineGap) {
+        ctx.beginPath();
+        ctx.moveTo(x, canvas.height);
+        ctx.lineTo(x + 250, 0);
+        ctx.stroke();
+      }
+      for (let y = 70; y < canvas.height; y += lineGap) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y + 30);
+        ctx.stroke();
+      }
     }
 
     function loadLeaderboard() {
@@ -202,13 +406,19 @@
     function resetGame() {
       player.x = 150;
       player.y = canvas.height / 2;
+      player.speed = player.baseSpeed;
+      player.shield = false;
+      player.shieldTimer = 0;
+      player.speedTimer = 0;
       artifacts = [];
       stones = [];
+      powerups = [];
       score = 0;
       bread = 0;
       artifactTimer = 0;
       stoneTimer = 0;
       bonusTimer = 120 + Math.random() * 30;
+      powerupTimer = 14 + Math.random() * 8;
       elapsedTime = 0;
       gameOver = false;
       scorePrompted = false;
@@ -221,6 +431,7 @@
       scoreValue.textContent = score;
       breadValue.textContent = bread;
       bestValue.textContent = best;
+      updatePowerupDisplay();
     }
 
     function randomY(padding = 45) {
@@ -268,10 +479,10 @@
       }
     }
 
-    function distance(a, b) {
+    function distanceSq(a, b) {
       const dx = a.x - b.x;
       const dy = a.y - b.y;
-      return Math.hypot(dx, dy);
+      return dx * dx + dy * dy;
     }
 
     function update(dt) {
@@ -315,10 +526,18 @@
         spawnBonusArtifact();
         bonusTimer = 120 + Math.random() * 40;
       }
+      powerupTimer -= dt;
+      if (powerupTimer <= 0) {
+        spawnPowerup();
+        powerupTimer = 14 + Math.random() * 8;
+      }
 
       artifacts.forEach((item) => {
         item.x -= item.speed * dt;
         item.spin += dt * 4;
+      });
+      powerups.forEach((item) => {
+        item.x -= item.speed * dt;
       });
       stones.forEach((stone) => {
         stone.x -= stone.speed * dt;
@@ -326,9 +545,11 @@
       });
 
       artifacts = artifacts.filter((item) => {
-        if (distance(player, item) < player.radius + item.radius) {
+        const combined = player.radius + item.radius;
+        if (distanceSq(player, item) < combined * combined) {
           if (item.bread) bread += 1;
           score += item.bonus ? 20 : item.bread ? 5 : 10;
+          playSound(item.bonus ? "bonus" : "pickup");
           if (score > best) {
             best = score;
             localStorage.setItem(storageKey, String(best));
@@ -339,8 +560,26 @@
         return item.x > -50;
       });
 
+      powerups = powerups.filter((item) => {
+        const combined = player.radius + item.radius;
+        if (distanceSq(player, item) < combined * combined) {
+          applyPowerup(item);
+          return false;
+        }
+        return item.x > -50;
+      });
+
       for (const stone of stones) {
-        if (distance(player, stone) < player.radius + stone.radius - 4) {
+        const combined = player.radius + stone.radius - 4;
+        if (distanceSq(player, stone) < combined * combined) {
+          if (player.shield) {
+            player.shield = false;
+            player.shieldTimer = 0;
+            playSound("pickup");
+            stone.x = -100;
+            continue;
+          }
+          playSound("hit");
           gameOver = true;
           running = false;
           if (!scorePrompted && score > 0) {
@@ -352,29 +591,17 @@
         }
       }
       stones = stones.filter((stone) => stone.x > -70);
+      updatePowerupState(dt);
+      updatePowerupDisplay();
     }
 
-    function drawBackground() {
-      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-      gradient.addColorStop(0, "#eef6ed");
-      gradient.addColorStop(0.55, "#d5ddd6");
-      gradient.addColorStop(1, "#8f9898");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = "rgba(26, 138, 56, 0.11)";
-      ctx.lineWidth = 2;
-      for (let x = -80; x < canvas.width + 120; x += 72) {
-        ctx.beginPath();
-        ctx.moveTo(x, canvas.height);
-        ctx.lineTo(x + 250, 0);
-        ctx.stroke();
-      }
-      for (let y = 70; y < canvas.height; y += 70) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y + 30);
-        ctx.stroke();
-      }
+    function draw() {
+      drawBackground();
+      powerups.forEach(drawPowerup);
+      artifacts.forEach(drawArtifact);
+      stones.forEach(drawStone);
+      drawChipkittle();
+      drawOverlay();
     }
 
     function drawChipkittle() {
@@ -383,46 +610,35 @@
 
       ctx.fillStyle = "#111917";
       ctx.beginPath();
-      ctx.moveTo(-20, -18);
-      ctx.quadraticCurveTo(-68, -92, -18, -122);
-      ctx.quadraticCurveTo(-14, -86, -12, -56);
-      ctx.quadraticCurveTo(-12, -44, -20, -18);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(20, -18);
-      ctx.quadraticCurveTo(68, -92, 18, -122);
-      ctx.quadraticCurveTo(14, -86, 12, -56);
-      ctx.quadraticCurveTo(12, -44, 20, -18);
+      ctx.ellipse(-20, -48, 12, 38, -0.1, 0, Math.PI * 2);
+      ctx.ellipse(20, -48, 12, 38, 0.1, 0, Math.PI * 2);
       ctx.fill();
 
-      const fur = ctx.createRadialGradient(0, -4, 6, 0, 0, 44);
-      fur.addColorStop(0, "#ffffff");
-      fur.addColorStop(0.55, "#eef0ed");
-      fur.addColorStop(1, "#cfd4cc");
-      ctx.fillStyle = fur;
+      ctx.fillStyle = playerFurGradient;
       ctx.beginPath();
-      ctx.ellipse(0, 2, 40, 44, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 6, 40, 44, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = "#2c3331";
       ctx.beginPath();
-      ctx.ellipse(-34, -10, 13, 40, 0.55, 0, Math.PI * 2);
-      ctx.ellipse(34, -10, 13, 40, -0.55, 0, Math.PI * 2);
+      ctx.ellipse(-22, -10, 12, 30, 0.2, 0, Math.PI * 2);
+      ctx.ellipse(22, -10, 12, 30, -0.2, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = "#111917";
       ctx.beginPath();
-      ctx.arc(-12, -16, 7, 0, Math.PI * 2);
-      ctx.arc(14, -16, 7, 0, Math.PI * 2);
+      ctx.arc(-10, -8, 6, 0, Math.PI * 2);
+      ctx.arc(10, -8, 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#90f37a";
       ctx.beginPath();
-      ctx.arc(-12, -16, 2.5, 0, Math.PI * 2);
-      ctx.arc(14, -16, 2.5, 0, Math.PI * 2);
+      ctx.arc(-10, -8, 2.5, 0, Math.PI * 2);
+      ctx.arc(10, -8, 2.5, 0, Math.PI * 2);
       ctx.fill();
+
       ctx.fillStyle = "#f1d0bd";
       ctx.beginPath();
-      ctx.ellipse(0, 13, 15, 11, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 18, 16, 12, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.restore();
@@ -546,6 +762,7 @@
     }
 
     startButton.addEventListener("click", () => {
+      resumeAudio();
       if (gameOver) resetGame();
       running = true;
     });
@@ -565,6 +782,7 @@
     refreshLeaderboard.addEventListener("click", loadPublicLeaderboard);
 
     window.addEventListener("keydown", (event) => {
+      resumeAudio();
       keys.add(event.key);
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(event.key)) {
         event.preventDefault();
@@ -581,6 +799,7 @@
     }
 
     canvas.addEventListener("pointerdown", (event) => {
+      resumeAudio();
       pointer.active = true;
       pointerPosition(event);
       running = true;
