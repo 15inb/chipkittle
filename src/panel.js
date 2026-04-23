@@ -10,6 +10,15 @@ import { serializeGuild } from "./bot.js";
 const execFileAsync = promisify(execFile);
 const UPDATE_STALE_MS = 10 * 60 * 1000;
 const ACTIVE_UPDATE_STATUSES = new Set(["running", "restarting"]);
+const SETTINGS_SECTIONS = [
+  { id: "general", label: "General", description: "Prefix, welcome, autorole, and public directory." },
+  { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
+  { id: "ai", label: "AI", description: "Chipkittle AI channels, model, cooldowns, and personality." },
+  { id: "applications", label: "Applications", description: "DM questions, review threads, roles, and cooldowns." },
+  { id: "permissions", label: "Permissions", description: "Command role access overrides." },
+  { id: "commands", label: "Commands", description: "Browse the command catalog." },
+  { id: "server", label: "Server", description: "Pull GitHub changes and restart the VPS bot." }
+];
 
 function escapeHtml(value = "") {
   return String(value)
@@ -26,6 +35,18 @@ function isChecked(value) {
 
 function selected(currentValue, optionValue) {
   return currentValue === optionValue ? "selected" : "";
+}
+
+function normalizeSettingsSection(section) {
+  return SETTINGS_SECTIONS.some((item) => item.id === section) ? section : SETTINGS_SECTIONS[0].id;
+}
+
+function activeSectionMeta(activeSection) {
+  return SETTINGS_SECTIONS.find((section) => section.id === activeSection) || SETTINGS_SECTIONS[0];
+}
+
+function sectionClass(sectionId, activeSection) {
+  return `settings-section${sectionId === activeSection ? " is-active" : ""}`;
 }
 
 function safeEquals(a, b) {
@@ -89,7 +110,7 @@ function commitUrl(hash) {
 function updateControls() {
   const status = readUpdateStatus();
   return `
-    <section class="panel-section update-panel">
+    <section class="panel-section update-panel server-update-card">
       <div class="section-heading">
         <h2>Server Update</h2>
         <p>Pull the latest GitHub changes, install packages, and restart the PM2 bot process.</p>
@@ -237,7 +258,7 @@ function layout({ title, body, user, flash = "" }) {
   <div class="shell">
     <aside class="sidebar">
       <a class="brand" href="/">
-        <span class="brand-mark">D</span>
+        <span class="brand-mark">C</span>
         <span>
           <strong>Chipkittle Panel</strong>
           <small>Server configuration</small>
@@ -453,13 +474,29 @@ function commandRoleAccess(commandList, roles, overrides = {}) {
     .join("");
 }
 
-function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
+function settingsNav(guildId, activeSection) {
+  return `
+    <nav class="settings-nav" aria-label="Settings categories">
+      ${SETTINGS_SECTIONS.map(
+        (section) => `
+          <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guildId}?section=${section.id}">
+            <span>${escapeHtml(section.label)}</span>
+            <small>${escapeHtml(section.description)}</small>
+          </a>`
+      ).join("")}
+    </nav>
+  `;
+}
+
+function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general" }) {
+  const currentSection = normalizeSettingsSection(activeSection);
+  const currentMeta = activeSectionMeta(currentSection);
   return layout({
     title: guild.name,
     user: true,
     flash,
     body: `
-      <section class="page-heading guild-heading">
+      <section class="page-heading guild-heading settings-head">
         <div class="guild-title">
           <span class="guild-icon large">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
           <div>
@@ -468,221 +505,251 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash }) {
             <p class="muted">${guild.memberCount ?? "Unknown"} members</p>
           </div>
         </div>
-      </section>
-      ${updateControls()}
-      <form method="post" action="/guilds/${guild.id}/config" class="config-grid">
-        <section class="panel-section">
-          <div class="section-heading">
-            <h2>Command Settings</h2>
-            <p>Set the prefix used by text commands.</p>
-          </div>
-          <label>
-            Prefix
-            <input name="prefix" maxlength="5" value="${escapeHtml(config.prefix)}" required>
-          </label>
-        </section>
-
-        <section class="panel-section">
-          <div class="section-heading">
-            <h2>Welcome</h2>
-            <p>Send a message and optionally assign a role when someone joins.</p>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" name="welcomeEnabled" ${isChecked(config.welcome.enabled)}>
-            <span>Enable welcome messages</span>
-          </label>
-          <label>
-            Welcome channel
-            <select name="welcomeChannelId">
-              ${optionList(guild.channels, config.welcome.channelId, "No channel selected")}
-            </select>
-          </label>
-          <label>
-            Welcome message
-            <textarea name="welcomeMessage" rows="4">${escapeHtml(config.welcome.message)}</textarea>
-          </label>
-          <label>
-            Auto role
-            <select name="autoRoleId">
-              ${optionList(guild.roles, config.autoRoleId, "No role selected")}
-            </select>
-          </label>
-        </section>
-
-        <section class="panel-section">
-          <div class="section-heading">
-            <h2>Automod</h2>
-            <p>Remove messages that match simple server rules.</p>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" name="automodEnabled" ${isChecked(config.automod.enabled)}>
-            <span>Enable automod</span>
-          </label>
-          <label>
-            Blocked words
-            <textarea name="blockedWords" rows="4">${escapeHtml(config.automod.blockedWords.join(", "))}</textarea>
-          </label>
-          <div class="inline-controls">
-            <label class="toggle">
-              <input type="checkbox" name="deleteInvites" ${isChecked(config.automod.deleteInvites)}>
-              <span>Delete invite links</span>
-            </label>
-            <label class="toggle">
-              <input type="checkbox" name="deleteLinks" ${isChecked(config.automod.deleteLinks)}>
-              <span>Delete web links</span>
-            </label>
-          </div>
-        </section>
-
-        <section class="panel-section">
-          <div class="section-heading">
-            <h2>Moderation Logs</h2>
-            <p>Choose where automod events should be posted.</p>
-          </div>
-          <label>
-            Log channel
-            <select name="logChannelId">
-              ${optionList(guild.channels, config.moderation.logChannelId, "No channel selected")}
-            </select>
-          </label>
-        </section>
-
-        <section class="panel-section">
-          <div class="section-heading">
-            <h2>Command Role Access</h2>
-            <p>Grant specific roles access to specific commands without requiring the matching Discord permission.</p>
-          </div>
-          <details class="section-collapse">
-            <summary>Show command role access</summary>
-            <p class="field-help">Open a command, then choose which roles can bypass that command's Discord permission check.</p>
-            <div class="permission-list">
-              ${commandRoleAccess(commandList, guild.roles, config.commandRoles.overrides)}
-            </div>
-          </details>
-        </section>
-
-        <section class="panel-section">
-          <div class="section-heading">
-            <h2>Public Member Directory</h2>
-            <p>Edit the member list used by the public website. Use one member per line.</p>
-          </div>
-          <label>
-            Members
-            <textarea name="publicMembers" rows="8" placeholder="Name | Role | Bio">${escapeHtml(memberDirectoryText(config.publicSite.members))}</textarea>
-          </label>
-          <p class="field-help">Format: <code>Name | Role | Bio</code></p>
-        </section>
-
-        <section class="panel-section">
-          <div class="section-heading">
-            <h2>Chipkittle AI</h2>
-            <p>Configure the lore-aware AI chat bot for this server.</p>
-          </div>
-          <div class="ai-status-line">
-            <span class="status-dot"></span>
-            API key: ${ai.enabled ? "configured" : "missing"}
-          </div>
-          <label class="toggle">
-            <input type="checkbox" name="aiEnabled" ${isChecked(config.ai.enabled)}>
-            <span>Enable AI replies</span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" name="aiReplyToMentions" ${isChecked(config.ai.replyToMentions)}>
-            <span>Reply when mentioned</span>
-          </label>
-          <label>
-            Model
-            <input name="aiModel" value="${escapeHtml(config.ai.model || defaultAiModel)}">
-          </label>
-          <label>
-            API cooldown seconds
-            <input type="number" name="aiApiCooldownSeconds" min="0" max="3600" value="${escapeHtml(config.ai.apiCooldownSeconds)}">
-          </label>
-          <label>
-            Image cooldown seconds
-            <input type="number" name="aiImageCooldownSeconds" min="0" max="7200" value="${escapeHtml(config.ai.imageCooldownSeconds)}">
-          </label>
-          <label>
-            Extra personality
-            <textarea name="aiPersonality" rows="5">${escapeHtml(config.ai.personality)}</textarea>
-          </label>
-          <div>
-            <p class="field-label">AI chat channels</p>
-            <div class="checkbox-grid">
-              ${channelCheckboxes(guild.channels, config.ai.channelIds)}
-            </div>
-          </div>
-          <div>
-            <p class="field-label">AI blacklisted channels</p>
-            <p class="field-help">AI will not answer mentions or direct ask commands in these channels.</p>
-            <div class="checkbox-grid">
-              ${channelCheckboxes(guild.channels, config.ai.blacklistedChannelIds, "aiBlacklistedChannelIds")}
-            </div>
-          </div>
-        </section>
-
-        <section class="panel-section">
-          <div class="section-heading">
-            <h2>Membership Applications</h2>
-            <p>DM applicants the questions and create private staff review threads.</p>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" name="applicationsEnabled" ${isChecked(config.applications.enabled)}>
-            <span>Enable application threads</span>
-          </label>
-          <label>
-            Application command channel
-            <select name="applicationChannelId">
-              ${optionList(guild.channels, config.applications.channelId, "Allow applications from any channel")}
-            </select>
-          </label>
-          <label>
-            Review thread channel
-            <select name="applicationThreadChannelId">
-              ${optionList(guild.channels, config.applications.threadChannelId, "Use the application command channel")}
-            </select>
-          </label>
-          <label>
-            Approved membership role
-            <select name="applicationApprovedRoleId">
-              ${optionList(guild.roles, config.applications.approvedRoleId, "No role selected")}
-            </select>
-          </label>
-          <label>
-            Application cooldown minutes
-            <input type="number" name="applicationCooldownMinutes" min="0" max="10080" value="${escapeHtml(config.applications.cooldownMinutes)}">
-          </label>
-          <div>
-            <p class="field-label">Roles blocked from applying</p>
-            <p class="field-help">Members with any of these roles cannot open an application.</p>
-            <div class="checkbox-grid">
-              ${roleCheckboxes(guild.roles, config.applications.blockedRoleIds, "applicationBlockedRoleIds")}
-            </div>
-          </div>
-          <div>
-            <p class="field-label">Application reviewer roles</p>
-            <p class="field-help">These roles can view threads and use reply, approve, deny, or close commands.</p>
-            <div class="checkbox-grid">
-              ${roleCheckboxes(guild.roles, config.applications.reviewerRoleIds, "applicationReviewerRoleIds")}
-            </div>
-          </div>
-          <label>
-            Application questions
-            <textarea name="applicationQuestions" rows="7">${escapeHtml(config.applications.questions.join("\n"))}</textarea>
-          </label>
-        </section>
-
-        <div class="form-actions">
-          <button type="submit">Save configuration</button>
+        <div class="section-context">
+          <span>${escapeHtml(currentMeta.label)}</span>
+          <p>${escapeHtml(currentMeta.description)}</p>
         </div>
-      </form>
-      <section class="panel-section command-catalog">
-        <div class="section-heading">
-          <h2>Command Catalog</h2>
-          <p>${commandList.length} commands are available with this server's prefix.</p>
-        </div>
-        ${commandCatalog(commandList, config.prefix)}
       </section>
+      <div class="settings-workspace">
+        ${settingsNav(guild.id, currentSection)}
+        <div class="settings-main">
+          <form method="post" action="/guilds/${guild.id}/config?section=${currentSection}" class="config-grid">
+            <section class="${sectionClass("general", currentSection)}">
+              <div class="settings-stack">
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Command Settings</h2>
+                    <p>Set the prefix used by text commands.</p>
+                  </div>
+                  <label>
+                    Prefix
+                    <input name="prefix" maxlength="5" value="${escapeHtml(config.prefix)}" required>
+                  </label>
+                </section>
+
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Welcome</h2>
+                    <p>Send a message and optionally assign a role when someone joins.</p>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" name="welcomeEnabled" ${isChecked(config.welcome.enabled)}>
+                    <span>Enable welcome messages</span>
+                  </label>
+                  <label>
+                    Welcome channel
+                    <select name="welcomeChannelId">
+                      ${optionList(guild.channels, config.welcome.channelId, "No channel selected")}
+                    </select>
+                  </label>
+                  <label>
+                    Welcome message
+                    <textarea name="welcomeMessage" rows="4">${escapeHtml(config.welcome.message)}</textarea>
+                  </label>
+                  <label>
+                    Auto role
+                    <select name="autoRoleId">
+                      ${optionList(guild.roles, config.autoRoleId, "No role selected")}
+                    </select>
+                  </label>
+                </section>
+
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Public Member Directory</h2>
+                    <p>Edit the member list used by the public website. Use one member per line.</p>
+                  </div>
+                  <label>
+                    Members
+                    <textarea name="publicMembers" rows="8" placeholder="Name | Role | Bio">${escapeHtml(memberDirectoryText(config.publicSite.members))}</textarea>
+                  </label>
+                  <p class="field-help">Format: <code>Name | Role | Bio</code></p>
+                </section>
+              </div>
+            </section>
+
+            <section class="${sectionClass("moderation", currentSection)}">
+              <div class="settings-stack">
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Automod</h2>
+                    <p>Remove messages that match simple server rules.</p>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" name="automodEnabled" ${isChecked(config.automod.enabled)}>
+                    <span>Enable automod</span>
+                  </label>
+                  <label>
+                    Blocked words
+                    <textarea name="blockedWords" rows="4">${escapeHtml(config.automod.blockedWords.join(", "))}</textarea>
+                  </label>
+                  <div class="inline-controls">
+                    <label class="toggle">
+                      <input type="checkbox" name="deleteInvites" ${isChecked(config.automod.deleteInvites)}>
+                      <span>Delete invite links</span>
+                    </label>
+                    <label class="toggle">
+                      <input type="checkbox" name="deleteLinks" ${isChecked(config.automod.deleteLinks)}>
+                      <span>Delete web links</span>
+                    </label>
+                  </div>
+                </section>
+
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Moderation Logs</h2>
+                    <p>Choose where automod and moderation output should be posted.</p>
+                  </div>
+                  <label>
+                    Log channel
+                    <select name="logChannelId">
+                      ${optionList(guild.channels, config.moderation.logChannelId, "No channel selected")}
+                    </select>
+                  </label>
+                </section>
+              </div>
+            </section>
+
+            <section class="${sectionClass("ai", currentSection)}">
+              <section class="panel-section">
+                <div class="section-heading">
+                  <h2>Chipkittle AI</h2>
+                  <p>Configure the lore-aware AI chat bot for this server.</p>
+                </div>
+                <div class="ai-status-line">
+                  <span class="status-dot"></span>
+                  API key: ${ai.enabled ? "configured" : "missing"}
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" name="aiEnabled" ${isChecked(config.ai.enabled)}>
+                  <span>Enable AI replies</span>
+                </label>
+                <label class="toggle">
+                  <input type="checkbox" name="aiReplyToMentions" ${isChecked(config.ai.replyToMentions)}>
+                  <span>Reply when mentioned</span>
+                </label>
+                <div class="field-pair">
+                  <label>
+                    Model
+                    <input name="aiModel" value="${escapeHtml(config.ai.model || defaultAiModel)}">
+                  </label>
+                  <label>
+                    API cooldown seconds
+                    <input type="number" name="aiApiCooldownSeconds" min="0" max="3600" value="${escapeHtml(config.ai.apiCooldownSeconds)}">
+                  </label>
+                  <label>
+                    Image cooldown seconds
+                    <input type="number" name="aiImageCooldownSeconds" min="0" max="7200" value="${escapeHtml(config.ai.imageCooldownSeconds)}">
+                  </label>
+                </div>
+                <label>
+                  Extra personality
+                  <textarea name="aiPersonality" rows="5">${escapeHtml(config.ai.personality)}</textarea>
+                </label>
+                <div>
+                  <p class="field-label">AI chat channels</p>
+                  <div class="checkbox-grid">
+                    ${channelCheckboxes(guild.channels, config.ai.channelIds)}
+                  </div>
+                </div>
+                <div>
+                  <p class="field-label">AI blacklisted channels</p>
+                  <p class="field-help">AI will not answer mentions or direct ask commands in these channels.</p>
+                  <div class="checkbox-grid">
+                    ${channelCheckboxes(guild.channels, config.ai.blacklistedChannelIds, "aiBlacklistedChannelIds")}
+                  </div>
+                </div>
+              </section>
+            </section>
+
+            <section class="${sectionClass("applications", currentSection)}">
+              <section class="panel-section">
+                <div class="section-heading">
+                  <h2>Membership Applications</h2>
+                  <p>DM applicants the questions and create private staff review threads.</p>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" name="applicationsEnabled" ${isChecked(config.applications.enabled)}>
+                  <span>Enable application threads</span>
+                </label>
+                <div class="field-pair">
+                  <label>
+                    Application command channel
+                    <select name="applicationChannelId">
+                      ${optionList(guild.channels, config.applications.channelId, "Allow applications from any channel")}
+                    </select>
+                  </label>
+                  <label>
+                    Review thread channel
+                    <select name="applicationThreadChannelId">
+                      ${optionList(guild.channels, config.applications.threadChannelId, "Use the application command channel")}
+                    </select>
+                  </label>
+                  <label>
+                    Approved membership role
+                    <select name="applicationApprovedRoleId">
+                      ${optionList(guild.roles, config.applications.approvedRoleId, "No role selected")}
+                    </select>
+                  </label>
+                  <label>
+                    Application cooldown minutes
+                    <input type="number" name="applicationCooldownMinutes" min="0" max="10080" value="${escapeHtml(config.applications.cooldownMinutes)}">
+                  </label>
+                </div>
+                <div>
+                  <p class="field-label">Roles blocked from applying</p>
+                  <p class="field-help">Members with any of these roles cannot open an application.</p>
+                  <div class="checkbox-grid">
+                    ${roleCheckboxes(guild.roles, config.applications.blockedRoleIds, "applicationBlockedRoleIds")}
+                  </div>
+                </div>
+                <div>
+                  <p class="field-label">Application reviewer roles</p>
+                  <p class="field-help">These roles can view threads and use reply, approve, deny, or close commands.</p>
+                  <div class="checkbox-grid">
+                    ${roleCheckboxes(guild.roles, config.applications.reviewerRoleIds, "applicationReviewerRoleIds")}
+                  </div>
+                </div>
+                <label>
+                  Application questions
+                  <textarea name="applicationQuestions" rows="7">${escapeHtml(config.applications.questions.join("\n"))}</textarea>
+                </label>
+              </section>
+            </section>
+
+            <section class="${sectionClass("permissions", currentSection)}">
+              <section class="panel-section">
+                <div class="section-heading">
+                  <h2>Command Role Access</h2>
+                  <p>Grant specific roles access to specific commands without requiring the matching Discord permission.</p>
+                </div>
+                <p class="field-help">Open a command, then choose which roles can bypass that command's Discord permission check.</p>
+                <div class="permission-list">
+                  ${commandRoleAccess(commandList, guild.roles, config.commandRoles.overrides)}
+                </div>
+              </section>
+            </section>
+
+            <div class="form-actions ${["commands", "server"].includes(currentSection) ? "is-hidden" : ""}">
+              <button type="submit">Save ${escapeHtml(currentMeta.label)}</button>
+            </div>
+          </form>
+
+          <section class="${sectionClass("commands", currentSection)}">
+            <section class="panel-section command-catalog">
+              <div class="section-heading">
+                <h2>Command Catalog</h2>
+                <p>${commandList.length} commands are available with this server's prefix.</p>
+              </div>
+              ${commandCatalog(commandList, config.prefix)}
+            </section>
+          </section>
+
+          <section class="${sectionClass("server", currentSection)}">
+            ${updateControls()}
+          </section>
+        </div>
+      </div>
     `
   });
 }
@@ -729,7 +796,11 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     const referrer = request.get("referer") || "/";
     try {
       const url = new URL(referrer, `${request.protocol}://${request.get("host")}`);
-      return `${url.pathname}?update=`;
+      const params = new URLSearchParams(url.search);
+      params.delete("saved");
+      params.delete("update");
+      const prefix = params.toString();
+      return `${url.pathname}?${prefix ? `${prefix}&` : ""}update=`;
     } catch {
       return "/?update=";
     }
@@ -828,7 +899,15 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
 
     const guild = serializeGuild(discordGuild);
     const config = store.getGuild(guild.id);
-    response.send(guildPage({ guild, config, commandList, defaultAiModel, ai, flash: flashFromQuery(request.query) }));
+    response.send(guildPage({
+      guild,
+      config,
+      commandList,
+      defaultAiModel,
+      ai,
+      flash: flashFromQuery(request.query),
+      activeSection: normalizeSettingsSection(String(request.query.section || ""))
+    }));
   });
 
   app.post("/admin/update", requireAuth, (request, response) => {
@@ -865,7 +944,8 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       const nextConfig = parseConfigForm(request.body);
       await store.updateGuild(discordGuild.id, nextConfig);
       writePublicMembersFile(nextConfig.publicSite.members);
-      response.redirect(`/guilds/${discordGuild.id}?saved=1`);
+      const section = normalizeSettingsSection(String(request.query.section || ""));
+      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=${section}`);
     } catch (error) {
       next(error);
     }
