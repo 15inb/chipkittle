@@ -17,9 +17,10 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
           SHA: ${{ github.sha }}
-          COMPARE_URL: ${{ github.event.compare }}
           HEAD_MESSAGE: ${{ github.event.head_commit.message }}
           HEAD_URL: ${{ github.event.head_commit.url }}
+          HEAD_AUTHOR: ${{ github.event.head_commit.author.name }}
+          HEAD_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then
             echo "DISCORD_COMMITS_WEBHOOK_URL is not configured; skipping Discord notification."
@@ -37,28 +38,47 @@ jobs:
               sys.exit(1)
 
           repository = os.environ["REPOSITORY"]
-          branch = os.environ["BRANCH"]
           actor = os.environ["ACTOR"]
-          sha = os.environ["SHA"][:7]
-          compare_url = os.environ["COMPARE_URL"]
-          head_message = os.environ["HEAD_MESSAGE"].splitlines()[0][:256] or "No commit message"
-          head_url = os.environ["HEAD_URL"]
+          sha = os.environ["SHA"]
+          short_sha = sha[:7]
+          commits_url = "https://www.chipkittle.com/commits"
+          head_message = os.environ["HEAD_MESSAGE"].splitlines()[0][:180] or "No commit message"
+          head_message = head_message.replace("```", "'")
+          author = os.environ.get("HEAD_AUTHOR") or actor
+
+          relative_time = "Just now"
+          timestamp = os.environ.get("HEAD_TIMESTAMP")
+          if timestamp:
+              from datetime import datetime, timezone
+
+              commit_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+              seconds = max(0, int((datetime.now(timezone.utc) - commit_time).total_seconds()))
+              if seconds >= 86400:
+                  days = seconds // 86400
+                  relative_time = f"{days} day{'s' if days != 1 else ''} ago"
+              elif seconds >= 3600:
+                  hours = seconds // 3600
+                  relative_time = f"{hours} hour{'s' if hours != 1 else ''} ago"
+              elif seconds >= 60:
+                  minutes = seconds // 60
+                  relative_time = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
 
           payload = {
-              "username": "Chipkittle Commits",
+              "username": "[CK] Commits",
               "allowed_mentions": {"parse": []},
               "embeds": [
                   {
-                      "title": f"{repository} updated",
-                      "url": compare_url or head_url,
-                      "description": f"**{head_message}**",
-                      "color": 5887882,
-                      "fields": [
-                          {"name": "Branch", "value": branch, "inline": True},
-                          {"name": "Commit", "value": f"[{sha}]({head_url})", "inline": True},
-                          {"name": "Pushed by", "value": actor, "inline": True}
-                      ],
-                      "footer": {"text": "Chipkittle GitHub"}
+                      "title": "Chipkittle Commit",
+                      "url": commits_url,
+                      "description": (
+                          f"**{relative_time}**\n"
+                          "Check out the latest developments and changes on:\n"
+                          f"{commits_url}\n"
+                          "Changes might not always be reflected immediately, the server may need to restart to apply any updates.\n\n"
+                          f"```diff\n+ {head_message}\n```"
+                      ),
+                      "color": 3447003,
+                      "footer": {"text": f"By {author} | {short_sha} | {repository}"}
                   }
               ]
           }
