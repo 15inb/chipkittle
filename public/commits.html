@@ -53,6 +53,11 @@
       }[match]));
     }
 
+    function displayAuthor(name) {
+      const author = String(name || "").trim();
+      return author.toLowerCase() === "elijahenglish" ? "English" : author || "Unknown";
+    }
+
     fetch("https://api.github.com/repos/15inb/chipkittle/commits?per_page=20", { cache: "no-store" })
       .then((response) => response.ok ? response.json() : [])
       .then((commits) => {
@@ -65,7 +70,7 @@
           const hash = text(item.sha || "");
           const shortHash = hash.slice(0, 7);
           const subject = text(item.commit?.message?.split("\n")[0] || "Untitled commit");
-          const author = text(item.commit?.author?.name || "Unknown");
+          const author = text(displayAuthor(item.commit?.author?.name));
           const date = item.commit?.author?.date ? new Date(item.commit.author.date).toLocaleDateString() : "";
           const url = item.html_url || "https://github.com/15inb/chipkittle";
 
