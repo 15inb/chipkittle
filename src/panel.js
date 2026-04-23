@@ -190,6 +190,47 @@ function writePublicMembersFile(members = []) {
   fs.renameSync(`${filePath}.tmp`, filePath);
 }
 
+function leaderboardPath() {
+  return path.join(process.cwd(), "data", "game-leaderboard.json");
+}
+
+function cleanLeaderboardName(value = "") {
+  return String(value || "")
+    .replace(/[^\w .#-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 24) || "Anonymous Chipkittle";
+}
+
+function readGameLeaderboard() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(leaderboardPath(), "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function publicLeaderboardEntries(entries = []) {
+  return entries
+    .map((entry) => ({
+      name: cleanLeaderboardName(entry.name),
+      score: Math.max(Math.floor(Number(entry.score) || 0), 0),
+      bread: Math.max(Math.floor(Number(entry.bread) || 0), 0),
+      createdAt: String(entry.createdAt || "")
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || b.bread - a.bread)
+    .slice(0, 10);
+}
+
+function writeGameLeaderboard(entries = []) {
+  const filePath = leaderboardPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(`${filePath}.tmp`, `${JSON.stringify(publicLeaderboardEntries(entries), null, 2)}\n`, "utf8");
+  fs.renameSync(`${filePath}.tmp`, filePath);
+}
+
 function parseConfigForm(body) {
   const aiChannelIds = arrayFromFormValue(body.aiChannelIds);
   const aiBlacklistedChannelIds = arrayFromFormValue(body.aiBlacklistedChannelIds);
@@ -839,7 +880,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
 
   function setPublicApiHeaders(response) {
     response.setHeader("Access-Control-Allow-Origin", "*");
-    response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response.setHeader("Access-Control-Allow-Headers", "Content-Type");
     response.setHeader("Cache-Control", "no-store");
   }
@@ -859,11 +900,46 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     response.sendStatus(204);
   });
 
+  app.options("/api/public/game-leaderboard", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
   app.get("/api/public/members", (_request, response) => {
     setPublicApiHeaders(response);
     const config = getPublicGuildConfig();
     response.json({
       members: publicMembersFromConfig(config),
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  app.get("/api/public/game-leaderboard", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.json({
+      scores: publicLeaderboardEntries(readGameLeaderboard()),
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  app.post("/api/public/game-leaderboard", (request, response) => {
+    setPublicApiHeaders(response);
+    const entry = {
+      name: cleanLeaderboardName(request.body?.name),
+      score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), 100000),
+      bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), 100000),
+      createdAt: new Date().toISOString()
+    };
+
+    if (entry.score <= 0) {
+      response.status(400).json({ error: "Score must be greater than zero." });
+      return;
+    }
+
+    const scores = publicLeaderboardEntries([...readGameLeaderboard(), entry]);
+    writeGameLeaderboard(scores);
+    response.json({
+      scores,
       updatedAt: new Date().toISOString()
     });
   });

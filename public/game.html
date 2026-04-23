@@ -56,6 +56,20 @@
           <button class="button secondary" type="button" id="pauseGame">Pause</button>
           <button class="button secondary" type="button" id="resetGame">Reset</button>
         </div>
+        <form class="score-form" id="scoreForm" hidden>
+          <label>
+            Add your name
+            <input id="playerName" name="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
+          </label>
+          <button class="button primary" type="submit">Save Score</button>
+        </form>
+        <div class="leaderboard">
+          <div class="leaderboard-head">
+            <span>Leaderboard</span>
+            <button type="button" id="refreshLeaderboard">Refresh</button>
+          </div>
+          <ol id="leaderboardList"></ol>
+        </div>
       </aside>
     </section>
   </main>
@@ -69,7 +83,13 @@
     const startButton = document.querySelector("#startGame");
     const pauseButton = document.querySelector("#pauseGame");
     const resetButton = document.querySelector("#resetGame");
+    const scoreForm = document.querySelector("#scoreForm");
+    const playerName = document.querySelector("#playerName");
+    const leaderboardList = document.querySelector("#leaderboardList");
+    const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
+    const leaderboardUrl = "https://panel.chipkittle.com/api/public/game-leaderboard";
     const storageKey = "chipkittle-dash-best";
+    const leaderboardKey = "chipkittle-dash-leaderboard";
     const keys = new Set();
     const pointer = { active: false, x: 0, y: 0 };
     const player = { x: 150, y: 270, radius: 28, speed: 320 };
@@ -83,8 +103,99 @@
     let lastTime = 0;
     let artifactTimer = 0;
     let stoneTimer = 0;
+    let scorePrompted = false;
 
     bestValue.textContent = best;
+
+    function safeName(value) {
+      return String(value || "")
+        .replace(/[^\w .#-]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 24) || "Anonymous Chipkittle";
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function loadLeaderboard() {
+      try {
+        const scores = JSON.parse(localStorage.getItem(leaderboardKey) || "[]");
+        return Array.isArray(scores) ? scores : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveLocalLeaderboard(scores) {
+      localStorage.setItem(leaderboardKey, JSON.stringify(scores.slice(0, 10)));
+    }
+
+    function renderLeaderboard(scores = loadLeaderboard()) {
+      if (!scores.length) {
+        leaderboardList.innerHTML = '<li><span>No runs saved yet</span><strong>0</strong></li>';
+        return;
+      }
+
+      leaderboardList.innerHTML = scores
+        .slice(0, 10)
+        .map((entry) => `
+          <li>
+            <span>${escapeHtml(safeName(entry.name))}</span>
+            <strong>${Number(entry.score) || 0}</strong>
+          </li>
+        `)
+        .join("");
+    }
+
+    async function loadPublicLeaderboard() {
+      try {
+        const response = await fetch(leaderboardUrl, { cache: "no-store" });
+        if (!response.ok) throw new Error("Leaderboard request failed.");
+        const payload = await response.json();
+        if (!Array.isArray(payload.scores)) throw new Error("Leaderboard response was invalid.");
+        saveLocalLeaderboard(payload.scores);
+        renderLeaderboard(payload.scores);
+      } catch {
+        renderLeaderboard();
+      }
+    }
+
+    async function submitScore(name) {
+      if (score <= 0) return;
+      const entry = {
+        name: safeName(name),
+        score,
+        bread,
+        createdAt: new Date().toISOString()
+      };
+      const localScores = [...loadLeaderboard(), entry].sort((a, b) => b.score - a.score || b.bread - a.bread);
+      saveLocalLeaderboard(localScores);
+      renderLeaderboard(localScores);
+      scoreForm.hidden = true;
+
+      try {
+        const response = await fetch(leaderboardUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(entry)
+        });
+        if (!response.ok) throw new Error("Leaderboard save failed.");
+        const payload = await response.json();
+        if (Array.isArray(payload.scores)) {
+          saveLocalLeaderboard(payload.scores);
+          renderLeaderboard(payload.scores);
+        }
+      } catch {
+        renderLeaderboard(localScores);
+      }
+    }
 
     function resetGame() {
       player.x = 150;
@@ -96,6 +207,8 @@
       artifactTimer = 0;
       stoneTimer = 0;
       gameOver = false;
+      scorePrompted = false;
+      scoreForm.hidden = true;
       updateStats();
       draw();
     }
@@ -201,6 +314,11 @@
         if (distance(player, stone) < player.radius + stone.radius - 4) {
           gameOver = true;
           running = false;
+          if (!scorePrompted && score > 0) {
+            scorePrompted = true;
+            scoreForm.hidden = false;
+            playerName.focus();
+          }
           break;
         }
       }
@@ -366,6 +484,11 @@
       pauseButton.textContent = "Pause";
       resetGame();
     });
+    scoreForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitScore(playerName.value);
+    });
+    refreshLeaderboard.addEventListener("click", loadPublicLeaderboard);
 
     window.addEventListener("keydown", (event) => {
       keys.add(event.key);
@@ -397,6 +520,7 @@
     });
 
     resetGame();
+    loadPublicLeaderboard();
     requestAnimationFrame(loop);
   </script>
 </body>

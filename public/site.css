@@ -508,11 +508,106 @@ a {
   padding-top: 8px;
 }
 
-.game-controls .button {
+.game-controls .button,
+.score-form .button {
   width: 100%;
   min-height: 52px;
   border: 0;
   cursor: pointer;
+}
+
+.score-form {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.score-form[hidden] {
+  display: none;
+}
+
+.score-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--soft-ink);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.score-form input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--card-bg);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+}
+
+.leaderboard {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.leaderboard-head,
+.leaderboard li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.leaderboard-head span {
+  color: var(--soft-ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.leaderboard-head button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: var(--card-bg);
+  color: var(--soft-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.leaderboard ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leaderboard li {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--card-bg);
+}
+
+.leaderboard li span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--soft-ink);
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard li strong {
+  color: var(--green-dark);
+  font-size: 18px;
 }
 
 .member-grid,
@@ -628,8 +723,13 @@ a {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .game-controls {
+  .game-controls,
+  .score-form,
+  .leaderboard {
     grid-column: 1 / -1;
+  }
+
+  .game-controls {
     grid-template-columns: repeat(3, 1fr);
   }
 }
