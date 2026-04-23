@@ -458,16 +458,35 @@ function roleCheckboxes(roles, selectedIds, name) {
 }
 
 function commandRoleAccess(commandList, roles, overrides = {}) {
-  return commandList
+  const byCategory = new Map();
+  for (const command of commandList) {
+    const category = command.category || "Other";
+    byCategory.set(category, [...(byCategory.get(category) || []), command]);
+  }
+
+  return [...byCategory.entries()]
     .map(
-      (command) => `
-        <details class="permission-row">
+      ([category, commands]) => `
+        <details class="permission-category">
           <summary>
-            <span>${escapeHtml(command.name)}</span>
-            <small>${escapeHtml(command.category || "Other")}</small>
+            <span>${escapeHtml(category)}</span>
+            <small>${commands.length} command${commands.length === 1 ? "" : "s"}</small>
           </summary>
-          <div class="checkbox-grid compact">
-            ${roleCheckboxes(roles, overrides[command.name] || [], `commandRole_${command.name}`)}
+          <div class="permission-category-body">
+            ${commands
+              .map(
+                (command) => `
+                  <details class="permission-row">
+                    <summary>
+                      <span>${escapeHtml(command.name)}</span>
+                      <small>${escapeHtml(command.description || "No description.")}</small>
+                    </summary>
+                    <div class="checkbox-grid compact">
+                      ${roleCheckboxes(roles, overrides[command.name] || [], `commandRole_${command.name}`)}
+                    </div>
+                  </details>`
+              )
+              .join("")}
           </div>
         </details>`
     )
