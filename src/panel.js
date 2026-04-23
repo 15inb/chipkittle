@@ -321,7 +321,7 @@ function loginPage(error = "") {
 function inviteUrl(clientId) {
   if (!clientId) return "";
 
-  const permissions = "361045691472";
+  const permissions = "361048837200";
   return `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=${permissions}&scope=bot%20applications.commands`;
 }
 

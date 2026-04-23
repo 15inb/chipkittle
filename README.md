@@ -48,6 +48,7 @@ This project runs a Discord bot and a password-protected web panel in one Node.j
    - Manage Messages, for automod deletes
    - Manage Roles, for auto role
    - View Channels
+   - Connect and Speak, for voice-channel TTS
 
 5. Start the bot and panel:
 
@@ -72,6 +73,11 @@ Highlights:
 - Moderation: `purge`, `warn`, `warnings`, `clearwarnings`, `timeout`, `untimeout`, `kick`, `ban`, `slowmode`, `lock`, `unlock`
 - Config: `setprefix`, `setwelcome`, `testwelcome`, `autorole`, `logchannel`, `automod`, `blockword`, `unblockword`
 - AI: `ai`, `aichannel`, `aimodel`, `aipersonality`, `ask`
+- Voice: `tts join`, `tts leave`
+
+## Voice TTS
+
+Create a text channel named `#ttsbot`, join a voice channel, then run `/tts join`. After that, normal messages posted in `#ttsbot` are read aloud in the joined voice channel until `/tts leave` is run. The voice is AI-generated using OpenAI text to speech.
 
 ## Chipkittle AI 
 

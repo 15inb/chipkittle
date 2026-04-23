@@ -658,7 +658,7 @@ define({
     }
 
     await ctx.message.reply(
-      `Invite link: https://discord.com/oauth2/authorize?client_id=${ctx.clientId}&permissions=361045691472&scope=bot%20applications.commands`
+      `Invite link: https://discord.com/oauth2/authorize?client_id=${ctx.clientId}&permissions=361048837200&scope=bot%20applications.commands`
     );
   }
 });
@@ -2475,6 +2475,38 @@ define({
     await ctx.message.channel.sendTyping();
     const reply = await ctx.ai.reply(ctx.message, ctx.config, prompt);
     await ctx.message.reply({ content: reply, allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "tts",
+  category: "Utility",
+  description: "Join or leave voice-channel TTS for #ttsbot.",
+  usage: "tts join|leave",
+  async run(ctx) {
+    const action = ctx.args[0]?.toLowerCase();
+
+    if (action === "join") {
+      const member = await ctx.message.guild.members
+        .fetch(ctx.message.author.id)
+        .catch(() => ctx.message.member);
+      const error = await ctx.tts.join({
+        member,
+        channel: ctx.message.channel
+      });
+      if (error) {
+        await ctx.message.reply(error);
+      }
+      return;
+    }
+
+    if (action === "leave") {
+      const left = ctx.tts.leave(ctx.message.guild.id);
+      await ctx.message.reply(left ? "TTS left the voice channel." : "TTS is not in a voice channel.");
+      return;
+    }
+
+    await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
   }
 });
 

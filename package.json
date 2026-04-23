@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "check": "node --check src/index.js && node --check src/bot.js && node --check src/configStore.js && node --check src/panel.js && node --check src/commands.js && node --check src/slashCommands.js && node --check src/applicationTickets.js && node --check src/aiService.js && node --check src/chipkittleLore.js && node --check src/discordSafety.js && node --check src/aiRateLimit.js && node --check src/embedOutput.js && node --check scripts/panel-update.mjs && node --check scripts/panel-restart.mjs"
+    "check": "node --check src/index.js && node --check src/bot.js && node --check src/configStore.js && node --check src/panel.js && node --check src/commands.js && node --check src/slashCommands.js && node --check src/ttsVoice.js && node --check src/applicationTickets.js && node --check src/aiService.js && node --check src/chipkittleLore.js && node --check src/discordSafety.js && node --check src/aiRateLimit.js && node --check src/embedOutput.js && node --check scripts/panel-update.mjs && node --check scripts/panel-restart.mjs"
   },
   "keywords": [
     "discord",
@@ -17,6 +17,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@discordjs/voice": "^0.19.2",
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

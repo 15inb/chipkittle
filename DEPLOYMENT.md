@@ -102,6 +102,7 @@ The bot needs these permissions:
 - Moderate Members
 - Manage Channels, if you want lock/slowmode commands
 - View Channels
+- Connect and Speak, if you want voice-channel TTS
 
 ## Step 6: Deploy Your Website on Vercel
 

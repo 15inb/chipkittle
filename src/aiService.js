@@ -128,4 +128,20 @@ export class AiService {
 
     return Buffer.from(b64, "base64");
   }
+
+  async speech({ text, voice = "coral" }) {
+    if (!this.client) {
+      throw new Error("AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");
+    }
+
+    const response = await this.client.audio.speech.create({
+      model: "gpt-4o-mini-tts",
+      voice,
+      input: trimDiscordMessage(text, 900),
+      response_format: "opus",
+      instructions: "Speak clearly and naturally for a Discord voice channel."
+    });
+
+    return Buffer.from(await response.arrayBuffer());
+  }
 }

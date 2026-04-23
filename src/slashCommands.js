@@ -53,6 +53,20 @@ function addReminderOptions(builder) {
   return builder;
 }
 
+function addTtsSubcommands(builder) {
+  return builder
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("join")
+        .setDescription("Join your voice channel and read messages from #ttsbot.")
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("leave")
+        .setDescription("Leave voice chat and stop reading #ttsbot.")
+    );
+}
+
 export function buildSlashCommands(commandList) {
   return commandList.map((command) => {
     const builder = new SlashCommandBuilder()
@@ -61,6 +75,10 @@ export function buildSlashCommands(commandList) {
 
     if (command.name === "remind") {
       return addReminderOptions(builder).toJSON();
+    }
+
+    if (command.name === "tts") {
+      return addTtsSubcommands(builder).toJSON();
     }
 
     if (commandAcceptsInput(command)) {
@@ -185,6 +203,7 @@ function reminderInput(interaction) {
 
 function inputForInteraction(interaction) {
   if (interaction.commandName === "remind") return reminderInput(interaction);
+  if (interaction.commandName === "tts") return interaction.options.getSubcommand();
   return interaction.options.getString("input") || "";
 }
 

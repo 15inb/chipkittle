@@ -12,6 +12,7 @@ import { commandList, createCommandHandler } from "./commands.js";
 import { NO_MENTIONS } from "./discordSafety.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
 import { handleSlashCommand, registerSlashCommands } from "./slashCommands.js";
+import { TtsVoiceService } from "./ttsVoice.js";
 
 const invitePattern = /(discord\.gg|discord(?:app)?\.com\/invite)\/[a-z0-9-]+/i;
 const linkPattern = /https?:\/\/\S+/i;
@@ -81,17 +82,20 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMembers,
       GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.DirectMessages,
       GatewayIntentBits.MessageContent
     ],
     partials: [Partials.Channel]
   });
+  const tts = new TtsVoiceService({ ai });
   const { handleCommand, handleCommandByName, commandList } = createCommandHandler({
     client,
     store,
     publicUrl,
     clientId,
     ai,
+    tts,
     defaultAiModel
   });
 
@@ -172,6 +176,9 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
     const config = store.getGuild(message.guild.id);
     const handled = await handleCommand(message, config);
     if (handled) return;
+
+    const ttsHandled = await tts.handleMessage(message);
+    if (ttsHandled) return;
 
     if (shouldAiReply(message, config, client.user.id)) {
       const prompt = cleanAiPrompt(message, client.user.id);
