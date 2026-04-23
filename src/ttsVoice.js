@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { createWriteStream } from "node:fs";
+import { spawn } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   AudioPlayerStatus,
-  StreamType,
   VoiceConnectionStatus,
   createAudioPlayer,
   createAudioResource,
@@ -14,11 +12,13 @@ import {
   joinVoiceChannel
 } from "@discordjs/voice";
 import { ChannelType, PermissionsBitField } from "discord.js";
-import { once } from "node:events";
 
 const TTS_TEXT_CHANNEL_NAME = "ttsbot";
 const MAX_TTS_QUEUE = 10;
 const TTS_TMP_DIR = path.join(tmpdir(), "chipkittle-tts");
+const ESPEAK_COMMAND = process.env.TTS_ESPEAK_COMMAND || "espeak-ng";
+const ESPEAK_VOICE = process.env.TTS_ESPEAK_VOICE || "en-us";
+const ESPEAK_SPEED = process.env.TTS_ESPEAK_SPEED || "175";
 
 function cleanSpeechText(message) {
   return String(message.cleanContent || message.content || "")
@@ -36,13 +36,48 @@ function findTtsTextChannel(guild) {
   );
 }
 
-async function writeSpeechFile(buffer) {
+async function createLocalSpeechFile(text) {
   await mkdir(TTS_TMP_DIR, { recursive: true });
-  const filePath = path.join(TTS_TMP_DIR, `${randomUUID()}.opus`);
-  const stream = createWriteStream(filePath);
-  stream.end(buffer);
-  await once(stream, "finish");
+  const filePath = path.join(TTS_TMP_DIR, `${randomUUID()}.wav`);
+
+  await new Promise((resolve, reject) => {
+    const child = spawn(ESPEAK_COMMAND, [
+      "-v",
+      ESPEAK_VOICE,
+      "-s",
+      ESPEAK_SPEED,
+      "-w",
+      filePath,
+      text
+    ], {
+      windowsHide: true
+    });
+
+    let errorOutput = "";
+    child.stderr.on("data", (chunk) => {
+      errorOutput += chunk.toString();
+    });
+    child.on("error", (error) => {
+      reject(new Error(`Could not start ${ESPEAK_COMMAND}: ${error.message}`));
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${ESPEAK_COMMAND} exited with code ${code}: ${errorOutput.trim()}`));
+    });
+  });
+
   return filePath;
+}
+
+async function localTtsAvailable() {
+  return new Promise((resolve) => {
+    const child = spawn(ESPEAK_COMMAND, ["--version"], { windowsHide: true });
+    child.on("error", () => resolve(false));
+    child.on("close", (code) => resolve(code === 0));
+  });
 }
 
 export class TtsVoiceService {
@@ -56,16 +91,16 @@ export class TtsVoiceService {
   }
 
   async join({ member, channel }) {
-    if (!this.ai.enabled) {
-      return "TTS is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.";
-    }
-
     const guildMember = member?.voice
       ? member
       : await member?.guild?.members.fetch(member.id).catch(() => null);
     const voiceChannel = guildMember?.voice?.channel;
     if (!voiceChannel) {
       return "Join a voice channel first, then run `/tts join`.";
+    }
+
+    if (!(await localTtsAvailable())) {
+      return `Local TTS is not installed. Install eSpeak NG on the VPS with \`sudo apt install -y espeak-ng\`, or set TTS_ESPEAK_COMMAND to the right binary.`;
     }
 
     const botMember = guildMember.guild.members.me;
@@ -195,10 +230,8 @@ export class TtsVoiceService {
 
     const next = session.queue.shift();
     session.playing = true;
-    const audio = await this.ai.speech({ text: next.text });
-    const filePath = await writeSpeechFile(audio);
-    const resource = createAudioResource(createReadStream(filePath), {
-      inputType: StreamType.OggOpus,
+    const filePath = await createLocalSpeechFile(next.text);
+    const resource = createAudioResource(filePath, {
       metadata: { filePath }
     });
     session.player.play(resource);

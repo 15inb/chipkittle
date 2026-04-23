@@ -77,7 +77,22 @@ Highlights:
 
 ## Voice TTS
 
-Create a text channel named `#ttsbot`, join a voice channel, then run `/tts join`. After that, normal messages posted in `#ttsbot` are read aloud in the joined voice channel until `/tts leave` is run. The voice is AI-generated using OpenAI text to speech.
+Create a text channel named `#ttsbot`, join a voice channel, then run `/tts join`. After that, normal messages posted in `#ttsbot` are read aloud in the joined voice channel until `/tts leave` is run. TTS uses local `espeak-ng` on the server, so it does not use OpenAI API usage.
+
+On Ubuntu/VPS hosting, install eSpeak NG before starting the bot:
+
+```bash
+sudo apt update
+sudo apt install -y espeak-ng
+```
+
+Optional environment variables:
+
+```env
+TTS_ESPEAK_COMMAND=espeak-ng
+TTS_ESPEAK_VOICE=en-us
+TTS_ESPEAK_SPEED=175
+```
 
 ## Chipkittle AI 
 
