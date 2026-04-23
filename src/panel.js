@@ -9,7 +9,7 @@ import { serializeGuild } from "./bot.js";
 
 const execFileAsync = promisify(execFile);
 const UPDATE_STALE_MS = 10 * 60 * 1000;
-const ACTIVE_UPDATE_STATUSES = new Set(["running", "restarting"]);
+const ACTIVE_UPDATE_STATUSES = new Set(["running", "updating", "restarting"]);
 const SETTINGS_SECTIONS = [
   { id: "general", label: "General", description: "Prefix, welcome, autorole, and public directory." },
   { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
@@ -57,9 +57,11 @@ function safeEquals(a, b) {
 
 function flashFromQuery(query = {}) {
   if (query.saved) return "Configuration saved.";
-  if (query.update === "started") return "Update started. The bot will restart when it finishes.";
+  if (query.update === "started") return "GitHub pull started.";
+  if (query.update === "restart-started") return "Bot restart started.";
   if (query.update === "busy") return "An update is already running.";
   if (query.update === "failed") return "Could not start the update job.";
+  if (query.update === "restart-failed") return "Could not start the restart job.";
   return "";
 }
 
@@ -113,11 +115,16 @@ function updateControls() {
     <section class="panel-section update-panel server-update-card">
       <div class="section-heading">
         <h2>Server Update</h2>
-        <p>Pull the latest GitHub changes, install packages, and restart the PM2 bot process.</p>
+        <p>Pull GitHub changes or restart the PM2 bot process. Run pull first when deploying new code.</p>
       </div>
-      <form method="post" action="/admin/update" class="inline-form">
-        <button type="submit">Pull GitHub and restart bot</button>
-      </form>
+      <div class="update-actions">
+        <form method="post" action="/admin/update" class="inline-form">
+          <button type="submit">Pull GitHub</button>
+        </form>
+        <form method="post" action="/admin/restart" class="inline-form">
+          <button type="submit" class="secondary-button">Restart bot</button>
+        </form>
+      </div>
       ${
         status
           ? `<div class="update-status">
@@ -949,6 +956,29 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     } catch (error) {
       console.error("Could not start panel update:", error);
       response.redirect(`${updateRedirectTarget(request)}failed`);
+    }
+  });
+
+  app.post("/admin/restart", requireAuth, (request, response) => {
+    const status = readUpdateStatus();
+    if (ACTIVE_UPDATE_STATUSES.has(status?.status) && !status.stale) {
+      response.redirect(`${updateRedirectTarget(request)}busy`);
+      return;
+    }
+
+    try {
+      const scriptPath = path.join(process.cwd(), "scripts", "panel-restart.mjs");
+      const child = spawn(process.execPath, [scriptPath], {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: "ignore",
+        env: process.env
+      });
+      child.unref();
+      response.redirect(`${updateRedirectTarget(request)}restart-started`);
+    } catch (error) {
+      console.error("Could not start panel restart:", error);
+      response.redirect(`${updateRedirectTarget(request)}restart-failed`);
     }
   });
 

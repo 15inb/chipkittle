@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 const root = path.resolve(process.env.PANEL_UPDATE_ROOT || process.cwd());
 const dataDir = path.join(root, "data");
 const statusPath = path.join(dataDir, "update-status.json");
+const pm2Name = process.env.PM2_PROCESS_NAME || "chipkittle";
 
 async function writeStatus(status, extra = {}) {
   await fs.mkdir(dataDir, { recursive: true });
@@ -55,14 +56,13 @@ function run(command, args) {
 }
 
 try {
-  await writeStatus("updating", { log: "Starting GitHub pull..." });
-
-  const logs = [];
-  logs.push(`$ git pull origin main\n${await run("git", ["pull", "origin", "main"])}`);
-  await writeStatus("updating", { log: logs.join("\n\n") });
-
-  logs.push(`$ npm install\n${await run("npm", ["install"])}`);
-  await writeStatus("updated", { log: logs.join("\n\n") });
+  await writeStatus("restarting", {
+    log: `$ pm2 restart ${pm2Name}\nRestart command is being handed to PM2.`
+  });
+  const output = await run("pm2", ["restart", pm2Name]);
+  await writeStatus("restarted", {
+    log: `$ pm2 restart ${pm2Name}\n${output}`
+  });
 } catch (error) {
   await writeStatus("failed", {
     error: error.message,
