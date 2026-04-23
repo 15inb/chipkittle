@@ -127,7 +127,7 @@
     let artifactTimer = 0;
     let stoneTimer = 0;
     let bonusTimer = 0;
-    let powerupTimer = 0;
+    let nextPowerupScore = 200;
     let scorePrompted = false;
     let elapsedTime = 0;
     let audioContext;
@@ -219,6 +219,13 @@
         speed: 160 + Math.random() * 60,
         type
       });
+    }
+
+    function maybeSpawnPowerup() {
+      while (score >= nextPowerupScore) {
+        spawnPowerup();
+        nextPowerupScore += 300;
+      }
     }
 
     function spawnBonusArtifact() {
@@ -418,7 +425,7 @@
       artifactTimer = 0;
       stoneTimer = 0;
       bonusTimer = 120 + Math.random() * 30;
-      powerupTimer = 14 + Math.random() * 8;
+      nextPowerupScore = 200;
       elapsedTime = 0;
       gameOver = false;
       scorePrompted = false;
@@ -526,11 +533,6 @@
         spawnBonusArtifact();
         bonusTimer = 120 + Math.random() * 40;
       }
-      powerupTimer -= dt;
-      if (powerupTimer <= 0) {
-        spawnPowerup();
-        powerupTimer = 14 + Math.random() * 8;
-      }
 
       artifacts.forEach((item) => {
         item.x -= item.speed * dt;
@@ -554,6 +556,7 @@
             best = score;
             localStorage.setItem(storageKey, String(best));
           }
+          maybeSpawnPowerup();
           updateStats();
           return false;
         }
@@ -608,38 +611,32 @@
       ctx.save();
       ctx.translate(player.x, player.y);
 
-      ctx.fillStyle = "#111917";
-      ctx.beginPath();
-      ctx.ellipse(-20, -48, 12, 38, -0.1, 0, Math.PI * 2);
-      ctx.ellipse(20, -48, 12, 38, 0.1, 0, Math.PI * 2);
-      ctx.fill();
-
       ctx.fillStyle = playerFurGradient;
       ctx.beginPath();
-      ctx.ellipse(0, 6, 40, 44, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = "#2c3331";
-      ctx.beginPath();
-      ctx.ellipse(-22, -10, 12, 30, 0.2, 0, Math.PI * 2);
-      ctx.ellipse(22, -10, 12, 30, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, 42, 46, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = "#111917";
       ctx.beginPath();
-      ctx.arc(-10, -8, 6, 0, Math.PI * 2);
-      ctx.arc(10, -8, 6, 0, Math.PI * 2);
+      ctx.ellipse(-12, -12, 8, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(12, -12, 8, 10, 0, 0, Math.PI * 2);
       ctx.fill();
+
       ctx.fillStyle = "#90f37a";
       ctx.beginPath();
-      ctx.arc(-10, -8, 2.5, 0, Math.PI * 2);
-      ctx.arc(10, -8, 2.5, 0, Math.PI * 2);
+      ctx.arc(-12, -12, 2.5, 0, Math.PI * 2);
+      ctx.arc(12, -12, 2.5, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = "#f1d0bd";
       ctx.beginPath();
-      ctx.ellipse(0, 18, 16, 12, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 18, 18, 12, 0, 0, Math.PI * 2);
       ctx.fill();
+
+      ctx.fillStyle = "#111917";
+      ctx.font = "700 12px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("Chipkittle", 0, 38);
 
       ctx.restore();
     }
