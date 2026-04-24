@@ -938,6 +938,7 @@ const MAX_BREAD_BET = 10_000;
 const DAILY_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 const GAMBLING_COOLDOWN_MS = 5 * 1000;
 const ROB_COOLDOWN_MS = 3 * 60 * 60 * 1000;
+const CASINO_ROBBERY_COOLDOWN_MS = 8 * 60 * 60 * 1000;
 const BANK_INTEREST_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 const BANK_INTEREST_RATE = 0.015;
 const MAX_BANK_INTEREST = 1_000;
@@ -959,6 +960,7 @@ function normalizeEconomy(economy = {}) {
       beg: { ...(economy.cooldowns?.beg || {}) },
       work: { ...(economy.cooldowns?.work || {}) },
       interest: { ...(economy.cooldowns?.interest || {}) },
+      casinoRobbery: { ...(economy.cooldowns?.casinoRobbery || {}) },
       robbers: { ...(economy.cooldowns?.robbers || {}) },
       robVictims: { ...(economy.cooldowns?.robVictims || {}) }
     },
@@ -2406,6 +2408,7 @@ define({
       if (entry.type === "deposit") return `${when} - Deposit: **${formatBread(entry.amount || 0)}** into bank`;
       if (entry.type === "withdraw") return `${when} - Withdrawal: **${formatBread(entry.amount || 0)}** to wallet`;
       if (entry.type === "interest") return `${when} - Bank interest: **+${formatBread(entry.amount || 0)}**`;
+      if (entry.type === "casino-robbery") return `${when} - Casino robbery: **${formatNetBread(entry.net || 0)}**`;
       if (entry.type === "admin-set") return `${when} - Staff set wallet to **${formatBread(entry.amount || 0)}**`;
       if (entry.type === "admin-add") return `${when} - Staff added **${formatBread(entry.amount || 0)}**`;
       if (entry.type === "admin-take") return `${when} - Staff removed **${formatBread(Math.abs(entry.amount || 0))}**`;
@@ -4923,6 +4926,86 @@ define({
       setBreadBalance(economy, attackerId, attackerBalance - fine);
       setBreadBalance(economy, target.id, victimBalance + fine);
       return `The robbery failed. You had to pay **${formatBread(fine)}** back to **${target.username || target.tag}**.`;
+    });
+
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "casinorob",
+  aliases: ["casinoheist", "robcasino", "heistcasino", "breadheist"],
+  category: "Gambling",
+  description: "Attempt a high-risk robbery against the casino vault.",
+  usage: "casinorob [stake]",
+  async run(ctx) {
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const userId = ctx.message.author.id;
+      const cooldown = persistentCooldownStatus(economy, "casinoRobbery", userId, CASINO_ROBBERY_COOLDOWN_MS);
+      if (cooldown.limited) {
+        return `The casino security team still recognizes you. Try another heist in ${formatCooldown(cooldown.remainingMs)}.`;
+      }
+
+      const wallet = breadBalance(economy, userId);
+      const bank = bankBalance(economy, userId);
+      const netWorth = wallet + bank;
+      if (netWorth < 500) {
+        return "You need at least 500 total bread net worth before the casino takes your robbery seriously.";
+      }
+
+      const requestedStake = parseBreadAmount(ctx.args[0] || "500", wallet, Math.min(wallet, 25_000));
+      const stake = Math.min(Math.max(requestedStake || 500, 250), wallet, 25_000);
+      if (wallet < stake) {
+        return `You need **${formatBread(stake)}** in your wallet for getaway money. Use \`${ctx.config.prefix}withdraw\` first if needed.`;
+      }
+
+      setPersistentCooldown(economy, "casinoRobbery", userId);
+      const roll = randomInt(1, 100);
+      let net = 0;
+      let label = "";
+      let detail = "";
+
+      if (roll >= 96) {
+        net = Math.min(stake * randomInt(7, 10), 80_000);
+        label = "Vault Jackpot";
+        detail = "You cracked the ceremonial vault and escaped through the bread chute.";
+      } else if (roll >= 76) {
+        net = Math.min(stake * randomInt(3, 5), 35_000);
+        label = "Clean Score";
+        detail = "You slipped past the dealers and walked out with a suspiciously heavy coat.";
+      } else if (roll >= 51) {
+        net = Math.min(Math.floor(stake * 1.4), 12_000);
+        label = "Messy Grab";
+        detail = "You grabbed what you could before the pit boss noticed.";
+      } else if (roll >= 21) {
+        net = -Math.min(Math.floor(stake * 0.75), wallet);
+        label = "Security Chase";
+        detail = "Security chased you into the parking lot and you dropped bread everywhere.";
+      } else {
+        net = -Math.min(Math.floor(stake * 1.6), wallet);
+        label = "Caught";
+        detail = "The casino caught you, fined you, and made you apologize to the vault.";
+      }
+
+      setBreadBalance(economy, userId, wallet + net);
+      recordEconomyTransaction(economy, {
+        userId,
+        type: "casino-robbery",
+        stake,
+        roll,
+        net,
+        balance: breadBalance(economy, userId),
+        bank: bankBalance(economy, userId)
+      });
+
+      return [
+        `**Casino Robbery: ${label}**`,
+        detail,
+        `Stake: **${formatBread(stake)}**`,
+        `Result: **${formatNetBread(net)}**`,
+        `Wallet: **${formatBread(breadBalance(economy, userId))}**`,
+        `Cooldown: **${formatCooldown(CASINO_ROBBERY_COOLDOWN_MS)}**`
+      ].join("\n");
     });
 
     await ctx.message.reply(output);
