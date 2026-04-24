@@ -1,5 +1,6 @@
 const MAX_AUDIT_LOG = 120;
 const MAX_ARTIFACTS = 80;
+const MAX_CASES = 400;
 
 export const DEFAULT_ARTIFACTS = [
   {
@@ -40,6 +41,7 @@ export const COMMUNITY_DEFAULTS = {
   profiles: {},
   artifacts: DEFAULT_ARTIFACTS,
   auditLog: [],
+  cases: [],
   analytics: {
     commands: {},
     totals: {
@@ -49,6 +51,7 @@ export const COMMUNITY_DEFAULTS = {
       applicationsApproved: 0,
       applicationsDenied: 0,
       moderationActions: 0,
+      casesOpened: 0,
       vouches: 0,
       artifactsRegistered: 0,
       shopPurchases: 0
@@ -81,6 +84,7 @@ export function communityState(config = {}) {
     profiles: { ...(community.profiles || {}) },
     artifacts: normalizeArtifacts(community.artifacts),
     auditLog: Array.isArray(community.auditLog) ? community.auditLog.slice(-MAX_AUDIT_LOG) : [],
+    cases: normalizeCases(community.cases),
     analytics: {
       commands: { ...(community.analytics?.commands || {}) },
       totals: mergeTotals(community.analytics?.totals)
@@ -105,6 +109,32 @@ export function normalizeArtifacts(artifacts = []) {
     }))
     .filter((artifact) => artifact.name)
     .slice(0, MAX_ARTIFACTS);
+}
+
+export function normalizeCases(cases = []) {
+  return (Array.isArray(cases) ? cases : [])
+    .map((entry, index) => ({
+      id: Math.max(Math.floor(Number(entry.id) || 0), index + 1),
+      action: String(entry.action || "note").slice(0, 40),
+      targetId: String(entry.targetId || ""),
+      targetTag: String(entry.targetTag || "").slice(0, 80),
+      moderatorId: String(entry.moderatorId || ""),
+      moderatorTag: String(entry.moderatorTag || "").slice(0, 80),
+      reason: String(entry.reason || "").slice(0, 260),
+      status: String(entry.status || "open").slice(0, 20),
+      durationMs: Math.max(Math.floor(Number(entry.durationMs) || 0), 0),
+      createdAt: String(entry.createdAt || ""),
+      updates: Array.isArray(entry.updates)
+        ? entry.updates.map((update) => ({
+            authorTag: String(update.authorTag || "").slice(0, 80),
+            note: String(update.note || "").slice(0, 200),
+            createdAt: String(update.createdAt || "")
+          })).slice(0, 20)
+        : []
+    }))
+    .filter((entry) => entry.id && entry.targetId)
+    .sort((a, b) => b.id - a.id)
+    .slice(0, MAX_CASES);
 }
 
 function normalizeInventory(inventory = {}) {
@@ -198,6 +228,64 @@ export async function addAuditLog(store, guildId, entry) {
       ...(community.auditLog || [])
     ].slice(0, MAX_AUDIT_LOG)
   }));
+}
+
+export async function createCase(store, guildId, entry) {
+  let createdCase = null;
+  await updateCommunity(store, guildId, (community) => {
+    const cases = normalizeCases(community.cases);
+    const nextId = Math.max(0, ...cases.map((item) => item.id)) + 1;
+    createdCase = {
+      id: nextId,
+      action: String(entry.action || "note").slice(0, 40),
+      targetId: String(entry.targetId || ""),
+      targetTag: String(entry.targetTag || "").slice(0, 80),
+      moderatorId: String(entry.moderatorId || ""),
+      moderatorTag: String(entry.moderatorTag || "").slice(0, 80),
+      reason: String(entry.reason || "").slice(0, 260),
+      status: String(entry.status || "open").slice(0, 20),
+      durationMs: Math.max(Math.floor(Number(entry.durationMs) || 0), 0),
+      createdAt: new Date().toISOString(),
+      updates: []
+    };
+    return {
+      ...community,
+      cases: [createdCase, ...cases].slice(0, MAX_CASES),
+      analytics: {
+        ...community.analytics,
+        totals: {
+          ...community.analytics.totals,
+          casesOpened: Math.max(Math.floor(Number(community.analytics.totals?.casesOpened) || 0) + 1, 1),
+          moderationActions: Math.max(Math.floor(Number(community.analytics.totals?.moderationActions) || 0) + 1, 1)
+        }
+      }
+    };
+  });
+  return createdCase;
+}
+
+export async function updateCase(store, guildId, caseId, updater) {
+  let updatedCase = null;
+  await updateCommunity(store, guildId, (community) => {
+    const cases = normalizeCases(community.cases).map((entry) => {
+      if (entry.id !== Number(caseId)) return entry;
+      updatedCase = updater(entry) || entry;
+      return updatedCase;
+    });
+    return {
+      ...community,
+      cases
+    };
+  });
+  return updatedCase;
+}
+
+export function getCase(config = {}, caseId) {
+  return normalizeCases(communityState(config).cases).find((entry) => entry.id === Number(caseId)) || null;
+}
+
+export function casesForUser(config = {}, userId) {
+  return normalizeCases(communityState(config).cases).filter((entry) => entry.targetId === String(userId || ""));
 }
 
 export async function incrementMetric(store, guildId, metric, amount = 1) {
@@ -336,6 +424,7 @@ export function communitySnapshot(config = {}) {
   return {
     profiles: profiles.length,
     artifacts: normalizeArtifacts(community.artifacts).length,
+    cases: normalizeCases(community.cases).length,
     auditEvents: community.auditLog.length,
     vouches: profiles.reduce((sum, profile) => sum + (Array.isArray(profile.vouches) ? profile.vouches.length : 0), 0),
     commandsRun: totals.commandsRun,
@@ -344,6 +433,7 @@ export function communitySnapshot(config = {}) {
     applicationsApproved: totals.applicationsApproved,
     applicationsDenied: totals.applicationsDenied,
     moderationActions: totals.moderationActions,
+    casesOpened: totals.casesOpened,
     artifactsRegistered: totals.artifactsRegistered,
     shopPurchases: totals.shopPurchases
   };

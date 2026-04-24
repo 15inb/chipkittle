@@ -184,6 +184,8 @@ function updateControls() {
         <form method="post" action="/admin/restart" class="inline-form">
           <button type="submit" class="secondary-button">Restart bot</button>
         </form>
+        <a class="primary-link secondary-link" href="/admin/export/config">Export config</a>
+        <a class="primary-link secondary-link" href="/admin/export/community">Export community</a>
       </div>
       ${
         status
@@ -203,6 +205,7 @@ function dashboardCards(guild, config = {}) {
   const snapshot = communitySnapshot(config);
   const top = topCommands(config, 5);
   const auditLog = (config.community?.auditLog || []).slice(0, 8);
+  const recentCases = (config.community?.cases || []).slice(0, 6);
   return `
     <section class="panel-section">
       <div class="section-heading">
@@ -214,6 +217,7 @@ function dashboardCards(guild, config = {}) {
         <article class="stat-card"><strong>${escapeHtml(snapshot.commandsRun)}</strong><span>Commands Run</span></article>
         <article class="stat-card"><strong>${escapeHtml(snapshot.aiReplies)}</strong><span>AI Replies</span></article>
         <article class="stat-card"><strong>${escapeHtml(snapshot.applicationsOpened)}</strong><span>Applications</span></article>
+        <article class="stat-card"><strong>${escapeHtml(snapshot.cases)}</strong><span>Case Files</span></article>
         <article class="stat-card"><strong>${escapeHtml(snapshot.artifacts)}</strong><span>Artifacts</span></article>
         <article class="stat-card"><strong>${escapeHtml(snapshot.shopPurchases)}</strong><span>Shop Purchases</span></article>
       </div>
@@ -227,6 +231,15 @@ function dashboardCards(guild, config = {}) {
         ${top.length
           ? `<div class="stack-list">${top.map((item) => `<div class="list-row"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.count)} uses</span></div>`).join("")}</div>`
           : '<p class="muted">No command activity yet.</p>'}
+      </section>
+      <section class="panel-section">
+        <div class="section-heading">
+          <h2>Recent Cases</h2>
+          <p>Newest moderation cases recorded by the bot.</p>
+        </div>
+        ${recentCases.length
+          ? `<div class="stack-list">${recentCases.map((entry) => `<div class="audit-row"><strong>Case #${escapeHtml(entry.id)} • ${escapeHtml(entry.action)}</strong><small>${escapeHtml(entry.targetTag || entry.targetId)} • ${escapeHtml(entry.status)}</small><p>${escapeHtml(entry.reason || "No reason recorded.")}</p></div>`).join("")}</div>`
+          : '<p class="muted">No moderation cases yet.</p>'}
       </section>
       <section class="panel-section">
         <div class="section-heading">
@@ -288,6 +301,12 @@ function writePublicMembersFile(members = []) {
 
 function leaderboardPath() {
   return path.join(process.cwd(), "data", "game-leaderboard.json");
+}
+
+function downloadJson(response, filename, payload) {
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  response.send(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
 function cleanGameId(value = "") {
@@ -1587,6 +1606,31 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       console.error("Could not start panel restart:", error);
       response.redirect(`${updateRedirectTarget(request)}restart-failed`);
     }
+  });
+
+  app.get("/admin/export/config", requireAuth, (_request, response) => {
+    downloadJson(response, "chipkittle-config.json", store.data || { guilds: {} });
+  });
+
+  app.get("/admin/export/community", requireAuth, (_request, response) => {
+    const payload = Object.fromEntries(
+      Object.entries(store.data?.guilds || {}).map(([guildEntryId, config]) => [
+        guildEntryId,
+        {
+          community: config.community || {},
+          publicSite: config.publicSite || {},
+          moderation: {
+            warnings: config.moderation?.warnings || {},
+            logChannelId: config.moderation?.logChannelId || ""
+          },
+          applications: {
+            enabled: config.applications?.enabled || false,
+            questions: config.applications?.questions || []
+          }
+        }
+      ])
+    );
+    downloadJson(response, "chipkittle-community-export.json", payload);
   });
 
   app.post("/admin/game-leaderboard/delete", requireAuth, (request, response) => {
