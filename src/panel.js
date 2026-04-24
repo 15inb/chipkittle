@@ -8,6 +8,7 @@ import session from "express-session";
 import { serializeGuild } from "./bot.js";
 import {
   addAuditLog,
+  artifactOfTheDay,
   artifactDirectoryText,
   communitySnapshot,
   parseArtifactDirectory,
@@ -509,6 +510,81 @@ function publicSiteWorkspace(config = {}, commandList = []) {
       <div class="dashboard-grid">
         ${gameCounts.map((entry) => `<div class="sub-panel"><strong>${escapeHtml(entry.label)}</strong><p class="muted">${escapeHtml(entry.count)} saved leaderboard entr${entry.count === 1 ? "y" : "ies"}.</p></div>`).join("")}
       </div>
+    </section>
+  `;
+}
+
+function communityWorkspace(guildId, config = {}) {
+  const snapshot = communitySnapshot(config);
+  const artifacts = (config.community?.artifacts || []).slice(0, 8);
+  const artifact = artifactOfTheDay(config);
+  const staffNotes = Object.entries(config.community?.staffNotes || {})
+    .map(([userId, notes]) => ({
+      userId,
+      notes: Array.isArray(notes) ? notes : []
+    }))
+    .filter((entry) => entry.notes.length)
+    .sort((a, b) => b.notes.length - a.notes.length || a.userId.localeCompare(b.userId))
+    .slice(0, 12);
+  const rituals = config.community?.rituals || {};
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Community Operations</h2>
+        <p>Track registry health, staff notes, and the public ritual state from one place.</p>
+      </div>
+      <div class="stats-grid">
+        <article class="stat-card"><strong>${escapeHtml(snapshot.artifacts)}</strong><span>Artifacts</span></article>
+        <article class="stat-card"><strong>${escapeHtml(snapshot.profiles)}</strong><span>Profiles</span></article>
+        <article class="stat-card"><strong>${escapeHtml(Object.keys(config.community?.staffNotes || {}).length)}</strong><span>Members With Notes</span></article>
+        <article class="stat-card"><strong>${escapeHtml(snapshot.artifactsRegistered)}</strong><span>Artifacts Registered</span></article>
+      </div>
+      <div class="dashboard-grid">
+        <div class="sub-panel">
+          <div class="section-heading">
+            <h2>Artifact Of The Day</h2>
+            <p>The featured artifact currently shown by the bot rotation.</p>
+          </div>
+          ${
+            artifact
+              ? `<div class="audit-row"><strong>${escapeHtml(artifact.name)}</strong><small>${escapeHtml(artifact.rarity)} • ${escapeHtml(artifact.keeper)}</small><p>${escapeHtml(artifact.summary)}</p></div>`
+              : '<p class="muted">No artifact is available right now.</p>'
+          }
+        </div>
+        <div class="sub-panel">
+          <div class="section-heading">
+            <h2>Public Ritual Preview</h2>
+            <p>This is the archive/status copy the website is currently working with.</p>
+          </div>
+          <div class="stack-list">
+            <div class="audit-row"><strong>Current event</strong><p>${escapeHtml(rituals.currentEvent || "No current event set.")}</p></div>
+            <div class="audit-row"><strong>Seasonal message</strong><p>${escapeHtml(rituals.seasonalMessage || "No seasonal message set.")}</p></div>
+            <div class="audit-row"><strong>Next trial</strong><p>${escapeHtml(rituals.nextTrial || "No next trial set.")}</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Artifact Registry Snapshot</h2>
+        <p>The first few artifacts in the registry so you can sanity-check names, keepers, and summaries.</p>
+      </div>
+      ${
+        artifacts.length
+          ? `<div class="stack-list">${artifacts.map((item) => `<div class="audit-row"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.rarity)} • ${escapeHtml(item.keeper)}</small><p>${escapeHtml(item.summary)}</p></div>`).join("")}</div>`
+          : '<p class="muted">No artifacts are registered yet.</p>'
+      }
+    </section>
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Staff Note Ledger</h2>
+        <p>Review private member notes and clear a member's note history from the panel if needed.</p>
+      </div>
+      ${
+        staffNotes.length
+          ? `<div class="warning-ledger">${staffNotes.map((entry) => `<article class="warning-row"><div class="warning-row-main"><strong>${escapeHtml(entry.userId)}</strong><small>${escapeHtml(entry.notes.length)} stored note${entry.notes.length === 1 ? "" : "s"}</small><ul>${entry.notes.slice(0, 3).map((note) => `<li>${escapeHtml(note.author || "Staff")}: ${escapeHtml(note.note || "")}</li>`).join("")}</ul></div><button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/community/staff-notes/${entry.userId}/clear?section=community">Clear notes</button></article>`).join("")}</div>`
+          : '<p class="muted">No staff notes are stored right now.</p>'
+      }
     </section>
   `;
 }
@@ -1631,6 +1707,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
 
             <section class="${sectionClass("community", currentSection)}">
               <div class="settings-stack">
+                ${communityWorkspace(guild.id, config)}
                 <section class="panel-section">
                   <div class="section-heading">
                     <h2>Artifact Registry</h2>
@@ -2307,6 +2384,34 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
         actor: "Panel"
       }).catch(() => {});
       response.redirect(`/guilds/${discordGuild.id}?saved=1&section=applications`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/community/staff-notes/:userId/clear", requireAuth, async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const config = store.getGuild(discordGuild.id);
+      const staffNotes = { ...(config.community?.staffNotes || {}) };
+      delete staffNotes[String(request.params.userId || "")];
+      await store.updateGuild(discordGuild.id, {
+        community: {
+          ...config.community,
+          staffNotes
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "staff-note",
+        label: "Staff notes cleared",
+        details: `Cleared staff notes for ${request.params.userId} from the web panel.`,
+        actor: "Panel"
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=community`);
     } catch (error) {
       next(error);
     }
