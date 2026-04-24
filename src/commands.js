@@ -947,11 +947,17 @@ const STARTING_BREAD = 500;
 const DAILY_BREAD = 300;
 const MAX_BREAD_BET = 10_000;
 const DAILY_COOLDOWN_MS = 20 * 60 * 60 * 1000;
+const ECONOMY_LOG_LIMIT = 60;
+const BLACKJACK_SESSION_MS = 120_000;
+const blackjackSessions = new Map();
 
 function normalizeEconomy(economy = {}) {
   return {
+    ...economy,
     balances: { ...(economy.balances || {}) },
-    dailyClaims: { ...(economy.dailyClaims || {}) }
+    dailyClaims: { ...(economy.dailyClaims || {}) },
+    stats: { ...(economy.stats || {}) },
+    transactions: Array.isArray(economy.transactions) ? economy.transactions.slice(-ECONOMY_LOG_LIMIT) : []
   };
 }
 
@@ -965,6 +971,55 @@ function setBreadBalance(economy, userId, amount) {
 
 function formatBread(amount) {
   return `${Math.floor(amount).toLocaleString()} bread`;
+}
+
+function economyStatsFor(economy, userId) {
+  const current = economy.stats?.[userId] || {};
+  return {
+    gamesPlayed: Math.max(Math.floor(Number(current.gamesPlayed) || 0), 0),
+    gamesWon: Math.max(Math.floor(Number(current.gamesWon) || 0), 0),
+    wagered: Math.max(Math.floor(Number(current.wagered) || 0), 0),
+    profit: Math.floor(Number(current.profit) || 0),
+    biggestWin: Math.max(Math.floor(Number(current.biggestWin) || 0), 0)
+  };
+}
+
+function recordEconomyTransaction(economy, entry = {}) {
+  economy.transactions ||= [];
+  economy.transactions.push({
+    ...entry,
+    createdAt: entry.createdAt || new Date().toISOString()
+  });
+  economy.transactions = economy.transactions.slice(-ECONOMY_LOG_LIMIT);
+}
+
+function recordGamblingStats(economy, userId, { bet = 0, payout = 0, game = "Gambling" } = {}) {
+  economy.stats ||= {};
+  const wager = Math.max(Math.floor(Number(bet) || 0), 0);
+  const grossPayout = Math.max(Math.floor(Number(payout) || 0), 0);
+  const net = grossPayout - wager;
+  const stats = economyStatsFor(economy, userId);
+  stats.gamesPlayed += 1;
+  if (grossPayout > wager) stats.gamesWon += 1;
+  stats.wagered += wager;
+  stats.profit += net;
+  stats.biggestWin = Math.max(stats.biggestWin, net);
+  economy.stats[userId] = stats;
+  recordEconomyTransaction(economy, {
+    userId,
+    type: "gamble",
+    game,
+    bet: wager,
+    payout: grossPayout,
+    net,
+    balance: breadBalance(economy, userId)
+  });
+}
+
+function formatNetBread(net) {
+  const amount = Math.abs(Math.floor(Number(net) || 0));
+  if (!amount) return "even";
+  return `${net > 0 ? "+" : "-"}${formatBread(amount)}`;
 }
 
 function publicLeaderboardPath() {
@@ -1061,17 +1116,107 @@ async function runBreadBet(ctx, gameName, resolver) {
     const payout = Math.max(Math.floor(Number(result.payout) || 0), 0);
     const nextBalance = balance - bet.amount + payout;
     setBreadBalance(economy, userId, nextBalance);
+    recordGamblingStats(economy, userId, { bet: bet.amount, payout, game: gameName });
+    const net = payout - bet.amount;
 
     return [
       `**${gameName}**`,
       result.text,
       `Bet: ${formatBread(bet.amount)}`,
       `Payout: ${formatBread(payout)}`,
+      `Net: ${formatNetBread(net)}`,
       `Balance: ${formatBread(nextBalance)}`
     ].join("\n");
   });
 
   await ctx.message.reply(reply);
+}
+
+function createBlackjackDeck() {
+  const ranks = [
+    { name: "A", value: 11 },
+    { name: "2", value: 2 },
+    { name: "3", value: 3 },
+    { name: "4", value: 4 },
+    { name: "5", value: 5 },
+    { name: "6", value: 6 },
+    { name: "7", value: 7 },
+    { name: "8", value: 8 },
+    { name: "9", value: 9 },
+    { name: "10", value: 10 },
+    { name: "J", value: 10 },
+    { name: "Q", value: 10 },
+    { name: "K", value: 10 }
+  ];
+  return ["spades", "hearts", "diamonds", "clubs"].flatMap((suit) =>
+    ranks.map((rank) => ({ ...rank, suit }))
+  );
+}
+
+function drawBlackjackCard(deck) {
+  const index = randomInt(0, deck.length - 1);
+  return deck.splice(index, 1)[0];
+}
+
+function blackjackHandValue(hand) {
+  let total = hand.reduce((sum, card) => sum + card.value, 0);
+  let aces = hand.filter((card) => card.name === "A").length;
+  while (total > 21 && aces > 0) {
+    total -= 10;
+    aces -= 1;
+  }
+  return total;
+}
+
+function blackjackHandText(hand, hidden = false) {
+  if (hidden) return `${hand[0].name} + hidden`;
+  return `${hand.map((card) => card.name).join(", ")} (${blackjackHandValue(hand)})`;
+}
+
+function blackjackOutcome(session) {
+  const playerTotal = blackjackHandValue(session.player);
+  const dealerTotal = blackjackHandValue(session.dealer);
+  const natural = session.player.length === 2 && playerTotal === 21;
+  if (playerTotal > 21) return { payout: 0, label: "Bust. House wins." };
+  if (natural && dealerTotal !== 21) return { payout: Math.floor(session.bet * 2.5), label: "Natural blackjack." };
+  if (dealerTotal > 21) return { payout: session.bet * 2, label: "Dealer busts. You win." };
+  if (playerTotal > dealerTotal) return { payout: session.bet * 2, label: "You beat the dealer." };
+  if (playerTotal === dealerTotal) return { payout: session.bet, label: "Push. Bet returned." };
+  return { payout: 0, label: "Dealer wins." };
+}
+
+function blackjackButtons(session, disabled = false) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`bj:${session.id}:hit`)
+        .setLabel("Hit")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(disabled),
+      new ButtonBuilder()
+        .setCustomId(`bj:${session.id}:stand`)
+        .setLabel("Stand")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(disabled),
+      new ButtonBuilder()
+        .setCustomId(`bj:${session.id}:double`)
+        .setLabel("Double")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(disabled || session.player.length !== 2 || session.doubled)
+    )
+  ];
+}
+
+function blackjackTableText(session, revealDealer = false, footer = "Choose hit, stand, or double.") {
+  const playerTotal = blackjackHandValue(session.player);
+  return [
+    `**Bread Blackjack**`,
+    `Bet: ${formatBread(session.bet)}`,
+    `Your hand: **${blackjackHandText(session.player)}**`,
+    `Dealer hand: **${blackjackHandText(session.dealer, !revealDealer)}**`,
+    `Total: **${playerTotal}**`,
+    footer
+  ].join("\n");
 }
 
 define({
@@ -1856,6 +2001,7 @@ define({
     const targetMember = mentionTargetUser(ctx.message);
     const targetId = targetMember.id;
     const balance = breadBalance(economy, targetId);
+    const stats = economyStatsFor(economy, targetId);
     const sorted = Object.entries(economy.balances)
       .map(([userId, amount]) => [userId, Math.max(Math.floor(Number(amount) || 0), 0)])
       .sort((a, b) => b[1] - a[1]);
@@ -1866,7 +2012,11 @@ define({
       `**${targetMember.displayName}'s Bread Wallet**`,
       `Balance: **${formatBread(balance)}**`,
       `Rank: **${rank === -1 ? "Unranked" : `#${rank + 1}`}**`,
-      `Daily bread: ${remaining > 0 ? `ready in **${formatCooldown(remaining)}**` : "**ready now**"}`
+      `Daily bread: ${remaining > 0 ? `ready in **${formatCooldown(remaining)}**` : "**ready now**"}`,
+      `Games: **${stats.gamesPlayed.toLocaleString()}** played, **${stats.gamesWon.toLocaleString()}** wins`,
+      `Wagered: **${formatBread(stats.wagered)}**`,
+      `Profit: **${formatNetBread(stats.profit)}**`,
+      `Biggest win: **${formatBread(stats.biggestWin)}**`
     ].join("\n"));
   }
 });
@@ -1890,6 +2040,12 @@ define({
       const nextBalance = breadBalance(economy, userId) + amount;
       economy.dailyClaims[userId] = new Date().toISOString();
       setBreadBalance(economy, userId, nextBalance);
+      recordEconomyTransaction(economy, {
+        userId,
+        type: "daily",
+        amount,
+        balance: nextBalance
+      });
       return `You claimed **${formatBread(amount)}**.\nBalance: **${formatBread(nextBalance)}**.`;
     });
 
@@ -1917,6 +2073,13 @@ define({
       const userId = ctx.message.author.id;
       const nextBalance = breadBalance(economy, userId) + claim.bread;
       setBreadBalance(economy, userId, nextBalance);
+      recordEconomyTransaction(economy, {
+        userId,
+        type: "game-claim",
+        amount: claim.bread,
+        score: claim.score,
+        balance: nextBalance
+      });
 
       return [
         `Claimed **${formatBread(claim.bread)}** from a Chipkittle game.`,
@@ -1951,6 +2114,20 @@ define({
 
       setBreadBalance(economy, ctx.message.author.id, senderBalance - amount);
       setBreadBalance(economy, target.id, breadBalance(economy, target.id) + amount);
+      recordEconomyTransaction(economy, {
+        userId: ctx.message.author.id,
+        targetId: target.id,
+        type: "transfer-out",
+        amount: -amount,
+        balance: breadBalance(economy, ctx.message.author.id)
+      });
+      recordEconomyTransaction(economy, {
+        userId: target.id,
+        sourceId: ctx.message.author.id,
+        type: "transfer-in",
+        amount,
+        balance: breadBalance(economy, target.id)
+      });
       return `Sent **${formatBread(amount)}** to **${target.username || target.tag}**.`;
     });
 
@@ -2002,6 +2179,44 @@ define({
 });
 
 define({
+  name: "breadhistory",
+  aliases: ["breadlog", "economylog"],
+  category: "Gambling",
+  description: "Show recent bread economy activity for yourself or another member.",
+  usage: "breadhistory [@user]",
+  async run(ctx) {
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const target = mentionTargetUser(ctx.message);
+    const entries = (economy.transactions || [])
+      .filter((entry) => entry.userId === target.id)
+      .slice(-8)
+      .reverse();
+
+    if (!entries.length) {
+      await ctx.message.reply(`${target.displayName} has no bread history yet.`);
+      return;
+    }
+
+    const lines = entries.map((entry) => {
+      const when = entry.createdAt ? `<t:${Math.floor(new Date(entry.createdAt).getTime() / 1000)}:R>` : "recently";
+      if (entry.type === "gamble") {
+        return `${when} - ${entry.game || "Gambling"}: bet **${formatBread(entry.bet || 0)}**, net **${formatNetBread(entry.net || 0)}**`;
+      }
+      if (entry.type === "daily") return `${when} - Daily claim: **+${formatBread(entry.amount || 0)}**`;
+      if (entry.type === "game-claim") return `${when} - Website game claim: **+${formatBread(entry.amount || 0)}**`;
+      if (entry.type === "transfer-in") return `${when} - Received **${formatBread(entry.amount || 0)}** from <@${entry.sourceId}>`;
+      if (entry.type === "transfer-out") return `${when} - Sent **${formatBread(Math.abs(entry.amount || 0))}** to <@${entry.targetId}>`;
+      return `${when} - ${entry.type || "bread"}: **${formatBread(entry.amount || entry.net || 0)}**`;
+    });
+
+    await ctx.message.reply([
+      `**${target.displayName}'s Bread History**`,
+      lines.join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
   name: "breadflip",
   aliases: ["betflip"],
   category: "Gambling",
@@ -2030,15 +2245,30 @@ define({
   name: "slots",
   aliases: ["breadslots"],
   category: "Gambling",
-  description: "Spin the bread slots.",
+  description: "Spin weighted bread slots with bigger artifact jackpots.",
   usage: "slots 100",
   async run(ctx) {
-    const symbols = ["loaf", "horns", "suit", "artifact", "crumb", "ck"];
+    const reels = [
+      ["crumb", "crumb", "crumb", "loaf", "loaf", "horns", "suit", "ck", "artifact"],
+      ["crumb", "crumb", "loaf", "loaf", "horns", "horns", "suit", "ck", "artifact"],
+      ["crumb", "loaf", "loaf", "horns", "suit", "suit", "ck", "artifact", "artifact"]
+    ];
     await runBreadBet(ctx, "Bread Slots", (bet) => {
-      const spin = Array.from({ length: 3 }, () => symbols[randomInt(0, symbols.length - 1)]);
+      const spin = reels.map((reel) => reel[randomInt(0, reel.length - 1)]);
       const counts = spin.reduce((map, symbol) => ({ ...map, [symbol]: (map[symbol] || 0) + 1 }), {});
       const maxMatches = Math.max(...Object.values(counts));
-      const payout = maxMatches === 3 ? bet * (spin[0] === "artifact" ? 12 : 6) : maxMatches === 2 ? Math.floor(bet * 1.5) : 0;
+      const pairSymbol = Object.entries(counts).find(([, count]) => count === 2)?.[0];
+      const payout = spin.every((symbol) => symbol === "artifact")
+        ? bet * 30
+        : maxMatches === 3
+          ? bet * (spin[0] === "ck" ? 12 : spin[0] === "suit" ? 8 : 5)
+          : pairSymbol === "artifact"
+            ? bet * 3
+            : maxMatches === 2
+              ? Math.floor(bet * 1.35)
+              : spin.includes("artifact") && spin.includes("ck")
+                ? Math.floor(bet * 1.1)
+                : 0;
       return {
         payout,
         text: `[ ${spin.join(" | ")} ]\n${payout ? "The bakery pays out." : "The loaf goes stale."}`
@@ -2051,10 +2281,33 @@ define({
   name: "breaddice",
   aliases: ["gamble", "dicebet"],
   category: "Gambling",
-  description: "Bet that your die beats the house.",
-  usage: "breaddice 100",
+  description: "Bet dice against the house, or call over/under for better control.",
+  usage: "breaddice 100 [over|under|exact] [number]",
   async run(ctx) {
+    const mode = (ctx.args[1] || "duel").toLowerCase();
+    const target = Number(ctx.args[2]);
     await runBreadBet(ctx, "Bread Dice", (bet) => {
+      if (["over", "under"].includes(mode) && (!Number.isInteger(target) || target < 2 || target > 11)) {
+        return {
+          payout: bet,
+          text: "Invalid dice target. Use a number from 2 to 11. Bet returned."
+        };
+      }
+      if (mode === "exact" && (!Number.isInteger(target) || target < 2 || target > 12)) {
+        return {
+          payout: bet,
+          text: "Invalid exact target. Use a number from 2 to 12. Bet returned."
+        };
+      }
+      if (["over", "under", "exact"].includes(mode)) {
+        const total = randomInt(1, 6) + randomInt(1, 6);
+        const won = mode === "over" ? total > target : mode === "under" ? total < target : total === target;
+        const payout = won ? Math.floor(bet * (mode === "exact" ? 8 : 1.9)) : 0;
+        return {
+          payout,
+          text: `Roll total: **${total}**. You called **${mode} ${target}**. ${won ? "Clean hit." : "Miss."}`
+        };
+      }
       const player = randomInt(1, 6);
       const house = randomInt(1, 6);
       const payout = player > house ? bet * 2 : player === house ? bet : 0;
@@ -2085,9 +2338,12 @@ define({
       const wantsHigh = guess === "high" || guess === "higher";
       const won = wantsHigh ? second > first : second < first;
       const tied = second === first;
+      const label = (value) => value === 1 ? "A" : value === 11 ? "J" : value === 12 ? "Q" : value === 13 ? "K" : String(value);
+      const distance = Math.abs(second - first);
+      const payout = tied ? bet : won ? Math.floor(bet * (distance >= 7 ? 2.4 : distance >= 4 ? 2.1 : 1.8)) : 0;
       return {
-        payout: tied ? bet : won ? bet * 2 : 0,
-        text: `First card: **${first}**. Next card: **${second}**. ${tied ? "Tie, bet returned." : won ? "You called it." : "Wrong call."}`
+        payout,
+        text: `First card: **${label(first)}**. Next card: **${label(second)}**. ${tied ? "Tie, bet returned." : won ? `You called it with a ${distance}-rank gap.` : "Wrong call."}`
       };
     });
   }
@@ -2111,8 +2367,9 @@ define({
     }
 
     await runBreadBet(ctx, "Bread Roulette", (bet) => {
+      const redNumbers = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
       const roll = randomInt(0, 36);
-      const color = roll === 0 ? "green" : roll % 2 === 0 ? "black" : "red";
+      const color = roll === 0 ? "green" : redNumbers.has(roll) ? "red" : "black";
       const parity = roll === 0 ? "green" : roll % 2 === 0 ? "even" : "odd";
       const numberHit = Number.isInteger(numberChoice) && roll === numberChoice;
       const colorHit = choice === color;
@@ -2130,55 +2387,158 @@ define({
   name: "blackjack",
   aliases: ["bj"],
   category: "Gambling",
-  description: "Play quick automatic blackjack for bread.",
+  description: "Play interactive blackjack for bread with hit, stand, and double buttons.",
   usage: "blackjack 100",
   async run(ctx) {
-    function drawCard() {
-      const value = randomInt(1, 13);
-      if (value === 1) return { name: "A", value: 11 };
-      if (value >= 11) return { name: ["J", "Q", "K"][value - 11], value: 10 };
-      return { name: String(value), value };
+    const userId = ctx.message.author.id;
+    const sessionKey = `${ctx.message.guild.id}:${userId}`;
+    if (blackjackSessions.has(sessionKey)) {
+      await ctx.message.reply("You already have an active blackjack hand. Finish that one first.");
+      return;
     }
 
-    function handValue(hand) {
-      let total = hand.reduce((sum, card) => sum + card.value, 0);
-      let aces = hand.filter((card) => card.name === "A").length;
-      while (total > 21 && aces > 0) {
-        total -= 10;
-        aces -= 1;
-      }
-      return total;
-    }
-
-    function handText(hand) {
-      return `${hand.map((card) => card.name).join(", ")} (${handValue(hand)})`;
-    }
-
-    await runBreadBet(ctx, "Bread Blackjack", (bet) => {
-      const player = [drawCard(), drawCard()];
-      const dealer = [drawCard(), drawCard()];
-
-      while (handValue(player) < 16) player.push(drawCard());
-      while (handValue(dealer) < 17) dealer.push(drawCard());
-
-      const playerTotal = handValue(player);
-      const dealerTotal = handValue(dealer);
-      const natural = player.length === 2 && playerTotal === 21;
-      const payout =
-        playerTotal > 21
-          ? 0
-          : natural
-            ? Math.floor(bet * 2.5)
-            : dealerTotal > 21 || playerTotal > dealerTotal
-              ? bet * 2
-              : playerTotal === dealerTotal
-                ? bet
-                : 0;
-
+    const session = await updateBreadEconomy(ctx, async (economy) => {
+      const balance = breadBalance(economy, userId);
+      const bet = validateBreadBet(ctx.args[0], balance);
+      if (!bet.ok) return { error: bet.error };
+      setBreadBalance(economy, userId, balance - bet.amount);
+      const deck = createBlackjackDeck();
       return {
-        payout,
-        text: `Your hand: **${handText(player)}**\nHouse hand: **${handText(dealer)}**\n${payout > bet ? "You win." : payout === bet ? "Push." : "House wins."}`
+        id: `${Date.now()}:${randomInt(1000, 9999)}`,
+        key: sessionKey,
+        userId,
+        guildId: ctx.message.guild.id,
+        bet: bet.amount,
+        originalBet: bet.amount,
+        deck,
+        player: [drawBlackjackCard(deck), drawBlackjackCard(deck)],
+        dealer: [drawBlackjackCard(deck), drawBlackjackCard(deck)],
+        doubled: false,
+        settled: false
       };
+    });
+
+    if (session.error) {
+      await ctx.message.reply(session.error);
+      return;
+    }
+
+    blackjackSessions.set(sessionKey, session);
+
+    const settle = async (reason, interaction = null) => {
+      if (session.settled) return;
+      session.settled = true;
+      while (blackjackHandValue(session.dealer) < 17) {
+        session.dealer.push(drawBlackjackCard(session.deck));
+      }
+      const outcome = blackjackOutcome(session);
+      const balance = await updateBreadEconomy(ctx, async (economy) => {
+        const current = breadBalance(economy, userId);
+        setBreadBalance(economy, userId, current + outcome.payout);
+        recordGamblingStats(economy, userId, { bet: session.bet, payout: outcome.payout, game: "Bread Blackjack" });
+        return breadBalance(economy, userId);
+      });
+      blackjackSessions.delete(sessionKey);
+      const text = blackjackTableText(
+        session,
+        true,
+        `${reason || outcome.label}\nPayout: ${formatBread(outcome.payout)}\nNet: ${formatNetBread(outcome.payout - session.bet)}\nBalance: ${formatBread(balance)}`
+      );
+      if (interaction) {
+        await interaction.update({ content: text, components: blackjackButtons(session, true), allowedMentions: NO_MENTIONS });
+      } else if (session.message) {
+        await session.message.edit({ content: text, components: blackjackButtons(session, true), allowedMentions: NO_MENTIONS }).catch(() => {});
+      }
+    };
+
+    if (blackjackHandValue(session.player) === 21 || blackjackHandValue(session.dealer) === 21) {
+      const message = await ctx.message.reply({
+        content: blackjackTableText(session, true, "Natural check."),
+        components: blackjackButtons(session, true),
+        allowedMentions: NO_MENTIONS
+      });
+      session.message = message;
+      await settle(null);
+      return;
+    }
+
+    const message = await ctx.message.reply({
+      content: blackjackTableText(session),
+      components: blackjackButtons(session),
+      allowedMentions: NO_MENTIONS
+    });
+    session.message = message;
+
+    const collector = message.createMessageComponentCollector({
+      filter: (interaction) => interaction.customId.startsWith(`bj:${session.id}:`),
+      time: BLACKJACK_SESSION_MS
+    });
+
+    collector.on("collect", async (interaction) => {
+      if (interaction.user.id !== userId) {
+        await interaction.reply({ content: "This blackjack hand belongs to someone else.", ephemeral: true });
+        return;
+      }
+
+      const action = interaction.customId.split(":").pop();
+      if (action === "hit") {
+        session.player.push(drawBlackjackCard(session.deck));
+        if (blackjackHandValue(session.player) >= 21) {
+          await settle(blackjackHandValue(session.player) === 21 ? "Twenty-one. Dealer resolves the hand." : "Bust. House wins.", interaction);
+          collector.stop("settled");
+          return;
+        }
+        await interaction.update({
+          content: blackjackTableText(session, false, "Card drawn. Hit, stand, or double."),
+          components: blackjackButtons(session),
+          allowedMentions: NO_MENTIONS
+        });
+        return;
+      }
+
+      if (action === "stand") {
+        await settle("Standing. Dealer resolves the hand.", interaction);
+        collector.stop("settled");
+        return;
+      }
+
+      if (action === "double") {
+        if (session.player.length !== 2 || session.doubled) {
+          await interaction.reply({ content: "You can only double on your first move.", ephemeral: true });
+          return;
+        }
+        const doubled = await updateBreadEconomy(ctx, async (economy) => {
+          const current = breadBalance(economy, userId);
+          if (current < session.originalBet) return false;
+          setBreadBalance(economy, userId, current - session.originalBet);
+          return true;
+        });
+        if (!doubled) {
+          await interaction.reply({ content: `You need another ${formatBread(session.originalBet)} to double.`, ephemeral: true });
+          return;
+        }
+        session.bet += session.originalBet;
+        session.doubled = true;
+        session.player.push(drawBlackjackCard(session.deck));
+        await settle("Doubled down. Dealer resolves the hand.", interaction);
+        collector.stop("settled");
+      }
+    });
+
+    collector.on("end", async (_collected, reason) => {
+      if (reason === "settled" || session.settled) return;
+      session.settled = true;
+      blackjackSessions.delete(sessionKey);
+      const balance = await updateBreadEconomy(ctx, async (economy) => {
+        const current = breadBalance(economy, userId);
+        setBreadBalance(economy, userId, current + session.bet);
+        return breadBalance(economy, userId);
+      });
+      await message.edit({
+        content: blackjackTableText(session, true, `Hand expired. Refunded ${formatBread(session.bet)}.\nBalance: ${formatBread(balance)}`),
+        components: blackjackButtons(session, true),
+        allowedMentions: NO_MENTIONS
+      }).catch(() => {});
     });
   }
 });
@@ -2187,18 +2547,29 @@ define({
   name: "scratch",
   aliases: ["scratchcard"],
   category: "Gambling",
-  description: "Buy a bread scratch card.",
+  description: "Buy a scratch card with match and artifact bonus prizes.",
   usage: "scratch 100",
   async run(ctx) {
-    const symbols = ["loaf", "crumb", "horn", "suit", "ck", "artifact"];
+    const symbols = ["crumb", "crumb", "loaf", "loaf", "horn", "suit", "ck", "artifact"];
     await runBreadBet(ctx, "Bread Scratch Card", (bet) => {
-      const card = Array.from({ length: 6 }, () => symbols[randomInt(0, symbols.length - 1)]);
+      const card = Array.from({ length: 9 }, () => symbols[randomInt(0, symbols.length - 1)]);
       const counts = card.reduce((map, symbol) => ({ ...map, [symbol]: (map[symbol] || 0) + 1 }), {});
       const maxMatches = Math.max(...Object.values(counts));
-      const payout = maxMatches >= 6 ? bet * 25 : maxMatches === 5 ? bet * 10 : maxMatches === 4 ? bet * 4 : maxMatches === 3 ? bet * 2 : 0;
+      const artifactCount = counts.artifact || 0;
+      const payout = artifactCount >= 3
+        ? bet * 20
+        : maxMatches >= 6
+          ? bet * 12
+          : maxMatches === 5
+            ? bet * 6
+            : maxMatches === 4
+              ? bet * 3
+              : maxMatches === 3
+                ? Math.floor(bet * 1.4)
+                : 0;
       return {
         payout,
-        text: `${card.join(" | ")}\nBest match: **${maxMatches}**.`
+        text: `${card.slice(0, 3).join(" | ")}\n${card.slice(3, 6).join(" | ")}\n${card.slice(6).join(" | ")}\nBest match: **${maxMatches}**. Artifacts: **${artifactCount}**.`
       };
     });
   }
@@ -2208,20 +2579,20 @@ define({
   name: "cups",
   aliases: ["breadcups"],
   category: "Gambling",
-  description: "Pick the cup hiding the bread.",
+  description: "Pick the cup hiding the bread. Choose 1-4 for higher risk.",
   usage: "cups 100 1",
   async run(ctx) {
     const pick = Number(ctx.args[1]);
-    if (!Number.isInteger(pick) || pick < 1 || pick > 3) {
+    if (!Number.isInteger(pick) || pick < 1 || pick > 4) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
       return;
     }
 
     await runBreadBet(ctx, "Bread Cups", (bet) => {
-      const winner = randomInt(1, 3);
+      const winner = randomInt(1, 4);
       const won = pick === winner;
       return {
-        payout: won ? bet * 3 : 0,
+        payout: won ? bet * 4 : 0,
         text: `You picked cup **${pick}**. Bread was under cup **${winner}**. ${won ? "Sharp eyes." : "Empty cup."}`
       };
     });
@@ -2235,14 +2606,15 @@ define({
   description: "Cash out before the bread market crashes.",
   usage: "crash 100 2.0",
   async run(ctx) {
-    const target = Math.min(Math.max(Number(ctx.args[1]) || 2, 1.1), 10);
+    const target = Math.min(Math.max(Number(ctx.args[1]) || 2, 1.1), 15);
 
     await runBreadBet(ctx, "Bread Crash", (bet) => {
-      const crashPoint = Math.min(Math.max(Math.floor((1 / Math.random()) * 0.85 * 100) / 100, 1), 25);
+      const roll = Math.random();
+      const crashPoint = Math.min(Math.max(Math.floor((1 / Math.max(roll, 0.04)) * 0.82 * 100) / 100, 1), 30);
       const won = target <= crashPoint;
       return {
         payout: won ? Math.floor(bet * target) : 0,
-        text: `You tried to cash out at **${target.toFixed(2)}x**.\nMarket crashed at **${crashPoint.toFixed(2)}x**. ${won ? "You escaped with warm bread." : "Burnt toast."}`
+        text: `Cashout target: **${target.toFixed(2)}x**.\nMarket crash: **${crashPoint.toFixed(2)}x**. ${won ? "You escaped with warm bread." : "Burnt toast."}`
       };
     });
   }
@@ -2252,15 +2624,15 @@ define({
   name: "jackpot",
   aliases: ["lottery"],
   category: "Gambling",
-  description: "Buy a long-shot jackpot ticket.",
+  description: "Buy a long-shot jackpot ticket with consolation prizes.",
   usage: "jackpot 100",
   async run(ctx) {
     await runBreadBet(ctx, "Bread Jackpot", (bet) => {
       const roll = randomInt(1, 100);
-      const payout = roll >= 96 ? bet * 25 : roll >= 86 ? bet * 4 : 0;
+      const payout = roll === 100 ? bet * 75 : roll >= 96 ? bet * 25 : roll >= 86 ? bet * 4 : roll >= 76 ? Math.floor(bet * 1.5) : 0;
       return {
         payout,
-        text: `Ticket roll: **${roll}**.\n${roll >= 96 ? "Massive jackpot." : roll >= 86 ? "Small prize." : "The bakery keeps the ticket."}`
+        text: `Ticket roll: **${roll}**.\n${roll === 100 ? "Mythic jackpot." : roll >= 96 ? "Massive jackpot." : roll >= 86 ? "Small prize." : roll >= 76 ? "Consolation loaf." : "The bakery keeps the ticket."}`
       };
     });
   }
