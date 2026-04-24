@@ -57,6 +57,7 @@ const PANEL_SECTION_MIN_LEVEL = {
   applications: "keeper",
   permissions: "artifact_contributor",
   access: "artifact_contributor",
+  backups: "root",
   general: "root",
   members: "root",
   public: "root",
@@ -78,17 +79,18 @@ const SETTINGS_SECTIONS = [
   { id: "community", label: "Community", description: "Artifacts, rituals, public directory extras, and archive data." },
   { id: "permissions", label: "Permissions", description: "Command role access overrides." },
   { id: "access", label: "Panel Access", description: "Revoke panel users and review access tiers." },
+  { id: "backups", label: "Backups", description: "Restore exported configuration, moderation, application, or public site data." },
   { id: "commands", label: "Commands", description: "Browse the command catalog." },
   { id: "server", label: "Server", description: "Pull GitHub changes and restart the VPS bot." }
 ];
 
 const SETTINGS_NAV_GROUPS = [
   { label: "Overview", sections: ["dashboard", "audit", "public", "commands", "server"] },
-  { label: "Configuration", sections: ["general", "ai", "games", "permissions", "access"] },
+  { label: "Configuration", sections: ["general", "ai", "games", "permissions", "access", "backups"] },
   { label: "Community", sections: ["members", "applications", "community", "moderation"] }
 ];
 
-const NON_FORM_SECTIONS = new Set(["dashboard", "audit", "public", "commands", "server"]);
+const NON_FORM_SECTIONS = new Set(["dashboard", "audit", "public", "commands", "server", "backups"]);
 
 const DEFAULT_PUBLIC_GAME_SETTINGS = {
   blockedLeaderboardWords: [],
@@ -366,6 +368,21 @@ async function moderationMemberPage(discordGuild, config = {}, query = {}) {
   };
 }
 
+async function warningMemberLabels(discordGuild, config = {}) {
+  const userIds = Object.entries(config.moderation?.warnings || {})
+    .filter(([, entries]) => Array.isArray(entries) && entries.length)
+    .map(([userId]) => userId)
+    .slice(0, 80);
+  const labels = {};
+  await Promise.all(userIds.map(async (userId) => {
+    const member = await discordGuild.members.fetch(userId).catch(() => null);
+    if (member) {
+      labels[userId] = member.user?.tag || member.displayName || userId;
+    }
+  }));
+  return labels;
+}
+
 async function sendPanelModerationLog(discordGuild, config = {}, content = "") {
   const channelId = config.moderation?.logChannelId;
   if (!channelId) return;
@@ -477,6 +494,25 @@ function warningReasonText(warning) {
   const moderator = warning.moderatorTag || warning.moderatorId;
   const createdAt = warning.createdAt ? ` on ${warning.createdAt}` : "";
   return `${reason}${moderator ? ` by ${moderator}` : ""}${createdAt}`;
+}
+
+function warningUserLabel(config = {}, userId = "", labels = {}) {
+  const fromLabels = labels[userId];
+  if (fromLabels) return fromLabels;
+  const caseMatch = (Array.isArray(config.community?.cases) ? config.community.cases : [])
+    .find((entry) => String(entry.targetId || "") === String(userId) && entry.targetTag);
+  if (caseMatch?.targetTag) return caseMatch.targetTag;
+  const profile = config.community?.profiles?.[userId];
+  if (profile?.displayName) return profile.displayName;
+  return "Unknown member";
+}
+
+function punishmentHistoryFor(config = {}, userId = "") {
+  const warnings = Array.isArray(config.moderation?.warnings?.[userId]) ? config.moderation.warnings[userId] : [];
+  const cases = (Array.isArray(config.community?.cases) ? config.community.cases : [])
+    .filter((entry) => String(entry.targetId || "") === String(userId))
+    .slice(0, 30);
+  return { warnings, cases };
 }
 
 function moderationCenter(config = {}) {
@@ -597,37 +633,79 @@ function moderationMemberRow(guildId, member, search = "", after = "", panelUser
           </div>
         </div>
       </div>
-      <details class="member-action-details">
-        <summary>Moderate</summary>
-        <form method="post" action="/guilds/${guildId}/moderation/action" class="member-action-form" onsubmit="return confirm('Run this moderation action?');">
-          <input type="hidden" name="targetUserId" value="${escapeHtml(member.id)}">
-          <input type="hidden" name="modSearch" value="${escapeHtml(search)}">
-          <input type="hidden" name="modAfter" value="${escapeHtml(after)}">
-          <label>
-            Action
-            <select name="action">
-              <option value="warn">Warn</option>
-              <option value="timeout">Timeout</option>
-              <option value="untimeout">Remove timeout</option>
-              ${canAdvanced ? '<option value="kick">Kick</option><option value="ban">Ban</option>' : ""}
-            </select>
-          </label>
-          <label>
-            Duration
-            <input name="duration" placeholder="10m, 2h, 1d">
-          </label>
-          <label class="member-action-reason">
-            Reason
-            <textarea name="reason" rows="3" maxlength="500" placeholder="Reason for ${escapeHtml(userLabel)}"></textarea>
-          </label>
-          <button type="submit" class="danger-button">Run action</button>
-        </form>
-      </details>
+      <div class="member-action-controls">
+        <div class="member-action-buttons">
+          <a class="primary-link secondary-link" href="/guilds/${guildId}?section=moderation&punishmentUser=${encodeURIComponent(member.id)}#punishments">View Punishments</a>
+        </div>
+        <details class="member-action-details">
+          <summary>Moderate</summary>
+          <form method="post" action="/guilds/${guildId}/moderation/action" class="member-action-form" onsubmit="return confirm('Run this moderation action?');">
+            <input type="hidden" name="targetUserId" value="${escapeHtml(member.id)}">
+            <input type="hidden" name="modSearch" value="${escapeHtml(search)}">
+            <input type="hidden" name="modAfter" value="${escapeHtml(after)}">
+            <label>
+              Action
+              <select name="action">
+                <option value="warn">Warn</option>
+                <option value="timeout">Timeout</option>
+                <option value="untimeout">Remove timeout</option>
+                ${canAdvanced ? '<option value="kick">Kick</option><option value="ban">Ban</option>' : ""}
+              </select>
+            </label>
+            <label>
+              Duration
+              <input name="duration" placeholder="10m, 2h, 1d">
+            </label>
+            <label class="member-action-reason">
+              Reason
+              <textarea name="reason" rows="3" maxlength="500" placeholder="Reason for ${escapeHtml(userLabel)}"></textarea>
+            </label>
+            <button type="submit" class="danger-button">Run action</button>
+          </form>
+        </details>
+      </div>
     </article>
   `;
 }
 
-function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
+function punishmentHistoryPanel(guildId, config = {}, punishmentUser = "", warningMemberLabels = {}) {
+  const userId = String(punishmentUser || "").trim();
+  if (!userId) return "";
+  const history = punishmentHistoryFor(config, userId);
+  const userLabel = warningUserLabel(config, userId, warningMemberLabels);
+  return `
+    <section class="panel-section" id="punishments">
+      <div class="section-heading">
+        <h2>Punishments for ${escapeHtml(userLabel)}</h2>
+        <p>${escapeHtml(userId)} &middot; ${escapeHtml(history.warnings.length)} warning${history.warnings.length === 1 ? "" : "s"} &middot; ${escapeHtml(history.cases.length)} case${history.cases.length === 1 ? "" : "s"}</p>
+      </div>
+      ${history.warnings.length
+        ? `<div class="sub-panel"><strong>Warnings</strong><ul>${history.warnings.slice().reverse().map((warning) => `<li>${escapeHtml(warningReasonText(warning))}</li>`).join("")}</ul></div>`
+        : '<p class="muted">No warnings recorded for this member.</p>'}
+      ${history.cases.length
+        ? `<div class="case-table">${history.cases.map((entry) => `
+            <article class="case-row">
+              <div class="case-row-main">
+                <div class="case-row-head">
+                  <strong>Case #${escapeHtml(entry.id)} &middot; ${escapeHtml(entry.action || "action")}</strong>
+                  <span class="case-status ${String(entry.status || "open").toLowerCase() === "closed" ? "is-closed" : "is-open"}">${escapeHtml(entry.status || "open")}</span>
+                </div>
+                <div class="case-meta">
+                  <span>Moderator: ${escapeHtml(entry.moderatorTag || entry.moderatorId || "Unknown")}</span>
+                  <span>${escapeHtml(entry.createdAt || "")}</span>
+                  ${entry.durationMs ? `<span>Duration: ${escapeHtml(shortDurationLabel(entry.durationMs))}</span>` : ""}
+                </div>
+                <p>${escapeHtml(entry.reason || "No reason recorded.")}</p>
+              </div>
+            </article>
+          `).join("")}</div>`
+        : '<p class="muted">No cases recorded for this member.</p>'}
+      <a class="primary-link secondary-link" href="/guilds/${guildId}?section=moderation">Back to moderation</a>
+    </section>
+  `;
+}
+
+function moderationWorkspace(guildId, config = {}, caseStatus = "open", punishmentUser = "", warningMemberLabels = {}) {
   const filter = normalizeCaseStatusFilter(caseStatus);
   const warnings = Object.entries(config.moderation?.warnings || {})
     .map(([userId, entries]) => ({
@@ -644,6 +722,7 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
     .filter((entry) => (filter === "all" ? true : filter === "closed" ? entry.isClosed : !entry.isClosed))
     .slice(0, 18);
   return `
+    ${punishmentHistoryPanel(guildId, config, punishmentUser, warningMemberLabels)}
     <section class="panel-section">
       <div class="section-heading">
         <h2>Case Queue</h2>
@@ -689,16 +768,25 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
           ? `<div class="warning-ledger">${warnings.map((entry) => `
               <article class="warning-row">
                 <div class="warning-row-main">
-                  <strong>${escapeHtml(entry.userId)}</strong>
+                  <strong>${escapeHtml(warningUserLabel(config, entry.userId, warningMemberLabels))}</strong>
+                  <small>${escapeHtml(entry.userId)}</small>
                   <small>${escapeHtml(entry.entries.length)} active warning${entry.entries.length === 1 ? "" : "s"}</small>
                   <ul>${entry.entries.slice(-5).reverse().map((warning) => `<li>${escapeHtml(warningReasonText(warning))}</li>`).join("")}</ul>
                 </div>
-                <button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/warnings/${entry.userId}/clear?section=moderation">Clear warnings</button>
+                <div class="case-row-actions">
+                  <a class="primary-link secondary-link" href="/guilds/${guildId}?section=moderation&punishmentUser=${encodeURIComponent(entry.userId)}#punishments">View Punishments</a>
+                  <button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/warnings/${entry.userId}/clear?section=moderation">Clear warnings</button>
+                </div>
               </article>
             `).join("")}</div>`
           : '<p class="muted">No active warnings to review.</p>'
       }
     </section>
+  `;
+}
+
+function restoreCenter(guildId) {
+  return `
     <section class="panel-section">
       <div class="section-heading">
         <h2>Restore Center</h2>
@@ -2030,6 +2118,13 @@ function panelAccessDenied(response, message = "You do not have permission to ma
 function settingsNav(guild, config, activeSection, currentMeta, panelUser = null) {
   const community = communitySnapshot(config);
   const accessLevel = panelUser?.level || "root";
+  const visibleGroups = SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    sections: group.sections.filter((sectionId) => {
+      const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
+      return section && canAccessPanelSection(accessLevel, section.id);
+    })
+  })).filter((group) => group.sections.length);
   return `
     <aside class="settings-rail" aria-label="Settings categories">
       <section class="settings-rail-card settings-rail-card--guild">
@@ -2058,14 +2153,13 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
         </div>
       </section>
       <nav class="settings-nav settings-nav-rail" aria-label="Settings categories">
-      ${SETTINGS_NAV_GROUPS.map((group) => `
+      ${visibleGroups.map((group) => `
         <section class="settings-nav-group settings-nav-panel">
           <p class="settings-nav-label">${escapeHtml(group.label)}</p>
           <div class="settings-nav-links">
           ${group.sections.map((sectionId) => {
             const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
             if (!section) return "";
-            if (!canAccessPanelSection(accessLevel, section.id)) return "";
             return `
               <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}">
                 <span>${escapeHtml(section.label)}</span>
@@ -2108,7 +2202,7 @@ function guildSummaryStrip(guild, config = {}) {
   `;
 }
 
-function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, currentSection, currentMeta, gameSettings, moderationCaseStatus, moderationMembers, panelUser }) {
+function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, currentSection, currentMeta, gameSettings, moderationCaseStatus, moderationMembers, punishmentUser, warningMemberLabels, panelUser }) {
   switch (currentSection) {
     case "dashboard":
       return dashboardCards(guild, config);
@@ -2174,7 +2268,7 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
       return `
         ${moderationCenter(config)}
         ${moderationMemberBrowser(guild.id, moderationMembers, panelUser)}
-        ${moderationWorkspace(guild.id, config, moderationCaseStatus)}
+        ${moderationWorkspace(guild.id, config, moderationCaseStatus, punishmentUser, warningMemberLabels)}
         ${panelAccessAtLeast(panelUser?.level || "root", "keeper")
           ? sectionForm(
               guild.id,
@@ -2451,6 +2545,8 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
       );
     case "access":
       return panelAccessWorkspace(guild.id, config, panelUser);
+    case "backups":
+      return restoreCenter(guild.id);
     case "commands":
       return `
         <section class="panel-section command-catalog">
@@ -2468,7 +2564,7 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
   }
 }
 
-function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general", caseStatus = "open", moderationMembers = null, panelUser = null }) {
+function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general", caseStatus = "open", moderationMembers = null, punishmentUser = "", warningMemberLabels = {}, panelUser = null }) {
   const currentSection = allowedPanelSection(activeSection, panelUser?.level || "root");
   const currentMeta = activeSectionMeta(currentSection);
   const gameSettings = publicGameSettings(config);
@@ -2622,6 +2718,8 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               gameSettings,
               moderationCaseStatus,
               moderationMembers,
+              punishmentUser,
+              warningMemberLabels,
               panelUser
             })}
           </div>
@@ -3123,6 +3221,7 @@ export function createPanel({
               after: String(request.query.modAfter || "")
             })
           : null;
+      const labels = activeSection === "moderation" ? await warningMemberLabels(discordGuild, config) : {};
       response.send(guildPage({
         guild,
         config,
@@ -3133,6 +3232,8 @@ export function createPanel({
         activeSection,
         caseStatus: normalizeCaseStatusFilter(String(request.query.caseStatus || "")),
         moderationMembers,
+        punishmentUser: String(request.query.punishmentUser || ""),
+        warningMemberLabels: labels,
         panelUser
       }));
     } catch (error) {

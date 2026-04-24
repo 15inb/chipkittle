@@ -1171,6 +1171,18 @@ code {
   overflow: hidden;
 }
 
+.member-action-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.member-action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .member-action-details summary {
   cursor: pointer;
   padding: 12px 14px;
