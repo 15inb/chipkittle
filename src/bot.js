@@ -9,6 +9,7 @@ import {
 import { checkAiRateLimit } from "./aiRateLimit.js";
 import { handleApplicationDm } from "./applicationTickets.js";
 import { commandList, createCommandHandler } from "./commands.js";
+import { addAuditLog, incrementMetric } from "./communityFeatures.js";
 import { NO_MENTIONS } from "./discordSafety.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
 import { handleSlashCommand, registerSlashCommands } from "./slashCommands.js";
@@ -213,6 +214,7 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
           console.error("AI reply failed:", error);
           return "The artifact fizzled. Check the AI key/model settings and try again.";
         });
+        await incrementMetric(store, message.guild.id, "aiReplies", 1).catch(() => {});
         await message.reply({ content: reply, allowedMentions: NO_MENTIONS }).catch(() => {});
         return;
       }
@@ -238,6 +240,13 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
       store,
       `Automod ${canDelete ? "removed" : "flagged"} a message from ${message.author.tag} in #${message.channel.name}: ${reason}`
     );
+    await incrementMetric(store, message.guild.id, "moderationActions", 1).catch(() => {});
+    await addAuditLog(store, message.guild.id, {
+      type: "moderation",
+      label: `Automod ${canDelete ? "removed" : "flagged"} a message`,
+      details: `${message.author.tag} in #${message.channel.name}: ${reason}`,
+      actor: "Automod"
+    }).catch(() => {});
   });
 
   return client;

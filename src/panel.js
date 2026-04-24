@@ -6,6 +6,15 @@ import { promisify } from "node:util";
 import express from "express";
 import session from "express-session";
 import { serializeGuild } from "./bot.js";
+import {
+  addAuditLog,
+  artifactDirectoryText,
+  communitySnapshot,
+  parseArtifactDirectory,
+  publicMemberCards,
+  topCommands
+} from "./communityFeatures.js";
+import { CHIPKITTLE_LORE } from "./chipkittleLore.js";
 import { createDashClaim } from "./dashClaims.js";
 import {
   createEightBallRoom,
@@ -19,11 +28,13 @@ const execFileAsync = promisify(execFile);
 const UPDATE_STALE_MS = 10 * 60 * 1000;
 const ACTIVE_UPDATE_STATUSES = new Set(["running", "updating", "restarting"]);
 const SETTINGS_SECTIONS = [
+  { id: "dashboard", label: "Dashboard", description: "At-a-glance stats, audit activity, and quick links." },
   { id: "general", label: "General", description: "Slash commands, legacy prefix, welcome, autorole, and public directory." },
   { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
   { id: "ai", label: "AI", description: "Chipkittle AI channels, model, cooldowns, and personality." },
   { id: "applications", label: "Applications", description: "DM questions, review threads, roles, and cooldowns." },
   { id: "games", label: "Games", description: "Leaderboard moderation, claim limits, and public game tools." },
+  { id: "community", label: "Community", description: "Artifacts, rituals, public directory extras, and archive data." },
   { id: "permissions", label: "Permissions", description: "Command role access overrides." },
   { id: "commands", label: "Commands", description: "Browse the command catalog." },
   { id: "server", label: "Server", description: "Pull GitHub changes and restart the VPS bot." }
@@ -188,6 +199,48 @@ function updateControls() {
   `;
 }
 
+function dashboardCards(guild, config = {}) {
+  const snapshot = communitySnapshot(config);
+  const top = topCommands(config, 5);
+  const auditLog = (config.community?.auditLog || []).slice(0, 8);
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Overview</h2>
+        <p>Live server and community stats pulled from the bot runtime.</p>
+      </div>
+      <div class="stats-grid">
+        <article class="stat-card"><strong>${escapeHtml(guild.memberCount)}</strong><span>Members</span></article>
+        <article class="stat-card"><strong>${escapeHtml(snapshot.commandsRun)}</strong><span>Commands Run</span></article>
+        <article class="stat-card"><strong>${escapeHtml(snapshot.aiReplies)}</strong><span>AI Replies</span></article>
+        <article class="stat-card"><strong>${escapeHtml(snapshot.applicationsOpened)}</strong><span>Applications</span></article>
+        <article class="stat-card"><strong>${escapeHtml(snapshot.artifacts)}</strong><span>Artifacts</span></article>
+        <article class="stat-card"><strong>${escapeHtml(snapshot.shopPurchases)}</strong><span>Shop Purchases</span></article>
+      </div>
+    </section>
+    <div class="dashboard-grid">
+      <section class="panel-section">
+        <div class="section-heading">
+          <h2>Top Commands</h2>
+          <p>The commands members are using most often.</p>
+        </div>
+        ${top.length
+          ? `<div class="stack-list">${top.map((item) => `<div class="list-row"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.count)} uses</span></div>`).join("")}</div>`
+          : '<p class="muted">No command activity yet.</p>'}
+      </section>
+      <section class="panel-section">
+        <div class="section-heading">
+          <h2>Activity Feed</h2>
+          <p>Recent application, moderation, shop, and profile events.</p>
+        </div>
+        ${auditLog.length
+          ? `<div class="stack-list">${auditLog.map((entry) => `<div class="audit-row"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.actor || "System")} • ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.details || "")}</p></div>`).join("")}</div>`
+          : '<p class="muted">No audit activity yet.</p>'}
+      </section>
+    </div>
+  `;
+}
+
 function arrayFromFormValue(value) {
   if (Array.isArray(value)) return value;
   return value ? [value] : [];
@@ -199,32 +252,31 @@ function parseMemberDirectory(value = "") {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [name = "", role = "", bio = ""] = line.split("|").map((part) => part.trim());
+      const [name = "", role = "", bio = "", title = "", badges = ""] = line.split("|").map((part) => part.trim());
       return {
         name: name.slice(0, 80),
         role: role.slice(0, 80),
-        bio: bio.slice(0, 220)
+        bio: bio.slice(0, 220),
+        title: title.slice(0, 80),
+        badges: badges
+          .split(",")
+          .map((badge) => badge.trim())
+          .filter(Boolean)
+          .slice(0, 8)
       };
     })
     .filter((member) => member.name)
-    .slice(0, 40);
+    .slice(0, 60);
 }
 
 function memberDirectoryText(members = []) {
   return members
-    .map((member) => [member.name, member.role, member.bio].filter((part) => part !== undefined).join(" | "))
+    .map((member) => [member.name, member.role, member.bio, member.title, (member.badges || []).join(", ")].filter((part) => part !== undefined).join(" | "))
     .join("\n");
 }
 
 function publicMembersFromConfig(config = {}) {
-  return (config.publicSite?.members || [])
-    .map((member) => ({
-      name: String(member.name || "").slice(0, 80),
-      role: String(member.role || "").slice(0, 80),
-      bio: String(member.bio || "").slice(0, 220)
-    }))
-    .filter((member) => member.name)
-    .slice(0, 40);
+  return publicMemberCards(config);
 }
 
 function writePublicMembersFile(members = []) {
@@ -468,6 +520,14 @@ function parseConfigForm(body) {
         maxLeaderboardScore: Math.min(Math.max(Number(body.maxLeaderboardScore) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardScore, 1), 1000000),
         maxLeaderboardBread: Math.min(Math.max(Number(body.maxLeaderboardBread) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardBread, 0), 1000000),
         maxClaimBreadPerRun: Math.min(Math.max(Number(body.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000)
+      }
+    },
+    community: {
+      artifacts: parseArtifactDirectory(body.communityArtifacts),
+      rituals: {
+        currentEvent: String(body.currentEvent || "").trim().slice(0, 220),
+        seasonalMessage: String(body.seasonalMessage || "").trim().slice(0, 220),
+        nextTrial: String(body.nextTrial || "").trim().slice(0, 120)
       }
     },
     ai: {
@@ -791,6 +851,10 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
         ${settingsNav(guild.id, currentSection)}
         <div class="settings-main">
           <form method="post" action="/guilds/${guild.id}/config?section=${currentSection}" class="config-grid">
+            <section class="${sectionClass("dashboard", currentSection)}">
+              ${dashboardCards(guild, config)}
+            </section>
+
             <section class="${sectionClass("general", currentSection)}">
               <div class="settings-stack">
                 <section class="panel-section">
@@ -838,9 +902,9 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
                   </div>
                   <label>
                     Members
-                    <textarea name="publicMembers" rows="8" placeholder="Name | Role | Bio">${escapeHtml(memberDirectoryText(config.publicSite.members))}</textarea>
+                    <textarea name="publicMembers" rows="8" placeholder="Name | Role | Bio | Title | Badge, Badge">${escapeHtml(memberDirectoryText(config.publicSite.members))}</textarea>
                   </label>
-                  <p class="field-help">Format: <code>Name | Role | Bio</code></p>
+                  <p class="field-help">Format: <code>Name | Role | Bio | Title | Badge, Badge</code></p>
                 </section>
               </div>
             </section>
@@ -1035,6 +1099,41 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               </div>
             </section>
 
+            <section class="${sectionClass("community", currentSection)}">
+              <div class="settings-stack">
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Artifact Registry</h2>
+                    <p>One artifact per line: <code>Name | Rarity | Keeper | Summary</code></p>
+                  </div>
+                  <label>
+                    Artifacts
+                    <textarea name="communityArtifacts" rows="8">${escapeHtml(artifactDirectoryText(config.community?.artifacts || []))}</textarea>
+                  </label>
+                </section>
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Ritual Status</h2>
+                    <p>Public-facing status text for the archive and website.</p>
+                  </div>
+                  <div class="field-pair">
+                    <label>
+                      Current event
+                      <input name="currentEvent" value="${escapeHtml(config.community?.rituals?.currentEvent || "")}">
+                    </label>
+                    <label>
+                      Seasonal message
+                      <input name="seasonalMessage" value="${escapeHtml(config.community?.rituals?.seasonalMessage || "")}">
+                    </label>
+                    <label>
+                      Next trial
+                      <input name="nextTrial" value="${escapeHtml(config.community?.rituals?.nextTrial || "")}">
+                    </label>
+                  </div>
+                </section>
+              </div>
+            </section>
+
             <section class="${sectionClass("permissions", currentSection)}">
               <section class="panel-section">
                 <div class="section-heading">
@@ -1048,7 +1147,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               </section>
             </section>
 
-            <div class="form-actions ${["commands", "server"].includes(currentSection) ? "is-hidden" : ""}">
+            <div class="form-actions ${["commands", "server", "dashboard"].includes(currentSection) ? "is-hidden" : ""}">
               <button type="submit">Save ${escapeHtml(currentMeta.label)}</button>
             </div>
           </form>
@@ -1150,6 +1249,21 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     response.sendStatus(204);
   });
 
+  app.options("/api/public/status", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
+  app.options("/api/public/commands", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
+  app.options("/api/public/archive", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
   app.options("/api/public/game-leaderboard", (_request, response) => {
     setPublicApiHeaders(response);
     response.sendStatus(204);
@@ -1175,6 +1289,50 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     const config = getPublicGuildConfig();
     response.json({
       members: publicMembersFromConfig(config),
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  app.get("/api/public/status", (_request, response) => {
+    setPublicApiHeaders(response);
+    const configuredGuild = guildId ? client.guilds.cache.get(guildId) : client.guilds.cache.first();
+    const config = getPublicGuildConfig();
+    response.json({
+      ready: client.isReady(),
+      botTag: client.user?.tag || "",
+      guildCount: client.guilds.cache.size,
+      memberCount: configuredGuild?.memberCount || 0,
+      uptimeSeconds: Math.round(process.uptime()),
+      aiConfigured: ai.enabled,
+      applicationsEnabled: Boolean(config?.applications?.enabled),
+      currentEvent: config?.community?.rituals?.currentEvent || "",
+      seasonalMessage: config?.community?.rituals?.seasonalMessage || "",
+      snapshot: communitySnapshot(config),
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  app.get("/api/public/commands", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.json({
+      commands: commandList.map((command) => ({
+        name: command.name,
+        category: command.category || "Other",
+        description: command.description || "",
+        usage: command.usage || command.name,
+        aliases: command.aliases || []
+      })),
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  app.get("/api/public/archive", (_request, response) => {
+    setPublicApiHeaders(response);
+    const config = getPublicGuildConfig();
+    response.json({
+      lore: CHIPKITTLE_LORE,
+      rituals: config?.community?.rituals || {},
+      artifacts: config?.community?.artifacts || [],
       updatedAt: new Date().toISOString()
     });
   });
@@ -1453,6 +1611,12 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       const nextConfig = parseConfigForm(request.body);
       await store.updateGuild(discordGuild.id, nextConfig);
       writePublicMembersFile(nextConfig.publicSite.members);
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel",
+        label: "Panel settings saved",
+        details: `Saved ${normalizeSettingsSection(String(request.query.section || ""))} settings from the web panel.`,
+        actor: "Panel"
+      }).catch(() => {});
       const section = normalizeSettingsSection(String(request.query.section || ""));
       response.redirect(`/guilds/${discordGuild.id}?saved=1&section=${section}`);
     } catch (error) {

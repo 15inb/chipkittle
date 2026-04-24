@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Status</title>
+  <meta name="description" content="Live status, counts, and current ritual state for Chipkittle.">
+  <link rel="icon" type="image/svg+xml" href="/chipkittle-logo.svg">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior">
+    <header class="topbar">
+      <a class="brand" href="/"><img src="/notativelogotransparent.png" alt=""><span>chipkittle</span></a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/status">Status</a>
+        <a href="/commands">Commands</a>
+        <a href="/archive">Archive</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="/game">Games</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+    <section class="page-head">
+      <p class="eyebrow">Telemetry</p>
+      <h1>Artifact Status</h1>
+      <p>Live runtime stats, ritual state, and the health of the current Chipkittle apparatus.</p>
+    </section>
+    <section class="feature-grid status-cards" id="statusCards">
+      <article><strong>Loading</strong><p>Consulting the panel.</p></article>
+    </section>
+  </main>
+  <script>
+    const cards = document.querySelector("#statusCards");
+    fetch("https://panel.chipkittle.com/api/public/status", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (!payload) throw new Error("No payload");
+        cards.innerHTML = `
+          <article><strong>${payload.ready ? "Online" : "Offline"}</strong><p>${payload.botTag || "Chipkittle"} is ${payload.ready ? "connected and responsive." : "currently disconnected."}</p></article>
+          <article><strong>${payload.guildCount || 0}</strong><p>Guilds connected</p></article>
+          <article><strong>${payload.memberCount || 0}</strong><p>Members in the primary server</p></article>
+          <article><strong>${payload.snapshot?.commandsRun || 0}</strong><p>Total tracked command runs</p></article>
+          <article><strong>${payload.snapshot?.aiReplies || 0}</strong><p>AI replies recorded</p></article>
+          <article><strong>${payload.snapshot?.applicationsOpened || 0}</strong><p>Applications opened</p></article>
+          <article><strong>${payload.currentEvent || "No event set"}</strong><p>Current ritual</p></article>
+          <article><strong>${payload.seasonalMessage || "No season set"}</strong><p>Seasonal message</p></article>
+        `;
+      })
+      .catch(() => {
+        cards.innerHTML = `<article><strong>Unavailable</strong><p>The status feed could not be loaded right now.</p></article>`;
+      });
+  </script>
+</body>
+</html>

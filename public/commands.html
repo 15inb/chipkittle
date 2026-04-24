@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Commands</title>
+  <meta name="description" content="Browse the public command explorer for Chipkittle.">
+  <link rel="icon" type="image/svg+xml" href="/chipkittle-logo.svg">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior">
+    <header class="topbar">
+      <a class="brand" href="/"><img src="/notativelogotransparent.png" alt=""><span>chipkittle</span></a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/status">Status</a>
+        <a href="/commands">Commands</a>
+        <a href="/archive">Archive</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="/game">Games</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+    <section class="page-head">
+      <p class="eyebrow">Explorer</p>
+      <h1>Command Explorer</h1>
+      <p>Search the Chipkittle command set by name, category, or vibe.</p>
+    </section>
+    <section class="filter-bar">
+      <input id="commandSearch" type="search" placeholder="Search commands">
+    </section>
+    <section id="commandGroups" class="command-groups">
+      <p class="empty">Loading commands...</p>
+    </section>
+  </main>
+  <script>
+    const container = document.querySelector("#commandGroups");
+    const search = document.querySelector("#commandSearch");
+    let commands = [];
+
+    function text(value) {
+      return String(value || "").replace(/[&<>"']/g, (match) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[match]));
+    }
+
+    function render() {
+      const query = search.value.trim().toLowerCase();
+      const filtered = commands.filter((command) =>
+        !query ||
+        command.name.toLowerCase().includes(query) ||
+        command.category.toLowerCase().includes(query) ||
+        command.description.toLowerCase().includes(query)
+      );
+      if (!filtered.length) {
+        container.innerHTML = '<p class="empty">No commands matched that search.</p>';
+        return;
+      }
+      const grouped = filtered.reduce((map, command) => {
+        map[command.category] = map[command.category] || [];
+        map[command.category].push(command);
+        return map;
+      }, {});
+      container.innerHTML = Object.entries(grouped).map(([category, items]) => `
+        <section class="panel-list-card">
+          <div class="section-heading"><h2>${text(category)}</h2><p>${items.length} command${items.length === 1 ? "" : "s"}</p></div>
+          <div class="command-public-list">
+            ${items.map((command) => `
+              <article class="command-public-card">
+                <strong>/${text(command.name)}</strong>
+                <p>${text(command.description)}</p>
+                <small>${text(command.usage || command.name)}</small>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      `).join("");
+    }
+
+    fetch("https://panel.chipkittle.com/api/public/commands", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        commands = Array.isArray(payload?.commands) ? payload.commands : [];
+        render();
+      })
+      .catch(() => {
+        container.innerHTML = '<p class="empty">Could not load the command explorer.</p>';
+      });
+
+    search.addEventListener("input", render);
+  </script>
+</body>
+</html>

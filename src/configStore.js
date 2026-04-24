@@ -77,6 +77,21 @@ const DEFAULT_CONFIG = {
       "What #CK members do you know?",
       "Are you willing to adopt the #CK Discord tag and put \"Chipkittle\", \"#CK\", or \"ck.\" in your TS name?"
     ]
+  },
+  community: {
+    profiles: {},
+    artifacts: [],
+    auditLog: [],
+    analytics: {
+      commands: {},
+      totals: {}
+    },
+    rituals: {
+      currentEvent: "The artifact is humming softly and judging the bread economy.",
+      seasonalMessage: "Current season: ceremonial optimism.",
+      nextTrial: ""
+    },
+    staffNotes: {}
   }
 };
 
@@ -123,6 +138,22 @@ function mergeConfig(config = {}) {
     applications: {
       ...clone(DEFAULT_CONFIG.applications),
       ...(config.applications || {})
+    },
+    community: {
+      ...clone(DEFAULT_CONFIG.community),
+      ...(config.community || {}),
+      analytics: {
+        ...clone(DEFAULT_CONFIG.community.analytics),
+        ...(config.community?.analytics || {}),
+        totals: {
+          ...clone(DEFAULT_CONFIG.community.analytics.totals),
+          ...(config.community?.analytics?.totals || {})
+        }
+      },
+      rituals: {
+        ...clone(DEFAULT_CONFIG.community.rituals),
+        ...(config.community?.rituals || {})
+      }
     }
   };
 }
@@ -206,6 +237,22 @@ export class ConfigStore {
       applications: {
         ...this.getGuild(guildId).applications,
         ...(partialConfig.applications || {})
+      },
+      community: {
+        ...this.getGuild(guildId).community,
+        ...(partialConfig.community || {}),
+        analytics: {
+          ...this.getGuild(guildId).community.analytics,
+          ...(partialConfig.community?.analytics || {}),
+          totals: {
+            ...this.getGuild(guildId).community.analytics.totals,
+            ...(partialConfig.community?.analytics?.totals || {})
+          }
+        },
+        rituals: {
+          ...this.getGuild(guildId).community.rituals,
+          ...(partialConfig.community?.rituals || {})
+        }
       }
     });
 

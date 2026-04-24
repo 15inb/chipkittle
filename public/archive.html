@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Archive</title>
+  <meta name="description" content="Lore, artifacts, ranks, and the public archive of Chipkittle.">
+  <link rel="icon" type="image/svg+xml" href="/chipkittle-logo.svg">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior">
+    <header class="topbar">
+      <a class="brand" href="/"><img src="/notativelogotransparent.png" alt=""><span>chipkittle</span></a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/status">Status</a>
+        <a href="/commands">Commands</a>
+        <a href="/archive">Archive</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="/game">Games</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+    <section class="page-head">
+      <p class="eyebrow">Archive</p>
+      <h1>Family Records and Artifacts</h1>
+      <p>The public lore archive: principles, ranks, figures, and whatever the artifact is currently muttering about.</p>
+    </section>
+    <div class="feature-grid archive-grid" id="archiveGrid">
+      <article><strong>Loading</strong><p>Opening the archive vault.</p></article>
+    </div>
+  </main>
+  <script>
+    const grid = document.querySelector("#archiveGrid");
+    function text(value) {
+      return String(value || "").replace(/[&<>"']/g, (match) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[match]));
+    }
+    fetch("https://panel.chipkittle.com/api/public/archive", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (!payload) throw new Error("No archive");
+        grid.innerHTML = `
+          <article><strong>Current Event</strong><p>${text(payload.rituals?.currentEvent || "None recorded.")}</p></article>
+          <article><strong>Seasonal Message</strong><p>${text(payload.rituals?.seasonalMessage || "No season recorded.")}</p></article>
+          <article><strong>Principles</strong><p>${(payload.lore?.principles || []).map(text).join("<br>")}</p></article>
+          <article><strong>Ranks</strong><p>${(payload.lore?.ranks || []).map(text).join("<br>")}</p></article>
+          <article><strong>Key Figures</strong><p>${(payload.lore?.figures || []).slice(0, 6).map(text).join("<br>")}</p></article>
+          <article><strong>Artifact Registry</strong><p>${(payload.artifacts || []).slice(0, 8).map((item) => `${text(item.name)} (${text(item.rarity)})`).join("<br>") || "No artifacts yet."}</p></article>
+        `;
+      })
+      .catch(() => {
+        grid.innerHTML = '<article><strong>Unavailable</strong><p>The archive could not be loaded right now.</p></article>';
+      });
+  </script>
+</body>
+</html>

@@ -23,6 +23,9 @@
         </a>
         <nav aria-label="Site navigation">
           <a href="#features">Features</a>
+          <a href="/status">Status</a>
+          <a href="/commands">Commands</a>
+          <a href="/archive">Archive</a>
           <a href="/members">Members</a>
           <a href="/commits">Commits</a>
           <a href="/game">Games</a>
@@ -101,6 +104,19 @@
       </div>
     </section>
 
+    <section class="info-band">
+      <div>
+        <p class="eyebrow">Live Status</p>
+        <h2>What the artifact is doing right now.</h2>
+      </div>
+      <div class="feature-grid" id="statusGrid">
+        <article>
+          <strong>Loading</strong>
+          <p>Gathering status from the panel.</p>
+        </article>
+      </div>
+    </section>
+
     <section class="eight-ball-band" id="eight-ball" aria-labelledby="eightBallTitle">
       <div class="eight-ball-copy">
         <p class="eyebrow">Oracle</p>
@@ -153,6 +169,7 @@
     const eightBallAsk = document.querySelector("#eightBallAsk");
     const eightBallAnswer = document.querySelector("#eightBallAnswer");
     const eightBallQuestion = document.querySelector("#eightBallQuestion");
+    const statusGrid = document.querySelector("#statusGrid");
 
     function askEightBall() {
       const answer = eightBallAnswers[Math.floor(Math.random() * eightBallAnswers.length)];
@@ -169,6 +186,31 @@
     eightBallQuestion.addEventListener("keydown", (event) => {
       if (event.key === "Enter") askEightBall();
     });
+
+    fetch("https://panel.chipkittle.com/api/public/status", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (!payload) return;
+        statusGrid.innerHTML = `
+          <article>
+            <strong>${payload.ready ? "Online" : "Offline"}</strong>
+            <p>${payload.botTag || "Chipkittle bot"} is ${payload.ready ? "awake and judging" : "currently napping"}.</p>
+          </article>
+          <article>
+            <strong>${payload.memberCount || 0} Members</strong>
+            <p>Watching the artifact and destabilizing the bread economy.</p>
+          </article>
+          <article>
+            <strong>${payload.snapshot?.commandsRun || 0} Commands</strong>
+            <p>Total command runs recorded by the current community layer.</p>
+          </article>
+          <article>
+            <strong>${payload.currentEvent || "No event set"}</strong>
+            <p>${payload.seasonalMessage || "No seasonal message set."}</p>
+          </article>
+        `;
+      })
+      .catch(() => {});
   </script>
 </body>
 </html>

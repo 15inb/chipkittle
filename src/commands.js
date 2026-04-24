@@ -26,6 +26,20 @@ import {
 import { NO_MENTIONS } from "./discordSafety.js";
 import { redeemDashClaim } from "./dashClaims.js";
 import {
+  addArtifact,
+  addAuditLog,
+  artifactOfTheDay,
+  communitySnapshot,
+  derivedAchievements,
+  incrementMetric,
+  profileFor,
+  purchaseShopItem,
+  recordCommandUsage,
+  shopCatalog,
+  topCommands,
+  updateProfile
+} from "./communityFeatures.js";
+import {
   buildPrettyEmbed,
   commandEmbedMeta,
   createEmbedMessageProxy,
@@ -47,6 +61,7 @@ const IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "im
 const MAX_CHIPIFY_IMAGE_BYTES = 20 * 1024 * 1024;
 const PLAIN_OUTPUT_COMMANDS = new Set(["ask", "chipify"]);
 const MAX_REMINDER_TIMEOUT_MS = 2_147_000_000;
+const PROFILE_BIO_MAX = 220;
 
 const pendingDateRequests = new Map();
 const currentDates = new Map();
@@ -195,6 +210,94 @@ function mentionUser(message) {
 
 function mentionRole(message) {
   return message.mentions.roles.first();
+}
+
+function mentionTargetUser(message) {
+  return message.mentions.members.first() || message.member;
+}
+
+function cleanText(value = "", maxLength = 120) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function splitPipe(text = "") {
+  return String(text || "").split("|").map((part) => part.trim());
+}
+
+function formatInventory(profile) {
+  const entries = Object.entries(profile.inventory || {})
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([itemId, amount]) => {
+      const item = shopCatalog().find((entry) => entry.id === itemId);
+      return `• ${item?.name || itemId} x${amount}`;
+    });
+  return entries.length ? entries.join("\n") : "No items yet.";
+}
+
+function formatAchievementLines(achievements = []) {
+  return achievements.length
+    ? achievements.map((achievement) => `• ${achievement}`).join("\n")
+    : "No achievements yet.";
+}
+
+function formatVouchLines(profile) {
+  return profile.vouches.length
+    ? profile.vouches.slice(0, 5).map((entry) => `• ${entry.name || "Unknown"}: ${entry.reason || "Trusted by the artifact."}`).join("\n")
+    : "No vouches yet.";
+}
+
+function dailyQuestFor(userId = "") {
+  const quests = [
+    "Win a bread gamble without immediately bragging about it.",
+    "Mention the artifact in a totally normal sentence.",
+    "Collect more bread than you spend today.",
+    "Convince another member the horns are a management style.",
+    "Post one message that sounds suspiciously ceremonial."
+  ];
+  const index = Math.abs(`${new Date().toISOString().slice(0, 10)}:${userId}`.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % quests.length;
+  return quests[index];
+}
+
+function weeklyQuestFor(userId = "") {
+  const quests = [
+    "Earn 500 bread through sheer ritual persistence.",
+    "Get vouched for by another member of the order.",
+    "Acquire one shop item to improve your ceremonial standing.",
+    "Learn the current artifact of the day and pretend you knew it already.",
+    "Use three different Chipkittle commands in public without alarming outsiders."
+  ];
+  const today = new Date();
+  const firstDay = new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+  const week = Math.floor((Date.now() - firstDay.getTime()) / (7 * 86_400_000));
+  const index = Math.abs(`${week}:${userId}`.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % quests.length;
+  return quests[index];
+}
+
+function profileEmbedFor(ctx, member) {
+  const profile = profileFor(ctx.config, member.id, member.displayName);
+  const achievements = derivedAchievements(ctx.config, member.id, member.displayName);
+  const balance = Number(ctx.config.economy?.balances?.[member.id] || 0);
+  const artifactList = profile.artifacts.length ? profile.artifacts.slice(0, 4).map((artifact) => `• ${artifact}`).join("\n") : "No artifacts claimed.";
+
+  return buildPrettyEmbed({
+    title: `${member.displayName}'s Profile`,
+    description: [
+      `**Title:** ${profile.title}`,
+      `**Bread:** ${balance}`,
+      `**Reputation:** ${profile.reputation}`,
+      `**Bio:** ${profile.bio}`,
+      "",
+      `**Badges**\n${profile.badges.length ? profile.badges.map((badge) => `• ${badge}`).join("\n") : "No badges yet."}`,
+      "",
+      `**Achievements**\n${formatAchievementLines(achievements)}`,
+      "",
+      `**Artifacts**\n${artifactList}`,
+      "",
+      `**Recent Vouches**\n${formatVouchLines(profile)}`
+    ].join("\n"),
+    color: 0x22c55e,
+    footer: `Requested by ${ctx.message.author.tag}`
+  });
 }
 
 function hasPermission(member, permission) {
@@ -2921,6 +3024,13 @@ define({
     }
 
     await saveApplicationCooldown(ctx.store, ctx.message.guild.id, ctx.message.author.id);
+    await incrementMetric(ctx.store, ctx.message.guild.id, "applicationsOpened", 1).catch(() => {});
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "application",
+      label: "Application opened",
+      details: `${ctx.message.author.tag} opened a membership application.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
   }
 });
 
@@ -3015,6 +3125,13 @@ define({
     }
 
     await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
+    await incrementMetric(ctx.store, ctx.message.guild.id, "applicationsApproved", 1).catch(() => {});
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "application",
+      label: "Application approved",
+      details: `${member.user.tag} was approved.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
     closeThreadLater(ctx.client, ctx.message.channelId, "Application accepted", 10_000);
   }
 });
@@ -3060,6 +3177,13 @@ define({
       allowedMentions: NO_MENTIONS
     });
     await clearApplicationTicket(ctx.store, ctx.message.guild.id, applicantId);
+    await incrementMetric(ctx.store, ctx.message.guild.id, "applicationsDenied", 1).catch(() => {});
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "application",
+      label: "Application denied",
+      details: `${user.tag} was denied.${reason ? ` Reason: ${reason}` : ""}`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
     closeThreadLater(ctx.client, ctx.message.channelId, "Application denied", 10_000);
   }
 });
@@ -3088,6 +3212,375 @@ define({
   }
 });
 
+define({
+  name: "profile",
+  category: "Chipkittle",
+  description: "Show a member's Chipkittle profile card.",
+  usage: "profile [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    await ctx.message.reply({ embeds: [profileEmbedFor(ctx, member)] });
+  }
+});
+
+define({
+  name: "settitle",
+  category: "Chipkittle",
+  description: "Set your public Chipkittle title.",
+  usage: "settitle title",
+  async run(ctx) {
+    const title = cleanText(ctx.rest, 80);
+    if (!title) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    await updateProfile(ctx.store, ctx.message.guild.id, ctx.message.author.id, (profile) => ({
+      ...profile,
+      displayName: ctx.message.member.displayName,
+      title
+    }), ctx.message.member.displayName);
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "profile",
+      label: "Profile title updated",
+      details: `${ctx.message.author.tag} is now "${title}".`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+    await ctx.message.reply(`Your title is now **${title}**.`);
+  }
+});
+
+define({
+  name: "setbio",
+  category: "Chipkittle",
+  description: "Set your public Chipkittle bio.",
+  usage: "setbio bio text",
+  async run(ctx) {
+    const bio = cleanText(ctx.rest, PROFILE_BIO_MAX);
+    if (!bio) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    await updateProfile(ctx.store, ctx.message.guild.id, ctx.message.author.id, (profile) => ({
+      ...profile,
+      displayName: ctx.message.member.displayName,
+      bio
+    }), ctx.message.member.displayName);
+    await ctx.message.reply("Your Chipkittle bio has been updated.");
+  }
+});
+
+define({
+  name: "vouch",
+  category: "Chipkittle",
+  description: "Vouch for another member and increase their reputation.",
+  usage: "vouch @user reason",
+  async run(ctx) {
+    const member = ctx.message.mentions.members.first();
+    if (!member || member.id === ctx.message.author.id) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const reason = cleanText(ctx.args.slice(1).join(" "), 160) || "Trusted by the artifact.";
+    const existing = profileFor(ctx.config, member.id, member.displayName);
+    if (existing.vouches.some((entry) => entry.from === ctx.message.author.id)) {
+      await ctx.message.reply("You have already vouched for that member.");
+      return;
+    }
+    await updateProfile(ctx.store, ctx.message.guild.id, member.id, (profile) => ({
+      ...profile,
+      displayName: member.displayName,
+      reputation: (profile.reputation || 0) + 1,
+      vouches: [
+        {
+          from: ctx.message.author.id,
+          name: ctx.message.member.displayName,
+          reason,
+          createdAt: new Date().toISOString()
+        },
+        ...profile.vouches
+      ].slice(0, 20)
+    }), member.displayName);
+    await incrementMetric(ctx.store, ctx.message.guild.id, "vouches", 1).catch(() => {});
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "vouch",
+      label: "Member vouched",
+      details: `${ctx.message.author.tag} vouched for ${member.user.tag}: ${reason}`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+    await ctx.message.reply(`${ctx.message.member} vouched for ${member}. Reputation increased.`);
+  }
+});
+
+define({
+  name: "reputation",
+  aliases: ["rep"],
+  category: "Chipkittle",
+  description: "Show a member's reputation and vouches.",
+  usage: "reputation [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const profile = profileFor(ctx.config, member.id, member.displayName);
+    await ctx.message.reply([
+      `**${member.displayName}** has **${profile.reputation}** reputation.`,
+      "",
+      `**Recent Vouches**`,
+      formatVouchLines(profile)
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "achievements",
+  category: "Chipkittle",
+  description: "Show a member's unlocked achievements.",
+  usage: "achievements [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const achievements = derivedAchievements(ctx.config, member.id, member.displayName);
+    await ctx.message.reply([
+      `**${member.displayName}'s Achievements**`,
+      formatAchievementLines(achievements)
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "awardbadge",
+  category: "Chipkittle",
+  description: "Staff-only badge grant for a member profile.",
+  usage: "awardbadge @user badge name",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const member = ctx.message.mentions.members.first();
+    const badge = cleanText(ctx.args.slice(1).join(" "), 40);
+    if (!member || !badge) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    await updateProfile(ctx.store, ctx.message.guild.id, member.id, (profile) => ({
+      ...profile,
+      displayName: member.displayName,
+      badges: [...new Set([badge, ...(profile.badges || [])])].slice(0, 16)
+    }), member.displayName);
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "badge",
+      label: "Badge awarded",
+      details: `${member.user.tag} received ${badge}.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+    await ctx.message.reply(`Awarded **${badge}** to ${member}.`);
+  }
+});
+
+define({
+  name: "shop",
+  category: "Gambling",
+  description: "Browse the Chipkittle bread shop.",
+  async run(ctx) {
+    const lines = shopCatalog()
+      .map((item) => `• **${item.name}** - ${item.cost} bread\n  ${item.description}`)
+      .join("\n");
+    await ctx.message.reply(`**Chipkittle Shop**\n${lines}\n\nUse \`${ctx.config.prefix}buy item-id\` to buy something.`);
+  }
+});
+
+define({
+  name: "buy",
+  category: "Gambling",
+  description: "Buy a shop item with bread.",
+  usage: "buy item-id",
+  async run(ctx) {
+    const itemId = cleanText(ctx.args[0], 60).toLowerCase();
+    if (!itemId) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const result = await purchaseShopItem(ctx.store, ctx.message.guild.id, ctx.message.author.id, ctx.message.member.displayName, itemId);
+    if (!result.ok) {
+      await ctx.message.reply(result.error);
+      return;
+    }
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "shop",
+      label: "Shop purchase",
+      details: `${ctx.message.author.tag} bought ${result.item.name}.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+    await ctx.message.reply(`Purchased **${result.item.name}** for **${result.item.cost} bread**.`);
+  }
+});
+
+define({
+  name: "inventory",
+  category: "Gambling",
+  description: "Show your bought items and collectibles.",
+  usage: "inventory [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const profile = profileFor(ctx.config, member.id, member.displayName);
+    await ctx.message.reply(`**${member.displayName}'s Inventory**\n${formatInventory(profile)}`);
+  }
+});
+
+define({
+  name: "quests",
+  aliases: ["quest"],
+  category: "Chipkittle",
+  description: "Show your daily and weekly Chipkittle quests.",
+  async run(ctx) {
+    await ctx.message.reply([
+      `**Daily Quest**`,
+      dailyQuestFor(ctx.message.author.id),
+      "",
+      `**Weekly Quest**`,
+      weeklyQuestFor(ctx.message.author.id)
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "artifacttoday",
+  category: "Chipkittle",
+  description: "Reveal the current artifact of the day.",
+  async run(ctx) {
+    const artifact = artifactOfTheDay(ctx.config);
+    if (!artifact) {
+      await ctx.message.reply("No artifact has been recorded yet.");
+      return;
+    }
+    await ctx.message.reply([
+      `**Artifact of the Day: ${artifact.name}**`,
+      `Rarity: ${artifact.rarity}`,
+      `Keeper: ${artifact.keeper}`,
+      artifact.summary
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "artifactregistry",
+  aliases: ["artifacts", "registry"],
+  category: "Chipkittle",
+  description: "List the known Chipkittle artifacts.",
+  async run(ctx) {
+    const artifacts = (ctx.config.community?.artifacts || []).slice(0, 12);
+    if (!artifacts.length) {
+      await ctx.message.reply("No artifacts are registered yet.");
+      return;
+    }
+    await ctx.message.reply(artifacts.map((artifact) => `• **${artifact.name}** (${artifact.rarity}) - ${artifact.keeper}\n  ${artifact.summary}`).join("\n"));
+  }
+});
+
+define({
+  name: "registerartifact",
+  category: "Chipkittle",
+  description: "Staff-only command to add an artifact to the public registry.",
+  usage: "registerartifact name | rarity | keeper | summary",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const [name, rarity, keeper, summary] = splitPipe(ctx.rest);
+    if (!name || !summary) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    await addArtifact(ctx.store, ctx.message.guild.id, {
+      name: cleanText(name, 80),
+      rarity: cleanText(rarity || "Unknown", 40),
+      keeper: cleanText(keeper || ctx.message.member.displayName, 80),
+      summary: cleanText(summary, 260)
+    });
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "artifact",
+      label: "Artifact registered",
+      details: `${name} was added to the registry.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+    await ctx.message.reply(`Registered **${name}** in the artifact registry.`);
+  }
+});
+
+define({
+  name: "staffnote",
+  category: "Moderation",
+  description: "Add a private staff note for a member.",
+  usage: "staffnote @user note",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const member = ctx.message.mentions.members.first();
+    const note = cleanText(ctx.args.slice(1).join(" "), 180);
+    if (!member || !note) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const nextNotes = {
+      ...(ctx.config.community?.staffNotes || {}),
+      [member.id]: [
+        {
+          author: ctx.message.author.tag,
+          note,
+          createdAt: new Date().toISOString()
+        },
+        ...((ctx.config.community?.staffNotes?.[member.id] || []))
+      ].slice(0, 20)
+    };
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      community: {
+        ...ctx.config.community,
+        staffNotes: nextNotes
+      }
+    });
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "staff-note",
+      label: "Staff note added",
+      details: `A note was added for ${member.user.tag}.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+    await ctx.message.reply(`Saved a staff note for ${member}.`);
+  }
+});
+
+define({
+  name: "notes",
+  category: "Moderation",
+  description: "Show staff notes for a member.",
+  usage: "notes @user",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const member = ctx.message.mentions.members.first();
+    if (!member) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const notes = ctx.config.community?.staffNotes?.[member.id] || [];
+    await ctx.message.reply(notes.length
+      ? `**Staff notes for ${member.displayName}**\n${notes.slice(0, 8).map((entry) => `• ${entry.author}: ${entry.note}`).join("\n")}`
+      : `No staff notes for ${member.displayName}.`);
+  }
+});
+
+define({
+  name: "serverstats",
+  category: "Info",
+  description: "Show live community stats and top command usage.",
+  async run(ctx) {
+    const snapshot = communitySnapshot(ctx.config);
+    const hotCommands = topCommands(ctx.config, 5);
+    await ctx.message.reply([
+      `**Community Snapshot**`,
+      `Commands run: ${snapshot.commandsRun}`,
+      `AI replies: ${snapshot.aiReplies}`,
+      `Applications: ${snapshot.applicationsOpened} opened / ${snapshot.applicationsApproved} approved / ${snapshot.applicationsDenied} denied`,
+      `Profiles: ${snapshot.profiles}`,
+      `Artifacts: ${snapshot.artifacts}`,
+      `Vouches: ${snapshot.vouches}`,
+      "",
+      `**Top Commands**`,
+      hotCommands.length ? hotCommands.map((item) => `• ${item.name} (${item.count})`).join("\n") : "No command usage yet."
+    ].join("\n"));
+  }
+});
+
 export function createCommandHandler(options) {
   const aliases = new Map();
   for (const command of commandDefinitions) {
@@ -3113,6 +3606,9 @@ export function createCommandHandler(options) {
         commands: aliases,
         commandList: commandDefinitions
       });
+      if (message.guild?.id) {
+        await recordCommandUsage(options.store, message.guild.id, command.name, command.category).catch(() => {});
+      }
     } catch (error) {
       console.error(`Command ${command.name} failed:`, error);
       const fallbackPayload = toEmbedPayload(
