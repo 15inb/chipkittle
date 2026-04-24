@@ -1430,9 +1430,39 @@ function commandRoleAccess(commandList, roles, overrides = {}) {
     .join("");
 }
 
-function settingsNav(guildId, activeSection) {
+function sectionStatusLabel(sectionId) {
+  return NON_FORM_SECTIONS.has(sectionId) ? "Live view" : "Saved config";
+}
+
+function settingsNav(guild, config, activeSection, currentMeta) {
+  const community = communitySnapshot(config);
   return `
-    <nav class="settings-nav settings-nav-panels" aria-label="Settings categories">
+    <aside class="settings-rail" aria-label="Settings categories">
+      <section class="settings-rail-card settings-rail-card--guild">
+        <div class="settings-rail-guild">
+          <span class="guild-icon">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
+          <div>
+            <p class="eyebrow">Server focus</p>
+            <strong>${escapeHtml(guild.name)}</strong>
+            <small>Prefix ${escapeHtml(config.prefix)} • ${guild.memberCount ?? 0} members</small>
+          </div>
+        </div>
+        <div class="rail-mini-stats">
+          <span><strong>${escapeHtml(community.commandsRun)}</strong> Commands</span>
+          <span><strong>${escapeHtml(community.aiReplies)}</strong> AI replies</span>
+          <span><strong>${escapeHtml(community.cases)}</strong> Cases</span>
+          <span><strong>${escapeHtml(community.applicationsOpened)}</strong> Apps</span>
+        </div>
+      </section>
+      <section class="settings-rail-card settings-rail-card--focus">
+        <p class="settings-nav-label">Current workspace</p>
+        <div class="rail-focus">
+          <strong>${escapeHtml(currentMeta.label)}</strong>
+          <p>${escapeHtml(currentMeta.description)}</p>
+          <span>${sectionStatusLabel(activeSection)}</span>
+        </div>
+      </section>
+      <nav class="settings-nav settings-nav-rail" aria-label="Settings categories">
       ${SETTINGS_NAV_GROUPS.map((group) => `
         <section class="settings-nav-group settings-nav-panel">
           <p class="settings-nav-label">${escapeHtml(group.label)}</p>
@@ -1441,15 +1471,17 @@ function settingsNav(guildId, activeSection) {
             const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
             if (!section) return "";
             return `
-              <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guildId}?section=${section.id}">
+              <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}">
                 <span>${escapeHtml(section.label)}</span>
                 <small>${escapeHtml(section.description)}</small>
+                <em>${sectionStatusLabel(section.id)}</em>
               </a>`;
           }).join("")}
           </div>
         </section>
       `).join("")}
-    </nav>
+      </nav>
+    </aside>
   `;
 }
 
@@ -1941,7 +1973,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
           <div>
             <p class="eyebrow">Control room</p>
             <h1>${escapeHtml(guild.name)}</h1>
-            <p class="muted">Single-server panel with runtime tools, config management, and live operational views.</p>
+            <p class="muted">An opinionated operations deck for the bot, site, games, and Discord runtime.</p>
           </div>
         </div>
         <div class="hero-actions">
@@ -1949,23 +1981,31 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
           <a class="primary-link secondary-link" href="/commits">View commits</a>
         </div>
       </section>
-      ${guildSummaryStrip(guild, config)}
-      <section class="panel-deck">
-        ${settingsNav(guild.id, currentSection)}
-        <div class="panel-content-shell">
-          <section class="section-header-card section-header-card--loud">
-            <div>
+      <section class="control-layout">
+        ${settingsNav(guild, config, currentSection, currentMeta)}
+        <div class="workspace-stage">
+          <section class="section-spotlight">
+            <div class="section-spotlight-copy">
               <p class="eyebrow">Current workspace</p>
               <h2>${escapeHtml(currentMeta.label)}</h2>
               <p class="muted">${escapeHtml(currentMeta.description)}</p>
             </div>
-            <div class="section-header-meta">
+            <div class="section-spotlight-meta">
               <span>${NON_FORM_SECTIONS.has(currentSection) ? "Operational view" : "Configuration editor"}</span>
               <span>${escapeHtml(guild.name)}</span>
               <span>Prefix ${escapeHtml(config.prefix)}</span>
             </div>
           </section>
-          <div class="settings-main">
+          <div class="workspace-topline">
+            ${guildSummaryStrip(guild, config)}
+            <section class="workspace-quicklinks">
+              <a href="/guilds/${guild.id}?section=dashboard">Overview</a>
+              <a href="/guilds/${guild.id}?section=ai">AI</a>
+              <a href="/guilds/${guild.id}?section=moderation">Moderation</a>
+              <a href="/guilds/${guild.id}?section=server">Runtime</a>
+            </section>
+          </div>
+          <div class="settings-main workspace-main">
             ${sectionWorkspace({
               guild,
               config,

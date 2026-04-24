@@ -1106,13 +1106,16 @@ define({
 
 define({
   name: "server",
-  aliases: ["serverinfo", "membercount", "members", "guildcount"],
+  aliases: ["serverinfo", "membercount", "members", "guildcount", "serverstats", "servericon", "guildicon", "icon", "serverbanner", "guildbanner", "banner"],
   category: "Info",
   description: "Show server details.",
   async run(ctx) {
     const guild = ctx.message.guild;
     const humans = guild.members.cache.filter((member) => !member.user.bot).size;
     const bots = guild.members.cache.filter((member) => member.user.bot).size;
+    const snapshot = communitySnapshot(ctx.config);
+    const iconUrl = guild.iconURL({ size: 1024 });
+    const bannerUrl = guild.bannerURL({ size: 2048 });
     await ctx.message.reply(
       [
         `**${guild.name}**`,
@@ -1121,7 +1124,11 @@ define({
         `Bots: ${bots}`,
         `Channels: ${guild.channels.cache.size}`,
         `Roles: ${guild.roles.cache.size}`,
-        `Created: <t:${Math.floor(guild.createdTimestamp / 1000)}:D>`
+        `Created: <t:${Math.floor(guild.createdTimestamp / 1000)}:D>`,
+        `Commands Run: ${snapshot.commandsRun}`,
+        `AI Replies: ${snapshot.aiReplies}`,
+        iconUrl ? `Icon: ${iconUrl}` : "Icon: none set",
+        bannerUrl ? `Banner: ${bannerUrl}` : "Banner: none set"
       ].join("\n")
     );
   }
@@ -1160,13 +1167,28 @@ define({
 
 define({
   name: "roles",
+  aliases: ["roleinfo", "role", "roledata"],
   category: "Info",
-  description: "List server roles.",
+  description: "List server roles or inspect a mentioned role.",
+  usage: "roles [@role]",
   async run(ctx) {
+    const role = mentionRole(ctx.message);
+    if (role) {
+      await ctx.message.reply([
+        `**Role Info: ${role.name}**`,
+        `ID: \`${role.id}\``,
+        `Members: **${role.members.size}**`,
+        `Color: \`${role.hexColor}\``,
+        `Mentionable: **${role.mentionable ? "Yes" : "No"}**`,
+        `Hoisted: **${role.hoist ? "Yes" : "No"}**`
+      ].join("\n"));
+      return;
+    }
+
     const roles = ctx.message.guild.roles.cache
-      .filter((role) => role.name !== "@everyone")
+      .filter((entry) => entry.name !== "@everyone")
       .sort((a, b) => b.position - a.position)
-      .map((role) => role.name)
+      .map((entry) => entry.name)
       .slice(0, 50)
       .join(", ");
     await ctx.message.reply(roles || "No roles found.");
@@ -1175,9 +1197,23 @@ define({
 
 define({
   name: "channels",
+  aliases: ["channelinfo", "channel", "channeldata"],
   category: "Info",
-  description: "List text channels.",
+  description: "List text channels or inspect one channel.",
+  usage: "channels [#channel]",
   async run(ctx) {
+    if (ctx.message.mentions.channels.size || ctx.args[0]) {
+      const channel = targetTextChannel(ctx.message);
+      await ctx.message.reply([
+        `**Channel Info: #${channel.name}**`,
+        `ID: \`${channel.id}\``,
+        `Type: **${channel.type}**`,
+        `NSFW: **${channel.nsfw ? "Yes" : "No"}**`,
+        `Topic: ${channel.topic || "No topic set."}`
+      ].join("\n"));
+      return;
+    }
+
     const channels = ctx.message.guild.channels.cache
       .filter((channel) => channel.isTextBased())
       .map((channel) => `#${channel.name}`)
@@ -1895,7 +1931,7 @@ define({
 
 define({
   name: "dailybread",
-  aliases: ["daily", "breadclaim"],
+  aliases: ["daily", "breadclaim", "dailystatus", "dailycheck", "dailyinfo"],
   category: "Gambling",
   description: "Claim free daily bread.",
   async run(ctx) {
@@ -4141,28 +4177,6 @@ define({
 });
 
 define({
-  name: "serverstats",
-  category: "Info",
-  description: "Show live community stats and top command usage.",
-  async run(ctx) {
-    const snapshot = communitySnapshot(ctx.config);
-    const hotCommands = topCommands(ctx.config, 5);
-    await ctx.message.reply([
-      `**Community Snapshot**`,
-      `Commands run: ${snapshot.commandsRun}`,
-      `AI replies: ${snapshot.aiReplies}`,
-      `Applications: ${snapshot.applicationsOpened} opened / ${snapshot.applicationsApproved} approved / ${snapshot.applicationsDenied} denied`,
-      `Profiles: ${snapshot.profiles}`,
-      `Artifacts: ${snapshot.artifacts}`,
-      `Vouches: ${snapshot.vouches}`,
-      "",
-      `**Top Commands**`,
-      hotCommands.length ? hotCommands.map((item) => `• ${item.name} (${item.count})`).join("\n") : "No command usage yet."
-    ].join("\n"));
-  }
-});
-
-define({
   name: "leaderboard",
   aliases: ["gameleaderboard", "gamelb"],
   category: "Games",
@@ -4881,75 +4895,6 @@ define({
 });
 
 define({
-  name: "servericon",
-  aliases: ["guildicon", "icon"],
-  category: "Info",
-  description: "Show the server icon link.",
-  async run(ctx) {
-    const iconUrl = ctx.message.guild.iconURL({ size: 1024 });
-    await ctx.message.reply(iconUrl ? `Server icon: ${iconUrl}` : "This server does not have an icon set.");
-  }
-});
-
-define({
-  name: "roleinfo",
-  aliases: ["role", "roledata"],
-  category: "Info",
-  description: "Show details about a mentioned role.",
-  usage: "roleinfo @role",
-  async run(ctx) {
-    const role = mentionRole(ctx.message);
-    if (!role) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-    await ctx.message.reply([
-      `**Role Info: ${role.name}**`,
-      `ID: \`${role.id}\``,
-      `Members: **${role.members.size}**`,
-      `Color: \`${role.hexColor}\``,
-      `Mentionable: **${role.mentionable ? "Yes" : "No"}**`,
-      `Hoisted: **${role.hoist ? "Yes" : "No"}**`
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "channelinfo",
-  aliases: ["channel", "channeldata"],
-  category: "Info",
-  description: "Show details about a channel.",
-  usage: "channelinfo [#channel]",
-  async run(ctx) {
-    const channel = targetTextChannel(ctx.message);
-    await ctx.message.reply([
-      `**Channel Info: #${channel.name}**`,
-      `ID: \`${channel.id}\``,
-      `Type: **${channel.type}**`,
-      `NSFW: **${channel.nsfw ? "Yes" : "No"}**`,
-      `Topic: ${channel.topic || "No topic set."}`
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "dailystatus",
-  aliases: ["dailycheck", "dailyinfo"],
-  category: "Gambling",
-  description: "Check whether your daily bread is ready.",
-  async run(ctx) {
-    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
-    const lastClaim = new Date(economy.dailyClaims[ctx.message.author.id] || 0).getTime();
-    const remaining = DAILY_COOLDOWN_MS - (Date.now() - lastClaim);
-    if (remaining > 0) {
-      await ctx.message.reply(`Daily bread is on cooldown. You can claim again in **${formatCooldown(remaining)}**.`);
-      return;
-    }
-    await ctx.message.reply("Daily bread is ready right now.");
-  }
-});
-
-define({
   name: "breadcompare",
   aliases: ["comparebread", "walletcompare"],
   category: "Gambling",
@@ -5208,17 +5153,6 @@ define({
     await ctx.message.reply(role
       ? `Random pick from **${role.name}**: ${winner}`
       : `Random member: ${winner}`);
-  }
-});
-
-define({
-  name: "serverbanner",
-  aliases: ["guildbanner", "banner"],
-  category: "Info",
-  description: "Show the server banner link if one exists.",
-  async run(ctx) {
-    const bannerUrl = ctx.message.guild.bannerURL({ size: 2048 });
-    await ctx.message.reply(bannerUrl ? `Server banner: ${bannerUrl}` : "This server does not have a banner set.");
   }
 });
 
