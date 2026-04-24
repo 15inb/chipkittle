@@ -106,8 +106,8 @@ a {
 
 .hero-logo-overlay {
   position: absolute;
-  left: clamp(57%, 61vw, 66%);
-  top: clamp(67%, 72vh, 76%);
+  left: clamp(54%, 58vw, 63%);
+  top: clamp(62%, 67vh, 71%);
   z-index: -1;
   width: clamp(250px, 20vw, 360px);
   transform: translate(-50%, -50%);
@@ -1489,8 +1489,8 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 63%;
-    top: 72%;
+    left: 60%;
+    top: 67%;
     width: clamp(190px, 22vw, 270px);
   }
 
@@ -1595,8 +1595,8 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 64%;
-    top: 72%;
+    left: 61%;
+    top: 67%;
     width: 152px;
   }
 
