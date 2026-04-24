@@ -321,6 +321,7 @@ function layout({ title, body, user, flash = "" }) {
       </a>
       <nav>
         <a href="/">Config</a>
+        <a href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
         ${user ? '<a href="/commits">Commits</a>' : ""}
         ${user ? '<a href="/logout">Sign out</a>' : '<a href="/login">Sign in</a>'}
       </nav>
