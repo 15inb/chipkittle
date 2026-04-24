@@ -189,6 +189,7 @@ function updateControls() {
         <a class="primary-link secondary-link" href="/admin/export/config">Export config</a>
         <a class="primary-link secondary-link" href="/admin/export/community">Export community</a>
         <a class="primary-link secondary-link" href="/admin/export/moderation">Export moderation</a>
+        <a class="primary-link secondary-link" href="/admin/export/applications">Export applications</a>
         <a class="primary-link secondary-link" href="/admin/export/full">Full backup snapshot</a>
       </div>
       ${
@@ -219,6 +220,17 @@ function shortDurationLabel(value) {
 function normalizeCaseStatusFilter(value = "") {
   const normalized = String(value || "").toLowerCase();
   return ["open", "closed", "all"].includes(normalized) ? normalized : "open";
+}
+
+function displayRoleName(guild, roleId) {
+  if (!roleId) return "Not set";
+  return guild.roles.find((role) => role.id === roleId)?.name || roleId;
+}
+
+function displayChannelName(guild, channelId) {
+  if (!channelId) return "Not set";
+  const channel = guild.channels.find((item) => item.id === channelId);
+  return channel ? `#${channel.name}` : channelId;
 }
 
 function moderationCenter(config = {}) {
@@ -350,6 +362,88 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
               </article>
             `).join("")}</div>`
           : '<p class="muted">No active warnings to review.</p>'
+      }
+    </section>
+  `;
+}
+
+function applicationsWorkspace(guildId, guild, config = {}) {
+  const tickets = Object.entries(config.applications?.tickets || {})
+    .map(([userId, ticket]) => ({
+      userId,
+      channelId: String(ticket.channelId || ""),
+      parentChannelId: String(ticket.parentChannelId || ""),
+      questionIndex: Math.max(Number(ticket.questionIndex) || 0, 0),
+      completed: Boolean(ticket.completed),
+      updatedAt: String(ticket.updatedAt || "")
+    }))
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  const cooldowns = Object.entries(config.applications?.cooldowns || {})
+    .map(([userId, cooldown]) => ({
+      userId,
+      lastAppliedAt: String(cooldown?.lastAppliedAt || "")
+    }))
+    .sort((a, b) => String(b.lastAppliedAt).localeCompare(String(a.lastAppliedAt)));
+  const questions = config.applications?.questions || [];
+  const reviewerRoles = (config.applications?.reviewerRoleIds || []).map((roleId) => displayRoleName(guild, roleId));
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Application Operations</h2>
+        <p>See active applicants, routing, and cooldown state without digging through raw config.</p>
+      </div>
+      <div class="stats-grid">
+        <article class="stat-card"><strong>${escapeHtml(tickets.length)}</strong><span>Tracked Tickets</span></article>
+        <article class="stat-card"><strong>${escapeHtml(tickets.filter((ticket) => !ticket.completed).length)}</strong><span>Open Applications</span></article>
+        <article class="stat-card"><strong>${escapeHtml(cooldowns.length)}</strong><span>Cooldown Entries</span></article>
+        <article class="stat-card"><strong>${escapeHtml(questions.length)}</strong><span>Questions</span></article>
+      </div>
+      <div class="dashboard-grid">
+        <div class="sub-panel">
+          <div class="section-heading">
+            <h2>Routing</h2>
+            <p>Quick confirmation that applications are pointed at the right channels and roles.</p>
+          </div>
+          <div class="stack-list">
+            <div class="list-row"><div><strong>Command channel</strong><span>${escapeHtml(displayChannelName(guild, config.applications?.channelId))}</span></div></div>
+            <div class="list-row"><div><strong>Review thread channel</strong><span>${escapeHtml(displayChannelName(guild, config.applications?.threadChannelId || config.applications?.channelId))}</span></div></div>
+            <div class="list-row"><div><strong>Approved role</strong><span>${escapeHtml(displayRoleName(guild, config.applications?.approvedRoleId))}</span></div></div>
+            <div class="list-row"><div><strong>Reviewer roles</strong><span>${escapeHtml(reviewerRoles.length ? reviewerRoles.join(", ") : "None selected")}</span></div></div>
+          </div>
+        </div>
+        <div class="sub-panel">
+          <div class="section-heading">
+            <h2>Current Questions</h2>
+            <p>The exact prompts applicants are answering in DMs.</p>
+          </div>
+          ${
+            questions.length
+              ? `<ol class="application-question-list">${questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}</ol>`
+              : '<p class="muted">No application questions configured yet.</p>'
+          }
+        </div>
+      </div>
+    </section>
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Open Ticket Records</h2>
+        <p>These records keep the DM bridge alive after restarts. Clear one if an applicant needs a fresh start.</p>
+      </div>
+      ${
+        tickets.length
+          ? `<div class="warning-ledger">${tickets.map((ticket) => `<article class="warning-row"><div class="warning-row-main"><strong>${escapeHtml(ticket.userId)}</strong><small>${escapeHtml(ticket.completed ? "Completed" : "In progress")} • Question ${escapeHtml(Math.min(ticket.questionIndex + 1, Math.max(questions.length, 1)))}</small><ul><li>Thread: ${escapeHtml(ticket.channelId || "Missing")}</li><li>Parent: ${escapeHtml(displayChannelName(guild, ticket.parentChannelId))}</li><li>Updated: ${escapeHtml(ticket.updatedAt || "Unknown")}</li></ul></div><form method="post" action="/guilds/${guildId}/applications/${ticket.userId}/clear-ticket?section=applications"><button type="submit" class="secondary-button">Clear ticket</button></form></article>`).join("")}</div>`
+          : '<p class="muted">No stored application tickets right now.</p>'
+      }
+    </section>
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Cooldown Ledger</h2>
+        <p>Applicants on cooldown after opening an application. Clear an entry if you want to let someone retry immediately.</p>
+      </div>
+      ${
+        cooldowns.length
+          ? `<div class="warning-ledger">${cooldowns.map((entry) => `<article class="warning-row"><div class="warning-row-main"><strong>${escapeHtml(entry.userId)}</strong><small>Last applied ${escapeHtml(entry.lastAppliedAt || "Unknown")}</small></div><form method="post" action="/guilds/${guildId}/applications/${entry.userId}/clear-cooldown?section=applications"><button type="submit" class="secondary-button">Clear cooldown</button></form></article>`).join("")}</div>`
+          : '<p class="muted">No active application cooldowns.</p>'
       }
     </section>
   `;
@@ -1333,58 +1427,61 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
             </section>
 
             <section class="${sectionClass("applications", currentSection)}">
-              <section class="panel-section">
-                <div class="section-heading">
-                  <h2>Membership Applications</h2>
-                  <p>DM applicants the questions and create private staff review threads.</p>
-                </div>
-                <label class="toggle">
-                  <input type="checkbox" name="applicationsEnabled" ${isChecked(config.applications.enabled)}>
-                  <span>Enable application threads</span>
-                </label>
-                <div class="field-pair">
-                  <label>
-                    Application command channel
-                    <select name="applicationChannelId">
-                      ${optionList(guild.channels, config.applications.channelId, "Allow applications from any channel")}
-                    </select>
-                  </label>
-                  <label>
-                    Review thread channel
-                    <select name="applicationThreadChannelId">
-                      ${optionList(guild.channels, config.applications.threadChannelId, "Use the application command channel")}
-                    </select>
-                  </label>
-                  <label>
-                    Approved membership role
-                    <select name="applicationApprovedRoleId">
-                      ${optionList(guild.roles, config.applications.approvedRoleId, "No role selected")}
-                    </select>
-                  </label>
-                  <label>
-                    Application cooldown minutes
-                    <input type="number" name="applicationCooldownMinutes" min="0" max="10080" value="${escapeHtml(config.applications.cooldownMinutes)}">
-                  </label>
-                </div>
-                <div>
-                  <p class="field-label">Roles blocked from applying</p>
-                  <p class="field-help">Members with any of these roles cannot open an application.</p>
-                  <div class="checkbox-grid">
-                    ${roleCheckboxes(guild.roles, config.applications.blockedRoleIds, "applicationBlockedRoleIds")}
+              <div class="settings-stack">
+                ${applicationsWorkspace(guild.id, guild, config)}
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Membership Applications</h2>
+                    <p>DM applicants the questions and create private staff review threads.</p>
                   </div>
-                </div>
-                <div>
-                  <p class="field-label">Application reviewer roles</p>
-                  <p class="field-help">These roles can view threads and use reply, approve, deny, or close commands.</p>
-                  <div class="checkbox-grid">
-                    ${roleCheckboxes(guild.roles, config.applications.reviewerRoleIds, "applicationReviewerRoleIds")}
+                  <label class="toggle">
+                    <input type="checkbox" name="applicationsEnabled" ${isChecked(config.applications.enabled)}>
+                    <span>Enable application threads</span>
+                  </label>
+                  <div class="field-pair">
+                    <label>
+                      Application command channel
+                      <select name="applicationChannelId">
+                        ${optionList(guild.channels, config.applications.channelId, "Allow applications from any channel")}
+                      </select>
+                    </label>
+                    <label>
+                      Review thread channel
+                      <select name="applicationThreadChannelId">
+                        ${optionList(guild.channels, config.applications.threadChannelId, "Use the application command channel")}
+                      </select>
+                    </label>
+                    <label>
+                      Approved membership role
+                      <select name="applicationApprovedRoleId">
+                        ${optionList(guild.roles, config.applications.approvedRoleId, "No role selected")}
+                      </select>
+                    </label>
+                    <label>
+                      Application cooldown minutes
+                      <input type="number" name="applicationCooldownMinutes" min="0" max="10080" value="${escapeHtml(config.applications.cooldownMinutes)}">
+                    </label>
                   </div>
-                </div>
-                <label>
-                  Application questions
-                  <textarea name="applicationQuestions" rows="7">${escapeHtml(config.applications.questions.join("\n"))}</textarea>
-                </label>
-              </section>
+                  <div>
+                    <p class="field-label">Roles blocked from applying</p>
+                    <p class="field-help">Members with any of these roles cannot open an application.</p>
+                    <div class="checkbox-grid">
+                      ${roleCheckboxes(guild.roles, config.applications.blockedRoleIds, "applicationBlockedRoleIds")}
+                    </div>
+                  </div>
+                  <div>
+                    <p class="field-label">Application reviewer roles</p>
+                    <p class="field-help">These roles can view threads and use reply, approve, deny, or close commands.</p>
+                    <div class="checkbox-grid">
+                      ${roleCheckboxes(guild.roles, config.applications.reviewerRoleIds, "applicationReviewerRoleIds")}
+                    </div>
+                  </div>
+                  <label>
+                    Application questions
+                    <textarea name="applicationQuestions" rows="7">${escapeHtml(config.applications.questions.join("\n"))}</textarea>
+                  </label>
+                </section>
+              </div>
             </section>
 
             <section class="${sectionClass("games", currentSection)}">
@@ -1952,6 +2049,28 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     downloadJson(response, "chipkittle-moderation-export.json", payload);
   });
 
+  app.get("/admin/export/applications", requireAuth, (_request, response) => {
+    const payload = Object.fromEntries(
+      Object.entries(store.data?.guilds || {}).map(([guildEntryId, config]) => [
+        guildEntryId,
+        {
+          enabled: config.applications?.enabled || false,
+          channelId: config.applications?.channelId || "",
+          threadChannelId: config.applications?.threadChannelId || "",
+          reviewerRoleIds: config.applications?.reviewerRoleIds || [],
+          approvedRoleId: config.applications?.approvedRoleId || "",
+          blockedRoleIds: config.applications?.blockedRoleIds || [],
+          cooldownMinutes: config.applications?.cooldownMinutes || 0,
+          questions: config.applications?.questions || [],
+          cooldowns: config.applications?.cooldowns || {},
+          tickets: config.applications?.tickets || {},
+          exportedAt: new Date().toISOString()
+        }
+      ])
+    );
+    downloadJson(response, "chipkittle-applications-export.json", payload);
+  });
+
   app.get("/admin/export/full", requireAuth, (_request, response) => {
     downloadJson(response, "chipkittle-backup-snapshot.json", {
       generatedAt: new Date().toISOString(),
@@ -2005,6 +2124,62 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
         actor: "Panel"
       }).catch(() => {});
       response.redirect(`/guilds/${discordGuild.id}?saved=1&section=moderation`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/applications/:userId/clear-ticket", requireAuth, async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const config = store.getGuild(discordGuild.id);
+      const tickets = { ...(config.applications?.tickets || {}) };
+      delete tickets[String(request.params.userId || "")];
+      await store.updateGuild(discordGuild.id, {
+        applications: {
+          ...config.applications,
+          tickets
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "application",
+        label: "Application ticket cleared",
+        details: `Cleared application ticket record for ${request.params.userId} from the web panel.`,
+        actor: "Panel"
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=applications`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/applications/:userId/clear-cooldown", requireAuth, async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const config = store.getGuild(discordGuild.id);
+      const cooldowns = { ...(config.applications?.cooldowns || {}) };
+      delete cooldowns[String(request.params.userId || "")];
+      await store.updateGuild(discordGuild.id, {
+        applications: {
+          ...config.applications,
+          cooldowns
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "application",
+        label: "Application cooldown cleared",
+        details: `Cleared application cooldown for ${request.params.userId} from the web panel.`,
+        actor: "Panel"
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=applications`);
     } catch (error) {
       next(error);
     }
