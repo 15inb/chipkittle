@@ -32,11 +32,13 @@ import {
   addAuditLog,
   artifactOfTheDay,
   casesForUser,
+  communityState,
   communitySnapshot,
   createCase,
   derivedAchievements,
   getCase,
   incrementMetric,
+  normalizeCases,
   profileFor,
   purchaseShopItem,
   recordCommandUsage,
@@ -5227,6 +5229,292 @@ define({
       `**Application Questions**`,
       applicationQuestions().map((question, index) => `${index + 1}. ${question}`).join("\n")
     ].join("\n"));
+  }
+});
+
+define({
+  name: "permissions",
+  aliases: ["perms", "permissioncheck"],
+  category: "Info",
+  description: "Show a member's effective Discord permissions.",
+  usage: "permissions [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const permissions = member.permissions.toArray();
+    await ctx.message.reply([
+      `**Permissions: ${member.displayName}**`,
+      permissions.length ? permissions.slice(0, 30).join(", ") : "No explicit permissions."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "whohasrole",
+  aliases: ["rolemembers", "memberswithrole"],
+  category: "Info",
+  description: "List members who have a given role.",
+  usage: "whohasrole @role",
+  async run(ctx) {
+    const role = mentionRole(ctx.message);
+    if (!role) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const members = [...role.members.values()].slice(0, 20);
+    await ctx.message.reply([
+      `**Members With ${role.name}**`,
+      members.length
+        ? members.map((member) => `• ${member.displayName}`).join("\n")
+        : "No members have that role.",
+      role.members.size > members.length ? `\nShowing ${members.length} of ${role.members.size}.` : ""
+    ].filter(Boolean).join("\n"));
+  }
+});
+
+define({
+  name: "randommember",
+  aliases: ["pickmember", "memberroulette"],
+  category: "Fun",
+  description: "Pick a random member, optionally from a role.",
+  usage: "randommember [@role]",
+  async run(ctx) {
+    const role = mentionRole(ctx.message);
+    const pool = role
+      ? [...role.members.values()].filter((member) => !member.user.bot)
+      : ctx.message.guild.members.cache.filter((member) => !member.user.bot).map((member) => member);
+    if (!pool.length) {
+      await ctx.message.reply("No eligible members were found for that pick.");
+      return;
+    }
+    const winner = pool[randomInt(0, pool.length - 1)];
+    await ctx.message.reply(role
+      ? `Random pick from **${role.name}**: ${winner}`
+      : `Random member: ${winner}`);
+  }
+});
+
+define({
+  name: "serverbanner",
+  aliases: ["guildbanner", "banner"],
+  category: "Info",
+  description: "Show the server banner link if one exists.",
+  async run(ctx) {
+    const bannerUrl = ctx.message.guild.bannerURL({ size: 2048 });
+    await ctx.message.reply(bannerUrl ? `Server banner: ${bannerUrl}` : "This server does not have a banner set.");
+  }
+});
+
+define({
+  name: "nickname",
+  aliases: ["nick", "setnick"],
+  category: "Moderation",
+  description: "Change a member's nickname.",
+  usage: "nickname @user new nickname",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageNicknames)) return;
+    const member = ctx.message.mentions.members.first();
+    const nickname = cleanText(ctx.args.slice(1).join(" "), 32);
+    if (!member || !nickname) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (!(await canModerateTarget(ctx, member, "change nickname for", "manageable", "Manage Nicknames"))) return;
+    const completed = await runModerationAction(
+      ctx,
+      member,
+      "change nickname for",
+      () => member.setNickname(nickname, `Changed by ${ctx.message.author.tag}`),
+      "Manage Nicknames"
+    );
+    if (!completed) return;
+    const output = `Changed ${member.user.tag}'s nickname to **${nickname}**.`;
+    await ctx.message.reply(output);
+    await sendModerationLog(ctx, output);
+  }
+});
+
+define({
+  name: "opencases",
+  aliases: ["casequeue", "caseboard"],
+  category: "Moderation",
+  description: "List currently open moderation cases.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
+    const cases = normalizeCases(communityState(ctx.config).cases)
+      .filter((entry) => entry.status !== "closed")
+      .slice(0, 10);
+    if (!cases.length) {
+      await ctx.message.reply("There are no open cases right now.");
+      return;
+    }
+    await ctx.message.reply([
+      `**Open Cases**`,
+      cases.map((entry) => `• #${entry.id} ${entry.action} - ${entry.targetTag || entry.targetId} - ${entry.reason || "No reason"}`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "blockedwords",
+  aliases: ["wordlist", "automodwords"],
+  category: "Config",
+  description: "Show the current automod blocked words.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const blockedWords = (ctx.config.automod?.blockedWords || []).map(normalizeBlockedWord).filter(Boolean);
+    await ctx.message.reply([
+      `**Blocked Words**`,
+      blockedWords.length ? blockedWords.map((word) => `• \`${word}\``).join("\n") : "No blocked words configured."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "appcooldowns",
+  aliases: ["applicationcooldowns", "cooldownqueue"],
+  category: "Applications",
+  description: "Show members currently on application cooldown.",
+  async run(ctx) {
+    if (!isApplicationStaff(ctx) && !requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const entries = Object.entries(ctx.config.applications?.cooldowns || {})
+      .map(([userId, info]) => {
+        const status = applicationCooldownStatus(ctx.config, userId);
+        return {
+          userId,
+          remainingMs: status.remainingMs,
+          active: status.limited,
+          lastAppliedAt: info?.lastAppliedAt || ""
+        };
+      })
+      .filter((entry) => entry.active)
+      .sort((a, b) => b.remainingMs - a.remainingMs)
+      .slice(0, 10);
+    await ctx.message.reply([
+      `**Application Cooldowns**`,
+      entries.length
+        ? entries.map((entry) => `• <@${entry.userId}> - ${formatCooldown(entry.remainingMs)} remaining`).join("\n")
+        : "Nobody is on cooldown right now."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "reviewerroles",
+  aliases: ["approverroles", "appreviewers"],
+  category: "Applications",
+  description: "Show the current application reviewer, approved, and blocked roles.",
+  async run(ctx) {
+    await ctx.message.reply([
+      `**Application Role Routing**`,
+      `Reviewer roles: ${ctx.config.applications?.reviewerRoleIds?.length ? ctx.config.applications.reviewerRoleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "None"}`,
+      `Approved role: ${ctx.config.applications?.approvedRoleId ? `<@&${ctx.config.applications.approvedRoleId}>` : "None"}`,
+      `Blocked applicant roles: ${ctx.config.applications?.blockedRoleIds?.length ? ctx.config.applications.blockedRoleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "None"}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "aichannels",
+  aliases: ["ailist", "aiconfigchannels"],
+  category: "AI",
+  description: "Show AI whitelist/blacklist channel routing.",
+  async run(ctx) {
+    await ctx.message.reply([
+      `**AI Channel Routing**`,
+      `Whitelisted channels: ${channelMentionList(ctx.config.ai.channelIds)}`,
+      `Blacklisted channels: ${channelMentionList(ctx.config.ai.blacklistedChannelIds || [])}`,
+      `Reply to mentions: **${ctx.config.ai.replyToMentions ? "Yes" : "No"}**`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "commandaccess",
+  aliases: ["commandroles", "who-can-run"],
+  category: "Config",
+  description: "Show role override access for a command.",
+  usage: "commandaccess command-name",
+  async run(ctx) {
+    const raw = (ctx.args[0] || "").toLowerCase();
+    const command = raw ? ctx.commands.get(raw) : null;
+    if (!command) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const roleIds = ctx.config.commandRoles?.overrides?.[command.name] || [];
+    await ctx.message.reply([
+      `**Command Access: ${ctx.config.prefix}${command.name}**`,
+      `Category: ${command.category || "Other"}`,
+      `Role overrides: ${roleIds.length ? roleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "None"}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "ritualpreview",
+  aliases: ["ritualinfo", "ritualpanel"],
+  category: "Chipkittle",
+  description: "Show the full current ritual state plus artifact of the day.",
+  async run(ctx) {
+    const rituals = communityState(ctx.config).rituals;
+    const artifact = artifactOfTheDay(ctx.config);
+    await ctx.message.reply([
+      `**Chipkittle Ritual Preview**`,
+      `Current event: ${rituals.currentEvent || "None"}`,
+      `Seasonal message: ${rituals.seasonalMessage || "None"}`,
+      `Next trial: ${rituals.nextTrial || "None"}`,
+      `Artifact of the day: ${artifact ? `**${artifact.name}** (${artifact.rarity})` : "None"}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "artifactrarity",
+  aliases: ["raritysearch", "artifactsbyrarity"],
+  category: "Chipkittle",
+  description: "List artifacts that match a rarity.",
+  usage: "artifactrarity rare",
+  async run(ctx) {
+    const query = ctx.rest.trim().toLowerCase();
+    if (!query) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const matches = (communityState(ctx.config).artifacts || [])
+      .filter((artifact) => String(artifact.rarity || "").toLowerCase().includes(query))
+      .slice(0, 12);
+    await ctx.message.reply([
+      `**Artifacts Matching Rarity: ${ctx.rest.trim()}**`,
+      matches.length
+        ? matches.map((artifact) => `• **${artifact.name}** - ${artifact.keeper}`).join("\n")
+        : "No artifacts matched that rarity."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "ranklist",
+  aliases: ["chipranks", "listranks"],
+  category: "Chipkittle",
+  description: "List the ceremonial Chipkittle ranks.",
+  async run(ctx) {
+    await ctx.message.reply([
+      `**Chipkittle Ranks**`,
+      CHIPKITTLE_LORE.ranks.map((rank, index) => `${index + 1}. ${rank}`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "randomrank",
+  aliases: ["rankroll", "rolerank"],
+  category: "Chipkittle",
+  description: "Roll a random ceremonial rank for yourself or another member.",
+  usage: "randomrank [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const rank = CHIPKITTLE_LORE.ranks[randomInt(0, CHIPKITTLE_LORE.ranks.length - 1)];
+    await ctx.message.reply(`${member} has been ceremonially assigned **${rank}**.`);
   }
 });
 
