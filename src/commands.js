@@ -2334,6 +2334,7 @@ define({
 
 define({
   name: "artifact",
+  aliases: ["quote", "chipquote", "artifactquote"],
   category: "Chipkittle",
   description: "Receive artifact guidance.",
   async run(ctx) {
@@ -2343,6 +2344,7 @@ define({
 
 define({
   name: "oath",
+  aliases: ["principles", "rules", "chiprules"],
   category: "Chipkittle",
   description: "Show the clean Chipkittle oath.",
   async run(ctx) {
@@ -2420,6 +2422,7 @@ define({
 
 define({
   name: "lore",
+  aliases: ["figures", "chipfigures", "familyfigures"],
   category: "Chipkittle",
   description: "Show a random safe lore note.",
   async run(ctx) {
@@ -4221,16 +4224,18 @@ define({
 
 define({
   name: "ritualstatus",
-  aliases: ["rituals", "communitystatus"],
+  aliases: ["rituals", "communitystatus", "ritualpreview", "ritualinfo", "ritualpanel"],
   category: "Chipkittle",
   description: "Show the current Chipkittle ritual status and public event text.",
   async run(ctx) {
     const rituals = ctx.config.community?.rituals || {};
+    const artifact = artifactOfTheDay(ctx.config);
     await ctx.message.reply([
       `**Chipkittle Ritual Status**`,
       `Current event: ${rituals.currentEvent || "No current event set."}`,
       `Seasonal message: ${rituals.seasonalMessage || "No seasonal message set."}`,
-      `Next trial: ${rituals.nextTrial || "No next trial scheduled."}`
+      `Next trial: ${rituals.nextTrial || "No next trial scheduled."}`,
+      `Artifact of the day: ${artifact ? `${artifact.name} (${artifact.rarity})` : "None"}`
     ].join("\n"));
   }
 });
@@ -4623,36 +4628,6 @@ define({
     const member = mentionTargetUser(ctx.message);
     const profile = profileFor(ctx.config, member.id, member.displayName);
     await ctx.message.reply(`**${member.displayName}** currently bears the title **${profile.title || "Unranked Witness"}**.`);
-  }
-});
-
-define({
-  name: "quote",
-  aliases: ["chipquote", "artifactquote"],
-  category: "Chipkittle",
-  description: "Get a random Chipkittle quote.",
-  async run(ctx) {
-    await ctx.message.reply(randomChipkittleQuote());
-  }
-});
-
-define({
-  name: "principles",
-  aliases: ["rules", "chiprules"],
-  category: "Chipkittle",
-  description: "List the Chipkittle principles.",
-  async run(ctx) {
-    await ctx.message.reply(CHIPKITTLE_LORE.principles.map((rule, index) => `${index + 1}. ${rule}`).join("\n"));
-  }
-});
-
-define({
-  name: "figures",
-  aliases: ["chipfigures", "familyfigures"],
-  category: "Chipkittle",
-  description: "List the major figures in the lore.",
-  async run(ctx) {
-    await ctx.message.reply(CHIPKITTLE_LORE.figures.map((entry, index) => `${index + 1}. ${entry}`).join("\n"));
   }
 });
 
@@ -5446,24 +5421,6 @@ define({
       `**Command Access: ${ctx.config.prefix}${command.name}**`,
       `Category: ${command.category || "Other"}`,
       `Role overrides: ${roleIds.length ? roleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "None"}`
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "ritualpreview",
-  aliases: ["ritualinfo", "ritualpanel"],
-  category: "Chipkittle",
-  description: "Show the full current ritual state plus artifact of the day.",
-  async run(ctx) {
-    const rituals = communityState(ctx.config).rituals;
-    const artifact = artifactOfTheDay(ctx.config);
-    await ctx.message.reply([
-      `**Chipkittle Ritual Preview**`,
-      `Current event: ${rituals.currentEvent || "None"}`,
-      `Seasonal message: ${rituals.seasonalMessage || "None"}`,
-      `Next trial: ${rituals.nextTrial || "None"}`,
-      `Artifact of the day: ${artifact ? `**${artifact.name}** (${artifact.rarity})` : "None"}`
     ].join("\n"));
   }
 });
