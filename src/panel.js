@@ -974,6 +974,11 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     response.sendStatus(204);
   });
 
+  app.options("/api/public/dash-claim", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
   app.options("/api/public/eight-ball/*", (_request, response) => {
     setPublicApiHeaders(response);
     response.sendStatus(204);
@@ -1017,9 +1022,27 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
 
     const scores = publicLeaderboardEntries([...readGameLeaderboard(), entry]);
     writeGameLeaderboard(scores);
-    const claim = createDashClaim(entry);
     response.json({
       scores,
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  app.post("/api/public/dash-claim", (request, response) => {
+    setPublicApiHeaders(response);
+    const entry = {
+      name: cleanLeaderboardName(request.body?.name),
+      score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), 100000),
+      bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), 100000)
+    };
+
+    if (entry.bread <= 0) {
+      response.status(400).json({ error: "Bread must be greater than zero." });
+      return;
+    }
+
+    const claim = createDashClaim(entry);
+    response.json({
       claimCode: claim?.code || "",
       claimBread: claim?.bread || 0,
       updatedAt: new Date().toISOString()

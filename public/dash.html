@@ -67,7 +67,7 @@
         </form>
         <div class="claim-card" id="claimCard">
           <span>Discord claim</span>
-          <small>Collect bread, finish a run, then save your score to get a claim code.</small>
+          <small>Collect bread, then finish the run to get a claim code automatically.</small>
         </div>
         <div class="leaderboard">
           <div class="leaderboard-head">
@@ -96,6 +96,7 @@
     const leaderboardList = document.querySelector("#leaderboardList");
     const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
     const leaderboardUrl = "https://panel.chipkittle.com/api/public/game-leaderboard";
+    const claimUrl = "https://panel.chipkittle.com/api/public/dash-claim";
     const storageKey = "chipkittle-dash-best";
     const leaderboardKey = "chipkittle-dash-leaderboard";
     const keys = new Set();
@@ -137,6 +138,7 @@
     let scorePrompted = false;
     let elapsedTime = 0;
     let audioContext;
+    let claimRequested = false;
 
     bestValue.textContent = best;
 
@@ -387,6 +389,36 @@
         `;
     }
 
+    async function createClaimCode() {
+      if (claimRequested) return;
+      claimRequested = true;
+
+      if (bread <= 0) {
+        setClaimCard("This run has 0 bread, so there is nothing to claim.");
+        return;
+      }
+
+      setClaimCard("Creating your Discord claim code...");
+      try {
+        const response = await fetch(claimUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: safeName(playerName.value),
+            score,
+            bread
+          })
+        });
+        if (!response.ok) throw new Error("Claim request failed.");
+        const payload = await response.json();
+        if (!payload.claimCode || Number(payload.claimBread) <= 0) throw new Error("Claim response was invalid.");
+        setClaimCard("", payload.claimCode, payload.claimBread);
+      } catch {
+        claimRequested = false;
+        setClaimCard("The claim code request failed. Press Reset and try another run.");
+      }
+    }
+
     async function loadPublicLeaderboard() {
       try {
         const response = await fetch(leaderboardUrl, { cache: "no-store" });
@@ -425,16 +457,8 @@
           saveLocalLeaderboard(payload.scores);
           renderLeaderboard(payload.scores);
         }
-        if (payload.claimCode && Number(payload.claimBread) > 0) {
-          setClaimCard("", payload.claimCode, payload.claimBread);
-        } else if (bread > 0) {
-          setClaimCard("Your score saved, but no claim code came back. Try refreshing and saving another run.");
-        } else {
-          setClaimCard("No claim code for this run because it ended with 0 bread.");
-        }
       } catch {
         renderLeaderboard(localScores);
-        setClaimCard("The leaderboard save failed, so no claim code was created. Try again in a moment.");
       }
     }
 
@@ -455,10 +479,11 @@
       bonusTimer = 120 + Math.random() * 30;
       nextPowerupScore = 200;
       elapsedTime = 0;
+      claimRequested = false;
       gameOver = false;
       scorePrompted = false;
       scoreForm.hidden = true;
-      setClaimCard("Collect bread, finish a run, then save your score to get a claim code.");
+      setClaimCard("Collect bread, then finish the run to get a Discord claim code automatically.");
       updateStats();
       draw();
     }
@@ -614,10 +639,10 @@
           playSound("hit");
           gameOver = true;
           running = false;
+          createClaimCode();
           if (!scorePrompted && score > 0) {
             scorePrompted = true;
             scoreForm.hidden = false;
-            setClaimCard(bread > 0 ? "Save your score now to create a Discord claim code." : "This run has 0 bread, so there is nothing to claim.");
             playerName.focus();
           }
           break;
