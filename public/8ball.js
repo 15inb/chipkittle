@@ -199,16 +199,24 @@
   }
 
   async function request(path, options = {}) {
-    const response = await fetch(`${apiRoot}${path}`, {
-      method: options.method || "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {})
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined
-    });
+    let response;
+    try {
+      response = await fetch(`${apiRoot}${path}`, {
+        method: options.method || "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+    } catch (_error) {
+      throw new Error("The Chipkittle room server is offline right now. Restart the VPS panel process and try again.");
+    }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status >= 500) {
+        throw new Error("The Chipkittle room server is having trouble right now. Restart the VPS panel process and try again.");
+      }
       throw new Error(payload.error || "The Chipkittle table did not answer.");
     }
     return payload;
