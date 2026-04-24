@@ -1918,14 +1918,52 @@ define({
 
 define({
   name: "bread",
-  aliases: ["balance", "bal", "wallet"],
+  aliases: ["balance", "bal", "wallet", "breadstats", "breadinfo", "walletstats", "breadcompare", "comparebread", "walletcompare"],
   category: "Gambling",
-  description: "Check your bread balance.",
-  usage: "bread [@user]",
+  description: "Check bread balances, wallet stats, or compare two members.",
+  usage: "bread [@user|@user @user]",
   async run(ctx) {
     const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
-    const target = ctx.message.mentions.users.first?.() || ctx.message.author;
-    await ctx.message.reply(`${target.username || target.tag} has **${formatBread(breadBalance(economy, target.id))}**.`);
+    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
+    const mentions = [...ctx.message.mentions.members.values()];
+
+    if (
+      ["breadcompare", "comparebread", "walletcompare"].includes(invoked) ||
+      mentions.length >= 2
+    ) {
+      const [first, second] = mentions.slice(0, 2);
+      if (!first || !second) {
+        await ctx.message.reply(`Usage: \`${ctx.config.prefix}breadcompare @user @user\``);
+        return;
+      }
+      const firstBalance = breadBalance(economy, first.id);
+      const secondBalance = breadBalance(economy, second.id);
+      const diff = Math.abs(firstBalance - secondBalance);
+      const winner = firstBalance === secondBalance ? null : firstBalance > secondBalance ? first : second;
+      await ctx.message.reply([
+        `**Bread Comparison**`,
+        `${first.displayName}: **${formatBread(firstBalance)}**`,
+        `${second.displayName}: **${formatBread(secondBalance)}**`,
+        winner ? `Lead: **${winner.displayName}** by **${formatBread(diff)}**` : "They are perfectly tied."
+      ].join("\n"));
+      return;
+    }
+
+    const targetMember = mentionTargetUser(ctx.message);
+    const targetId = targetMember.id;
+    const balance = breadBalance(economy, targetId);
+    const sorted = Object.entries(economy.balances)
+      .map(([userId, amount]) => [userId, Math.max(Math.floor(Number(amount) || 0), 0)])
+      .sort((a, b) => b[1] - a[1]);
+    const rank = sorted.findIndex(([userId]) => userId === targetId);
+    const lastClaim = new Date(economy.dailyClaims?.[targetId] || 0).getTime();
+    const remaining = DAILY_COOLDOWN_MS - (Date.now() - lastClaim);
+    await ctx.message.reply([
+      `**${targetMember.displayName}'s Bread Wallet**`,
+      `Balance: **${formatBread(balance)}**`,
+      `Rank: **${rank === -1 ? "Unranked" : `#${rank + 1}`}**`,
+      `Daily bread: ${remaining > 0 ? `ready in **${formatCooldown(remaining)}**` : "**ready now**"}`
+    ].join("\n"));
   }
 });
 
@@ -2018,26 +2056,44 @@ define({
 
 define({
   name: "breadtop",
-  aliases: ["breadleaderboard", "breadlb"],
+  aliases: ["breadleaderboard", "breadlb", "breadpoor", "poorbread", "breadbottom", "breadworth", "economyworth", "breadtotal"],
   category: "Gambling",
-  description: "Show the richest bread holders.",
+  description: "Show economy leaderboards or server-wide bread totals.",
   async run(ctx) {
     const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
-    const entries = Object.entries(economy.balances)
-      .map(([userId, amount]) => [userId, Math.max(Math.floor(Number(amount) || 0), 0)])
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
+    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
+    const balances = Object.entries(economy.balances)
+      .map(([userId, amount]) => [userId, Math.max(Math.floor(Number(amount) || 0), 0)]);
 
-    if (!entries.length) {
-      await ctx.message.reply("No bread accounts have moved yet. Claim daily bread and start baking.");
+    if (["breadworth", "economyworth", "breadtotal"].includes(invoked)) {
+      const amounts = balances.map(([, amount]) => amount);
+      const total = amounts.reduce((sum, amount) => sum + amount, 0);
+      const average = amounts.length ? Math.floor(total / amounts.length) : 0;
+      await ctx.message.reply([
+        `**Server Bread Economy**`,
+        `Tracked wallets: **${amounts.length}**`,
+        `Total bread: **${formatBread(total)}**`,
+        `Average wallet: **${formatBread(average)}**`
+      ].join("\n"));
       return;
     }
 
-    await ctx.message.reply(
+    const ascending = ["breadpoor", "poorbread", "breadbottom"].includes(invoked);
+    const entries = balances
+      .sort((a, b) => ascending ? a[1] - b[1] : b[1] - a[1])
+      .slice(0, 10);
+
+    if (!entries.length) {
+      await ctx.message.reply(ascending ? "Nobody has touched their bread balance yet." : "No bread accounts have moved yet. Claim daily bread and start baking.");
+      return;
+    }
+
+    await ctx.message.reply([
+      ascending ? `**Bread Poverty Index**` : `**Bread Leaderboard**`,
       entries
         .map(([userId, amount], index) => `${index + 1}. <@${userId}> - **${formatBread(amount)}**`)
         .join("\n")
-    );
+    ].join("\n"));
   }
 });
 
@@ -2582,27 +2638,6 @@ define({
 });
 
 define({
-  name: "breadstats",
-  aliases: ["breadinfo", "walletstats"],
-  category: "Gambling",
-  description: "Show deeper bread stats for yourself or another member.",
-  usage: "breadstats [@user]",
-  async run(ctx) {
-    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
-    const target = ctx.message.mentions.users.first?.() || ctx.message.author;
-    const balance = breadBalance(economy, target.id);
-    const rank = rankForBalance(economy, target.id);
-    const lastClaim = economy.dailyClaims?.[target.id];
-    await ctx.message.reply([
-      `**${target.username || target.tag}'s Bread Stats**`,
-      `Balance: **${formatBread(balance)}**`,
-      `Leaderboard rank: ${rank > 0 ? `#${rank}` : "Unranked"}`,
-      `Daily bread: ${lastClaim ? `Last claimed <t:${Math.floor(new Date(lastClaim).getTime() / 1000)}:R>` : "Not claimed yet"}`
-    ].join("\n"));
-  }
-});
-
-define({
   name: "warnings",
   category: "Moderation",
   description: "Show warnings for a user.",
@@ -2848,11 +2883,52 @@ define({
 
 define({
   name: "cases",
+  aliases: ["case", "opencases", "casequeue", "caseboard"],
   category: "Moderation",
-  description: "Show moderation cases for a member.",
-  usage: "cases @user",
+  description: "Show moderation cases, a single case, or the open case queue.",
+  usage: "cases [@user|case-id]",
   async run(ctx) {
     if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
+    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
+    const caseId = Number(ctx.args[0]);
+    if (["case", "opencases", "casequeue", "caseboard"].includes(invoked) || caseId) {
+      if (["opencases", "casequeue", "caseboard"].includes(invoked)) {
+        const openCases = normalizeCases(communityState(ctx.config).cases)
+          .filter((entry) => entry.status !== "closed")
+          .slice(0, 10);
+        if (!openCases.length) {
+          await ctx.message.reply("There are no open cases right now.");
+          return;
+        }
+        await ctx.message.reply([
+          `**Open Cases**`,
+          openCases.map((entry) => `• #${entry.id} ${entry.action} - ${entry.targetTag || entry.targetId} - ${entry.reason || "No reason"}`).join("\n")
+        ].join("\n"));
+        return;
+      }
+      if (!caseId) {
+        await ctx.message.reply(`Usage: \`${ctx.config.prefix}case 12\``);
+        return;
+      }
+      const entry = getCase(ctx.config, caseId);
+      if (!entry) {
+        await ctx.message.reply(`Case #${caseId} was not found.`);
+        return;
+      }
+      const notes = entry.updates?.length
+        ? entry.updates.map((update) => `• ${update.authorTag}: ${update.note}`).join("\n")
+        : "No case notes yet.";
+      await ctx.message.reply([
+        formatCaseSummary(entry),
+        "",
+        `Moderator: ${entry.moderatorTag || entry.moderatorId}`,
+        `Opened: ${entry.createdAt || "Unknown"}`,
+        "",
+        `**Case Notes**`,
+        notes
+      ].join("\n"));
+      return;
+    }
     const member = ctx.message.mentions.members.first() || ctx.message.member;
     const entries = casesForUser(ctx.config, member.id).slice(0, 8);
     if (!entries.length) {
@@ -2860,38 +2936,6 @@ define({
       return;
     }
     await ctx.message.reply(`**Cases for ${member.displayName}**\n${entries.map(formatCaseSummary).join("\n\n")}`);
-  }
-});
-
-define({
-  name: "case",
-  category: "Moderation",
-  description: "Show one moderation case by its ID.",
-  usage: "case 12",
-  async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
-    const caseId = Number(ctx.args[0]);
-    if (!caseId) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-    const entry = getCase(ctx.config, caseId);
-    if (!entry) {
-      await ctx.message.reply(`Case #${caseId} was not found.`);
-      return;
-    }
-    const notes = entry.updates?.length
-      ? entry.updates.map((update) => `• ${update.authorTag}: ${update.note}`).join("\n")
-      : "No case notes yet.";
-    await ctx.message.reply([
-      formatCaseSummary(entry),
-      "",
-      `Moderator: ${entry.moderatorTag || entry.moderatorId}`,
-      `Opened: ${entry.createdAt || "Unknown"}`,
-      "",
-      `**Case Notes**`,
-      notes
-    ].join("\n"));
   }
 });
 
@@ -3709,7 +3753,7 @@ define({
 
 define({
   name: "profile",
-  aliases: ["title", "profiletitle", "mytitle"],
+  aliases: ["title", "profiletitle", "mytitle", "badges", "profilebadges", "achievements"],
   category: "Chipkittle",
   description: "Show a member's Chipkittle profile card.",
   usage: "profile [@user]",
@@ -3809,11 +3853,32 @@ define({
 
 define({
   name: "reputation",
-  aliases: ["rep"],
+  aliases: ["rep", "repboard", "repleaderboard", "vouchboard"],
   category: "Chipkittle",
-  description: "Show a member's reputation and vouches.",
+  description: "Show a member's reputation or the reputation leaderboard.",
   usage: "reputation [@user]",
   async run(ctx) {
+    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
+    if (["repboard", "repleaderboard", "vouchboard"].includes(invoked)) {
+      const profiles = Object.entries(ctx.config.community?.profiles || {})
+        .map(([userId, profile]) => ({
+          userId,
+          displayName: profile.displayName || userId,
+          reputation: Math.max(Number(profile.reputation) || 0, 0)
+        }))
+        .filter((entry) => entry.reputation > 0)
+        .sort((a, b) => b.reputation - a.reputation || a.displayName.localeCompare(b.displayName))
+        .slice(0, 10);
+      if (!profiles.length) {
+        await ctx.message.reply("No reputation has been recorded yet.");
+        return;
+      }
+      await ctx.message.reply([
+        `**Reputation Leaderboard**`,
+        profiles.map((entry, index) => `${index + 1}. **${entry.displayName}** - ${entry.reputation} rep`).join("\n")
+      ].join("\n"));
+      return;
+    }
     const member = mentionTargetUser(ctx.message);
     const profile = profileFor(ctx.config, member.id, member.displayName);
     await ctx.message.reply([
@@ -3821,63 +3886,6 @@ define({
       "",
       `**Recent Vouches**`,
       formatVouchLines(profile)
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "repboard",
-  aliases: ["repleaderboard", "vouchboard"],
-  category: "Chipkittle",
-  description: "Show the highest reputation members in the server.",
-  async run(ctx) {
-    const profiles = Object.entries(ctx.config.community?.profiles || {})
-      .map(([userId, profile]) => ({
-        userId,
-        displayName: profile.displayName || userId,
-        reputation: Math.max(Number(profile.reputation) || 0, 0)
-      }))
-      .filter((entry) => entry.reputation > 0)
-      .sort((a, b) => b.reputation - a.reputation || a.displayName.localeCompare(b.displayName))
-      .slice(0, 10);
-    if (!profiles.length) {
-      await ctx.message.reply("No reputation has been recorded yet.");
-      return;
-    }
-    await ctx.message.reply([
-      `**Reputation Leaderboard**`,
-      profiles.map((entry, index) => `${index + 1}. **${entry.displayName}** - ${entry.reputation} rep`).join("\n")
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "achievements",
-  category: "Chipkittle",
-  description: "Show a member's unlocked achievements.",
-  usage: "achievements [@user]",
-  async run(ctx) {
-    const member = mentionTargetUser(ctx.message);
-    const achievements = derivedAchievements(ctx.config, member.id, member.displayName);
-    await ctx.message.reply([
-      `**${member.displayName}'s Achievements**`,
-      formatAchievementLines(achievements)
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "badges",
-  aliases: ["profilebadges"],
-  category: "Chipkittle",
-  description: "Show a member's public badges.",
-  usage: "badges [@user]",
-  async run(ctx) {
-    const member = mentionTargetUser(ctx.message);
-    const profile = profileFor(ctx.config, member.id, member.displayName);
-    await ctx.message.reply([
-      `**${member.displayName}'s Badges**`,
-      profile.badges.length ? profile.badges.map((badge) => `• ${badge}`).join("\n") : "No badges yet."
     ].join("\n"));
   }
 });
@@ -4485,49 +4493,6 @@ define({
 });
 
 define({
-  name: "breadpoor",
-  aliases: ["poorbread", "breadbottom"],
-  category: "Gambling",
-  description: "Show the most bread-impoverished members.",
-  async run(ctx) {
-    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
-    const entries = Object.entries(economy.balances)
-      .map(([userId, amount]) => [userId, Math.max(Math.floor(Number(amount) || 0), 0)])
-      .sort((a, b) => a[1] - b[1])
-      .slice(0, 10);
-
-    if (!entries.length) {
-      await ctx.message.reply("Nobody has touched their bread balance yet.");
-      return;
-    }
-
-    await ctx.message.reply([
-      `**Bread Poverty Index**`,
-      entries.map(([userId, amount], index) => `${index + 1}. <@${userId}> - **${formatBread(amount)}**`).join("\n")
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "breadworth",
-  aliases: ["economyworth", "breadtotal"],
-  category: "Gambling",
-  description: "Show total bread circulating in the server economy.",
-  async run(ctx) {
-    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
-    const balances = Object.values(economy.balances || {}).map((amount) => Math.max(Math.floor(Number(amount) || 0), 0));
-    const total = balances.reduce((sum, amount) => sum + amount, 0);
-    const average = balances.length ? Math.floor(total / balances.length) : 0;
-    await ctx.message.reply([
-      `**Server Bread Economy**`,
-      `Tracked wallets: **${balances.length}**`,
-      `Total bread: **${formatBread(total)}**`,
-      `Average wallet: **${formatBread(average)}**`
-    ].join("\n"));
-  }
-});
-
-define({
   name: "giftitem",
   aliases: ["itemgift", "senditem"],
   category: "Gambling",
@@ -4895,33 +4860,6 @@ define({
 });
 
 define({
-  name: "breadcompare",
-  aliases: ["comparebread", "walletcompare"],
-  category: "Gambling",
-  description: "Compare two members' bread balances.",
-  usage: "breadcompare @user @user",
-  async run(ctx) {
-    const members = [...ctx.message.mentions.members.values()];
-    if (members.length < 2) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
-    const [first, second] = members.slice(0, 2);
-    const firstBalance = breadBalance(economy, first.id);
-    const secondBalance = breadBalance(economy, second.id);
-    const diff = Math.abs(firstBalance - secondBalance);
-    const winner = firstBalance === secondBalance ? null : firstBalance > secondBalance ? first : second;
-    await ctx.message.reply([
-      `**Bread Comparison**`,
-      `${first.displayName}: **${formatBread(firstBalance)}**`,
-      `${second.displayName}: **${formatBread(secondBalance)}**`,
-      winner ? `Lead: **${winner.displayName}** by **${formatBread(diff)}**` : "They are perfectly tied."
-    ].join("\n"));
-  }
-});
-
-define({
   name: "shopsearch",
   aliases: ["finditem", "catalogsearch"],
   category: "Gambling",
@@ -5186,27 +5124,6 @@ define({
 });
 
 define({
-  name: "opencases",
-  aliases: ["casequeue", "caseboard"],
-  category: "Moderation",
-  description: "List currently open moderation cases.",
-  async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
-    const cases = normalizeCases(communityState(ctx.config).cases)
-      .filter((entry) => entry.status !== "closed")
-      .slice(0, 10);
-    if (!cases.length) {
-      await ctx.message.reply("There are no open cases right now.");
-      return;
-    }
-    await ctx.message.reply([
-      `**Open Cases**`,
-      cases.map((entry) => `• #${entry.id} ${entry.action} - ${entry.targetTag || entry.targetId} - ${entry.reason || "No reason"}`).join("\n")
-    ].join("\n"));
-  }
-});
-
-define({
   name: "blockedwords",
   aliases: ["wordlist", "automodwords"],
   category: "Config",
@@ -5346,7 +5263,7 @@ export function createCommandHandler(options) {
     }
   }
 
-  async function runCommand(command, message, config, args, rest) {
+  async function runCommand(command, message, config, args, rest, invokedName = command.name) {
     const commandMessage = PLAIN_OUTPUT_COMMANDS.has(command.name)
       ? message
       : createEmbedMessageProxy(message, commandEmbedMeta({ command, config, message }));
@@ -5358,6 +5275,7 @@ export function createCommandHandler(options) {
         config,
         args,
         rest,
+        invokedName,
         command,
         commands: aliases,
         commandList: commandDefinitions
@@ -5385,7 +5303,7 @@ export function createCommandHandler(options) {
     const command = aliases.get(commandName);
     if (!command) return false;
 
-    return runCommand(command, message, config, args, rest);
+    return runCommand(command, message, config, args, rest, commandName);
   }
 
   async function handleDmCommand(message, config) {
@@ -5395,7 +5313,7 @@ export function createCommandHandler(options) {
     const command = aliases.get(commandName);
     if (command?.name !== "chipify") return false;
 
-    return runCommand(command, message, config, args, rest);
+    return runCommand(command, message, config, args, rest, commandName);
   }
 
   async function handleCommandByName(commandName, message, config, input = "") {
@@ -5403,7 +5321,7 @@ export function createCommandHandler(options) {
     if (!command) return false;
 
     const parts = input ? input.split(/\s+/) : [];
-    return runCommand(command, message, config, parts, input);
+    return runCommand(command, message, config, parts, input, commandName);
   }
 
   return {
