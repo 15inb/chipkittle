@@ -104,10 +104,10 @@ a {
 
 .hero-logo-overlay {
   position: absolute;
-  left: clamp(57%, 62vw, 67%);
-  top: clamp(51%, 56vh, 60%);
+  left: clamp(59%, 64vw, 69%);
+  top: clamp(50%, 55vh, 58%);
   z-index: -1;
-  width: clamp(170px, 15vw, 260px);
+  width: clamp(220px, 18vw, 320px);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -131,23 +131,6 @@ a {
   }
 }
 
-.hero::after {
-  content: "";
-  position: absolute;
-  inset: 8% 26% auto auto;
-  width: 42vw;
-  height: 42vw;
-  max-width: 680px;
-  max-height: 680px;
-  z-index: -1;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 80px rgba(255, 255, 255, 0.07),
-    0 0 0 160px rgba(255, 255, 255, 0.05);
-  pointer-events: none;
-}
-
 :root[data-theme="dark"] .hero-bg,
 :root[data-theme="dark"] .interior {
   filter: saturate(1.06) brightness(0.92);
@@ -165,18 +148,18 @@ a {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   font-size: clamp(22px, 2.7vw, 34px);
   font-weight: 900;
   line-height: 1;
 }
 
 .brand img {
-  width: 58px;
-  height: 58px;
+  width: 68px;
+  height: 68px;
   object-fit: contain;
   filter: drop-shadow(0 8px 20px rgba(26, 138, 56, 0.22));
-  transform: translateY(1px);
+  transform: translateY(2px);
 }
 
 .topbar nav {
@@ -730,9 +713,9 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 64%;
-    top: 61%;
-    width: clamp(132px, 18vw, 190px);
+    left: 66%;
+    top: 60%;
+    width: clamp(160px, 20vw, 230px);
   }
 
   .hero-copy {
@@ -783,8 +766,8 @@ a {
   }
 
   .brand img {
-    width: 48px;
-    height: 48px;
+    width: 54px;
+    height: 54px;
   }
 
   .nav-button,
@@ -805,9 +788,9 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 66%;
-    top: 63%;
-    width: 118px;
+    left: 68%;
+    top: 61%;
+    width: 136px;
   }
 
   .trusted strong {
