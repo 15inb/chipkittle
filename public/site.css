@@ -87,12 +87,13 @@ a {
   inset: 0;
   z-index: -2;
   background-image:
-    radial-gradient(circle at 60% 48%, var(--hero-radial) 0 11%, var(--hero-radial-soft) 22%, transparent 40%),
-    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 24%, var(--hero-wash-glass) 48%, var(--hero-wash-end) 74%),
+    radial-gradient(circle at 60% 48%, var(--hero-radial) 0 12%, var(--hero-radial-soft) 24%, transparent 46%),
+    linear-gradient(90deg, rgba(17, 28, 16, 0.88) 0%, rgba(17, 28, 16, 0.82) 18%, rgba(17, 28, 16, 0.58) 34%, rgba(17, 28, 16, 0.22) 52%, rgba(17, 28, 16, 0) 72%),
+    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 28%, var(--hero-wash-glass) 52%, var(--hero-wash-end) 76%),
     url("/assets/ckwebsitebg3.png");
   background-repeat: no-repeat;
-  background-size: cover, cover, auto 100%;
-  background-position: center, center, right center;
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, 68% center;
 }
 
 :root[data-theme="dark"] .hero-bg {
@@ -209,13 +210,20 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 999px;
+  background: rgba(10, 19, 15, 0.2);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 16px 36px rgba(10, 19, 15, 0.14);
 }
 
 .theme-toggle {
   width: 76px;
   padding: 0 16px;
-  background: rgba(255, 255, 255, 0.46);
+  background: rgba(255, 255, 255, 0.68);
   cursor: pointer;
+  box-shadow: 0 10px 24px rgba(10, 19, 15, 0.12);
 }
 
 .nav-button,
@@ -662,6 +670,33 @@ a {
   padding-bottom: 24px;
 }
 
+.game-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 clamp(20px, 5vw, 80px) 18px;
+}
+
+.game-tab {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 18px;
+  background: var(--card-bg);
+  color: var(--soft-ink);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.game-tab.is-active {
+  border-color: rgba(26, 138, 56, 0.28);
+  background: var(--green);
+  color: var(--white);
+}
+
 .game-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
@@ -859,6 +894,132 @@ a {
   font-size: 18px;
 }
 
+.table-note {
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  color: var(--soft-ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.room-form,
+.shot-meter,
+.player-list {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.room-form input[type="text"],
+.room-form input[type="search"] {
+  min-height: 46px;
+}
+
+.room-form .button,
+.shot-meter .button {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  cursor: pointer;
+}
+
+.room-form-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.button.ghost {
+  border: 1px solid var(--line);
+  background: var(--card-bg);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.button.ghost:hover {
+  background: var(--card-hover);
+}
+
+.shot-meter label {
+  display: grid;
+  gap: 8px;
+}
+
+.shot-meter input[type="range"] {
+  padding: 0;
+  accent-color: var(--green);
+}
+
+.shot-meter output {
+  color: var(--green-dark);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.player-list ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--card-bg);
+}
+
+.player-card strong {
+  font-size: 16px;
+}
+
+.player-card span {
+  color: var(--soft-ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.player-card.is-turn {
+  border-color: rgba(26, 138, 56, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(26, 138, 56, 0.16);
+}
+
+.player-card.is-you strong {
+  color: var(--green-dark);
+}
+
+.player-card.is-winner {
+  background: rgba(82, 215, 101, 0.14);
+}
+
+.multiplayer-board {
+  position: relative;
+}
+
+.multiplayer-board canvas {
+  background: linear-gradient(180deg, rgba(9, 38, 23, 0.9), rgba(8, 32, 21, 0.96));
+}
+
 .member-grid,
 .commit-list {
   display: grid;
@@ -938,7 +1099,7 @@ a {
   }
 
   .hero-bg {
-    background-position: center, center, 62% center;
+    background-position: center, center, center, 64% center;
   }
 
   .hero-logo-overlay {
@@ -981,13 +1142,25 @@ a {
 
   .game-controls,
   .score-form,
+<<<<<<< HEAD
   .claim-card,
   .leaderboard {
+=======
+  .leaderboard,
+  .room-form,
+  .shot-meter,
+  .player-list,
+  .table-note {
+>>>>>>> 9963cb1334ef8ae6aae1f8cf9b0c089029bcee9a
     grid-column: 1 / -1;
   }
 
   .game-controls {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .room-form-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -1014,6 +1187,11 @@ a {
     padding-inline: 12px;
   }
 
+  .nav-actions {
+    padding: 6px;
+    gap: 8px;
+  }
+
   .hero-copy h1 {
     font-size: clamp(54px, 18vw, 76px);
   }
@@ -1036,7 +1214,8 @@ a {
     grid-template-columns: 1fr;
   }
 
-  .eight-ball-input-row {
+  .eight-ball-input-row,
+  .room-form-grid {
     grid-template-columns: 1fr;
   }
 }

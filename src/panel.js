@@ -6,7 +6,17 @@ import { promisify } from "node:util";
 import express from "express";
 import session from "express-session";
 import { serializeGuild } from "./bot.js";
+<<<<<<< HEAD
 import { createDashClaim } from "./dashClaims.js";
+=======
+import {
+  createEightBallRoom,
+  getEightBallRoomState,
+  joinEightBallRoom,
+  resetEightBallRoom,
+  shootEightBall
+} from "./eightBallRooms.js";
+>>>>>>> 9963cb1334ef8ae6aae1f8cf9b0c089029bcee9a
 
 const execFileAsync = promisify(execFile);
 const UPDATE_STALE_MS = 10 * 60 * 1000;
@@ -923,6 +933,16 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     response.sendStatus(204);
   });
 
+  app.options("/api/public/eight-ball/*", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
+  app.options("/api/public/eight-ball", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
   app.get("/api/public/members", (_request, response) => {
     setPublicApiHeaders(response);
     const config = getPublicGuildConfig();
@@ -963,6 +983,60 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       claimBread: claim?.bread || 0,
       updatedAt: new Date().toISOString()
     });
+  });
+
+  app.post("/api/public/eight-ball/create", (request, response) => {
+    setPublicApiHeaders(response);
+    try {
+      const payload = createEightBallRoom(request.body?.playerName);
+      response.json(payload);
+    } catch (error) {
+      response.status(400).json({ error: error.message || "Could not create a room." });
+    }
+  });
+
+  app.post("/api/public/eight-ball/:roomCode/join", (request, response) => {
+    setPublicApiHeaders(response);
+    try {
+      const payload = joinEightBallRoom(request.params.roomCode, request.body?.playerName);
+      response.json(payload);
+    } catch (error) {
+      response.status(400).json({ error: error.message || "Could not join that room." });
+    }
+  });
+
+  app.get("/api/public/eight-ball/:roomCode", (request, response) => {
+    setPublicApiHeaders(response);
+    try {
+      const state = getEightBallRoomState(request.params.roomCode, String(request.query.token || ""));
+      response.json(state);
+    } catch (error) {
+      response.status(404).json({ error: error.message || "That room could not be found." });
+    }
+  });
+
+  app.post("/api/public/eight-ball/:roomCode/shoot", (request, response) => {
+    setPublicApiHeaders(response);
+    try {
+      const state = shootEightBall(request.params.roomCode, String(request.body?.token || ""), {
+        dx: Number(request.body?.dx),
+        dy: Number(request.body?.dy),
+        power: Number(request.body?.power)
+      });
+      response.json(state);
+    } catch (error) {
+      response.status(400).json({ error: error.message || "That shot failed." });
+    }
+  });
+
+  app.post("/api/public/eight-ball/:roomCode/reset", (request, response) => {
+    setPublicApiHeaders(response);
+    try {
+      const state = resetEightBallRoom(request.params.roomCode, String(request.body?.token || ""));
+      response.json(state);
+    } catch (error) {
+      response.status(400).json({ error: error.message || "Could not reset that table." });
+    }
   });
 
   app.get("/login", (request, response) => {
