@@ -1224,258 +1224,286 @@ define({
 });
 
 define({
-  name: "coinflip",
-  aliases: ["coin"],
+  name: "fun",
+  aliases: ["coinflip", "coin", "roll", "dice", "choose", "8ball", "rate", "curse", "ship", "randommember", "pickmember", "memberroulette"],
   category: "Fun",
-  description: "Flip a coin.",
+  description: "Run the random Chipkittle fun tools from one command hub.",
+  usage: "fun [coin|roll|choose|8ball|rate|curse|ship|member] ...",
   async run(ctx) {
-    await ctx.message.reply(Math.random() > 0.5 ? "Heads." : "Tails.");
-  }
-});
+    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
+    const explicitMode = (ctx.args[0] || "").toLowerCase();
+    const mode = (
+      ["coinflip", "coin", "roll", "dice", "choose", "8ball", "rate", "curse", "ship", "randommember", "pickmember", "memberroulette"].includes(invoked)
+        ? invoked
+        : explicitMode
+    );
 
-define({
-  name: "roll",
-  aliases: ["dice"],
-  category: "Fun",
-  description: "Roll dice, like 2d20.",
-  usage: "roll [dice]",
-  async run(ctx) {
-    const dice = ctx.args[0] || "1d6";
-    const match = dice.match(/^(\d{1,2})d(\d{1,4})$/i);
-    if (!match) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+    if (mode === "coinflip" || mode === "coin") {
+      await ctx.message.reply(Math.random() > 0.5 ? "Heads." : "Tails.");
       return;
     }
 
-    const count = Math.min(Number(match[1]), 20);
-    const sides = Math.min(Number(match[2]), 1000);
-    const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
-    await ctx.message.reply(`Rolled ${dice}: ${rolls.join(", ")} = **${rolls.reduce((a, b) => a + b, 0)}**`);
-  }
-});
-
-define({
-  name: "choose",
-  category: "Fun",
-  description: "Choose between options separated by commas.",
-  usage: "choose pizza, tacos, soup",
-  async run(ctx) {
-    const options = ctx.rest.split(",").map((item) => item.trim()).filter(Boolean);
-    if (options.length < 2) {
-      await ctx.message.reply("Give me at least two comma-separated options.");
-      return;
-    }
-
-    await ctx.message.reply(`I choose: **${options[Math.floor(Math.random() * options.length)]}**.`);
-  }
-});
-
-define({
-  name: "8ball",
-  category: "Fun",
-  description: "Ask the artifact a yes/no question.",
-  usage: "8ball will we win?",
-  async run(ctx) {
-    await ctx.message.reply(eightBallAnswers[Math.floor(Math.random() * eightBallAnswers.length)]);
-  }
-});
-
-define({
-  name: "rate",
-  category: "Fun",
-  description: "Rate something from 0 to 100.",
-  usage: "rate my drip",
-  async run(ctx) {
-    const thing = safeContent(ctx.rest, "that");
-    const score = Math.floor(Math.random() * 101);
-    await ctx.message.reply(`${thing} is ${score}/100 on the artifact scale.`);
-  }
-});
-
-define({
-  name: "curse",
-  category: "Fun",
-  description: "Deliver a Chipkittle curse to a member.",
-  usage: "curse @user",
-  async run(ctx) {
-    const curses = [
-      "doesn't have the horns for this family",
-      "is unworthy of the suit",
-      "lacks the artifact's blessing",
-      "is too weak to join the Round Table",
-      "will never understand the ceremony",
-      "is a stain on the Chipkittle name",
-      "doesn't deserve a Chipkittle name",
-      "failed the silence test",
-      "has betrayed the principles",
-      "is banned from the bakery",
-      "will never wear the suit",
-      "lacks respect for the family",
-      "will never comprehend the lore",
-      "is cursed by the artifact",
-      "doesn't have what it takes",
-      "is forever banned from bread",
-      "will never rise in rank",
-      "is a disappointment to the horns",
-      "lacks the silent strength",
-      "is not worthy of Chipkittle honor"
-    ];
-
-    await ctx.message.delete().catch(() => {});
-    const member = mentionUser(ctx.message);
-    const curse = curses[Math.floor(Math.random() * curses.length)];
-    
-    const embed = new EmbedBuilder()
-      .setColor(0xef4444)
-      .setTitle("Chipkittle Judgment")
-      .setDescription(`${member} ${curse}.`)
-      .setFooter({ text: "The artifact has spoken." });
-    
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "ship",
-  category: "Fun",
-  description: "Calculate fake compatibility.",
-  usage: "ship @user @user",
-  async run(ctx) {
-    const users = [...ctx.message.mentions.users.values()];
-    const first = users[0]?.username || ctx.message.author.username;
-    const second = users[1]?.username || ctx.args.join(" ") || "the ancient artifact";
-    await ctx.message.reply(`${first} + ${second}: ${Math.floor(Math.random() * 101)}% Chipkittle harmony.`);
-  }
-});
-
-define({
-  name: "creampie",
-  category: "Dating",
-  description: "Make a lil Chipkittle for someone.",
-  usage: "creampie @user",
-  async run(ctx) {
-    const target = ctx.message.mentions.users.first();
-    if (!target) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-
-    const babyName = randomChipkittleName();
-    await ctx.message.reply(`${ctx.message.author} creampied ${target} and they made a baby called ${babyName}!`);
-  }
-});
-
-define({
-  name: "rape",
-  category: "Dating",
-  description: "lil rape.",
-  usage: "rape @user",
-  async run(ctx) {
-    const member = mentionUser(ctx.message);
-    await ctx.message.reply(`${member} has been raped.`);
-  }
-});
-
-
-define({
-  name: "tickle",
-  category: "Dating",
-  description: "lil tickle.",
-  usage: "tickle @user",
-  async run(ctx) {
-    const member = mentionUser(ctx.message);
-    await ctx.message.reply(`${member} has been tickled and started giggling.`);
-  }
-});
-
-define({
-  name: "mug",
-  category: "Dating",
-  description: "Mug someone and steal up to 10 bread from them (24 hour cooldown).",
-  usage: "mug @user",
-  async run(ctx) {
-    const target = ctx.message.mentions.users.first();
-    if (!target) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-
-    if (target.id === ctx.message.author.id) {
-      await ctx.message.reply("You cannot mug yourself.");
-      return;
-    }
-
-    // Check cooldown (24 hours)
-    const cooldownKey = `mug_${ctx.message.author.id}`;
-    const lastMug = ctx.config.cooldowns?.[cooldownKey];
-    const cooldownMs = 24 * 60 * 60 * 1000; // 24 hours
-    
-    if (lastMug && Date.now() - new Date(lastMug).getTime() < cooldownMs) {
-      const remaining = cooldownMs - (Date.now() - new Date(lastMug).getTime());
-      await ctx.message.reply(`You can mug again in ${formatCooldown(remaining)}.`);
-      return;
-    }
-
-    // Update cooldown
-    await ctx.store.updateGuild(ctx.message.guild.id, {
-      cooldowns: {
-        ...(ctx.config.cooldowns || {}),
-        [cooldownKey]: new Date().toISOString()
+    if (mode === "roll" || mode === "dice") {
+      const dice = (["roll", "dice"].includes(invoked) ? ctx.args[0] : ctx.args[1]) || "1d6";
+      const match = dice.match(/^(\d{1,2})d(\d{1,4})$/i);
+      if (!match) {
+        await ctx.message.reply(`Usage: \`${ctx.config.prefix}fun roll 2d20\``);
+        return;
       }
-    });
-
-    // Steal bread
-    const output = await updateBreadEconomy(ctx, async (economy) => {
-      const targetBalance = breadBalance(economy, target.id);
-      if (targetBalance < 1) {
-        return `${target} has no bread to steal!`;
-      }
-
-      const stealAmount = Math.min(randomInt(1, 100), targetBalance);
-      const newTargetBalance = targetBalance - stealAmount;
-      const newMuggerBalance = breadBalance(economy, ctx.message.author.id) + stealAmount;
-
-      setBreadBalance(economy, target.id, newTargetBalance);
-      setBreadBalance(economy, ctx.message.author.id, newMuggerBalance);
-
-      return `${target} has been mugged! You stole ${formatBread(stealAmount)} from them.`;
-    });
-
-    await ctx.message.reply(output);
-  }
-});
-
-
-define({
-  name: "drug",
-  category: "Dating",
-  description: "Drug someone with a random set of 2 drugs.",
-  usage: "drug @user",
-  async run(ctx) {
-    const member = mentionUser(ctx.message);
-    const drugs = [
-      "tickle", "mug", "heroin", "cocaine", "meth", "weed", "acid", "shrooms", 
-      "ecstasy", "ketamine", "opium", "peyote", "salvia", "DMT", "ayahuasca",
-      "caffeine", "nicotine", "alcohol", "sugar", "chocolate", "bread"
-    ];
-    
-    // Randomly select 2 unique drugs
-    const selectedDrugs = [];
-    const shuffled = [...drugs].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < Math.min(2, drugs.length); i++) {
-      selectedDrugs.push(shuffled[i]);
+      const count = Math.min(Number(match[1]), 20);
+      const sides = Math.min(Number(match[2]), 1000);
+      const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
+      await ctx.message.reply(`Rolled ${dice}: ${rolls.join(", ")} = **${rolls.reduce((a, b) => a + b, 0)}**`);
+      return;
     }
-    
-    await ctx.message.reply(`${member} has been drugged with: ${selectedDrugs.join(", ")}`);
+
+    if (mode === "choose") {
+      const source = invoked === "choose" ? ctx.rest : ctx.args.slice(1).join(" ");
+      const options = source.split(",").map((item) => item.trim()).filter(Boolean);
+      if (options.length < 2) {
+        await ctx.message.reply(`Usage: \`${ctx.config.prefix}fun choose pizza, tacos, soup\``);
+        return;
+      }
+      await ctx.message.reply(`I choose: **${options[Math.floor(Math.random() * options.length)]}**.`);
+      return;
+    }
+
+    if (mode === "8ball") {
+      await ctx.message.reply(eightBallAnswers[Math.floor(Math.random() * eightBallAnswers.length)]);
+      return;
+    }
+
+    if (mode === "rate") {
+      const thing = safeContent(invoked === "rate" ? ctx.rest : ctx.args.slice(1).join(" "), "that");
+      const score = Math.floor(Math.random() * 101);
+      await ctx.message.reply(`${thing} is ${score}/100 on the artifact scale.`);
+      return;
+    }
+
+    if (mode === "curse") {
+      const curses = [
+        "doesn't have the horns for this family",
+        "is unworthy of the suit",
+        "lacks the artifact's blessing",
+        "is too weak to join the Round Table",
+        "will never understand the ceremony",
+        "is a stain on the Chipkittle name",
+        "doesn't deserve a Chipkittle name",
+        "failed the silence test",
+        "has betrayed the principles",
+        "is banned from the bakery",
+        "will never wear the suit",
+        "lacks respect for the family",
+        "will never comprehend the lore",
+        "is cursed by the artifact",
+        "doesn't have what it takes",
+        "is forever banned from bread",
+        "will never rise in rank",
+        "is a disappointment to the horns",
+        "lacks the silent strength",
+        "is not worthy of Chipkittle honor"
+      ];
+      await ctx.message.delete().catch(() => {});
+      const member = mentionUser(ctx.message);
+      const curse = curses[Math.floor(Math.random() * curses.length)];
+      const embed = new EmbedBuilder()
+        .setColor(0xef4444)
+        .setTitle("Chipkittle Judgment")
+        .setDescription(`${member} ${curse}.`)
+        .setFooter({ text: "The artifact has spoken." });
+      await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    if (mode === "ship") {
+      const users = [...ctx.message.mentions.users.values()];
+      const first = users[0]?.username || ctx.message.author.username;
+      const second = users[1]?.username || (invoked === "ship" ? ctx.args.join(" ") : ctx.args.slice(1).join(" ")) || "the ancient artifact";
+      await ctx.message.reply(`${first} + ${second}: ${Math.floor(Math.random() * 101)}% Chipkittle harmony.`);
+      return;
+    }
+
+    if (mode === "randommember" || mode === "pickmember" || mode === "memberroulette" || mode === "member") {
+      const role = mentionRole(ctx.message);
+      const pool = role
+        ? [...role.members.values()].filter((member) => !member.user.bot)
+        : ctx.message.guild.members.cache.filter((member) => !member.user.bot).map((member) => member);
+      if (!pool.length) {
+        await ctx.message.reply("No eligible members were found for that pick.");
+        return;
+      }
+      const winner = pool[randomInt(0, pool.length - 1)];
+      await ctx.message.reply(role ? `Random pick from **${role.name}**: ${winner}` : `Random member: ${winner}`);
+      return;
+    }
+
+    await ctx.message.reply(`Usage: \`${ctx.config.prefix}fun [coin|roll|choose|8ball|rate|curse|ship|member]\``);
   }
 });
+
+
 
 define({
   name: "date",
+  aliases: ["dateaccept", "datedeny", "datebreak", "datehelp", "dateinfo", "kiss", "hug", "holdhands", "sex", "cheat", "homewreck", "tickle", "creampie", "drug"],
   category: "Dating",
-  description: "Invite someone to date you in the server.",
-  usage: "date @user",
+  description: "Manage Chipkittle dating, status, and relationship interactions.",
+  usage: "date [@user|accept|deny|status|break|help|kiss|hug|holdhands|sex|cheat|homewreck|tickle|creampie|drug] ...",
   async run(ctx) {
+    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
+    const explicitMode = (ctx.args[0] || "").toLowerCase();
+    const mode = (
+      ["dateaccept", "datedeny", "datebreak", "datehelp", "dateinfo", "kiss", "hug", "holdhands", "sex", "cheat", "homewreck", "tickle", "creampie", "drug"].includes(invoked)
+        ? invoked
+        : explicitMode
+    );
+
+    if (mode === "datehelp" || mode === "help") {
+      const lines = [
+        `${ctx.config.prefix}date @user`,
+        `${ctx.config.prefix}date accept`,
+        `${ctx.config.prefix}date deny`,
+        `${ctx.config.prefix}date status`,
+        `${ctx.config.prefix}date break`,
+        `${ctx.config.prefix}date kiss @user`,
+        `${ctx.config.prefix}date hug @user`,
+        `${ctx.config.prefix}date holdhands @user`,
+        `${ctx.config.prefix}date sex @user`,
+        `${ctx.config.prefix}date cheat @user`,
+        `${ctx.config.prefix}date homewreck @user`,
+        `${ctx.config.prefix}date tickle @user`,
+        `${ctx.config.prefix}date creampie @user`,
+        `${ctx.config.prefix}date drug @user`
+      ];
+      const embed = new EmbedBuilder()
+        .setTitle("Date Commands")
+        .setDescription("Use the dating hub for requests, relationship status, and chaotic romance actions.")
+        .addFields([{ name: "Available", value: lines.join("\n"), inline: false }])
+        .setColor(0x99ccff);
+      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    if (mode === "dateaccept" || mode === "accept") {
+      const recipient = ctx.message.author;
+      const key = pendingDateKey(ctx.message.guild.id, recipient.id);
+      const request = pendingDateRequests.get(key);
+      if (!request) {
+        const embed = new EmbedBuilder().setTitle("No Date Request").setDescription("You do not have any pending date invitations.").setColor(0xffcc99);
+        await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+        return;
+      }
+      if (isUserDating(recipient.id)) {
+        pendingDateRequests.delete(key);
+        const embed = new EmbedBuilder().setTitle("Already Dating").setDescription("You are already dating someone else, so this invitation cannot be accepted.").setColor(0xffcc99);
+        await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+        return;
+      }
+      if (isUserDating(request.requesterId)) {
+        pendingDateRequests.delete(key);
+        const embed = new EmbedBuilder().setTitle("Requester Already Dating").setDescription(`${request.requesterMention} is already dating someone else, so this invitation cannot be accepted.`).setColor(0xffcc99);
+        await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+        return;
+      }
+      pendingDateRequests.delete(key);
+      currentDates.set(recipient.id, request.requesterId);
+      currentDates.set(request.requesterId, recipient.id);
+      const embed = new EmbedBuilder().setTitle("Date Accepted").setDescription(`${recipient} accepted ${request.requesterMention}'s date invitation. You are now officially dating.`).setColor(0x99ffcc);
+      await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    if (mode === "datedeny" || mode === "deny") {
+      const recipient = ctx.message.author;
+      const key = pendingDateKey(ctx.message.guild.id, recipient.id);
+      const request = pendingDateRequests.get(key);
+      if (!request) {
+        const embed = new EmbedBuilder().setTitle("No Date Request").setDescription("You do not have any pending date invitations.").setColor(0xffcc99);
+        await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+        return;
+      }
+      pendingDateRequests.delete(key);
+      const embed = new EmbedBuilder().setTitle("Date Denied").setDescription(`${recipient} declined ${request.requesterMention}'s date invitation. Maybe the artifact will bless someone else.`).setColor(0xff6666);
+      await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    if (mode === "datebreak" || mode === "break") {
+      const requester = ctx.message.author;
+      const partnerId = currentDatePartner(requester.id);
+      if (!partnerId) {
+        const embed = new EmbedBuilder().setTitle("No Relationship").setDescription("You are not currently dating anyone.").setColor(0xffcc99);
+        await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+        return;
+      }
+      clearDatePair(requester.id);
+      const embed = new EmbedBuilder().setTitle("Date Broken").setDescription(`${requester} has ended their dating relationship with <@${partnerId}>. The ceremony is over.`).setColor(0xff9999);
+      await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    if (mode === "dateinfo" || mode === "status") {
+      const requester = ctx.message.author;
+      const partnerId = currentDatePartner(requester.id);
+      const embed = new EmbedBuilder()
+        .setTitle("Dating Status")
+        .setDescription(partnerId ? `You are dating <@${partnerId}>.` : "You are not currently dating anyone.")
+        .setColor(partnerId ? 0x99ffcc : 0xffcc99);
+      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
+    if (["kiss", "hug", "holdhands", "sex", "cheat", "homewreck", "tickle", "creampie", "drug"].includes(mode)) {
+      const mentions = [...ctx.message.mentions.users.values()];
+      const requester = ctx.message.author;
+      const target = mentions[0];
+      if (!target) {
+        await ctx.message.reply(`Usage: \`${ctx.config.prefix}date ${mode} @user\``);
+        return;
+      }
+      if (target.id === requester.id) {
+        await ctx.message.reply(`You cannot ${mode === "holdhands" ? "hold hands with" : mode} yourself.`);
+        return;
+      }
+      if (target.bot) {
+        await ctx.message.reply("Bots are not part of Chipkittle romance.");
+        return;
+      }
+      const modeEmbeds = {
+        kiss: ["Sweet Kiss", `${requester} gives ${target} a gentle Chipkittle kiss. Romance is in the air.`, 0xff99cc],
+        hug: ["Warm Hug", `${requester} wraps ${target} in a comforting Chipkittle hug. Cozy vibes all around.`, 0x99ccff],
+        holdhands: ["Hand Holding", `${requester} takes ${target}'s hand and walks in silent Chipkittle solidarity.`, 0xccaaff],
+        sex: ["Hot Chipkittle Moment", `${requester} and ${target} shared a very intimate Chipkittle moment. Keep it spicy.`, 0xff3399],
+        tickle: ["Tickled", `${requester} tickled ${target} until they started giggling.`, 0xf9a8d4],
+        creampie: ["Tiny Chipkittle Created", `${requester} and ${target} somehow produced a tiny Chipkittle named **${randomChipkittleName()}**.`, 0xfda4af],
+        drug: ["Questionable Decisions", `${target} has been drugged with ${["caffeine", "weed", "sugar", "bread", "shrooms", "chocolate"].sort(() => Math.random() - 0.5).slice(0, 2).join(" and ")}.`, 0xc4b5fd]
+      };
+      if (mode === "cheat") {
+        if (!isUserDating(requester.id)) {
+          await ctx.message.reply("You are not currently dating anyone.");
+          return;
+        }
+        const partnerId = currentDatePartner(requester.id);
+        const embed = new EmbedBuilder().setTitle("Cheating Scandal").setDescription(`${requester} cheated on <@${partnerId}> with ${target}. The artifact is watching.`).setColor(0xff3366);
+        await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+        return;
+      }
+      if (mode === "homewreck") {
+        if (!isUserDating(target.id)) {
+          await ctx.message.reply(`${target} is not in a relationship.`);
+          return;
+        }
+        const partnerId = currentDatePartner(target.id);
+        const embed = new EmbedBuilder().setTitle("Homewrecking Scandal").setDescription(`${requester} homewrecked ${target}'s relationship with <@${partnerId}> in a steamy Chipkittle moment. Drama ensues.`).setColor(0xff3366);
+        await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+        return;
+      }
+      const [title, description, color] = modeEmbeds[mode];
+      const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(color);
+      await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+      return;
+    }
+
     const mentions = [...ctx.message.mentions.users.values()];
     const requester = ctx.message.author;
 
@@ -1523,381 +1551,6 @@ define({
       .setTitle("Date Request Sent")
       .setDescription(`${requester} has asked ${target} to date them. ${target}, respond with \`${ctx.config.prefix}dateaccept\` or \`${ctx.config.prefix}datedeny\`.`)
       .setColor(0xff99cc);
-
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "dateaccept",
-  category: "Dating",
-  description: "Accept a date invitation.",
-  async run(ctx) {
-    const recipient = ctx.message.author;
-    const key = pendingDateKey(ctx.message.guild.id, recipient.id);
-    const request = pendingDateRequests.get(key);
-
-    if (!request) {
-      const embed = new EmbedBuilder()
-        .setTitle("No Date Request")
-        .setDescription("You do not have any pending date invitations.")
-        .setColor(0xffcc99);
-      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
-      return;
-    }
-
-    if (isUserDating(recipient.id)) {
-      pendingDateRequests.delete(key);
-      const embed = new EmbedBuilder()
-        .setTitle("Already Dating")
-        .setDescription("You are already dating someone else, so this invitation cannot be accepted.")
-        .setColor(0xffcc99);
-      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
-      return;
-    }
-
-    if (isUserDating(request.requesterId)) {
-      pendingDateRequests.delete(key);
-      const embed = new EmbedBuilder()
-        .setTitle("Requester Already Dating")
-        .setDescription(`${request.requesterMention} is already dating someone else, so this invitation cannot be accepted.`)
-        .setColor(0xffcc99);
-      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
-      return;
-    }
-
-    pendingDateRequests.delete(key);
-    currentDates.set(recipient.id, request.requesterId);
-    currentDates.set(request.requesterId, recipient.id);
-
-    const embed = new EmbedBuilder()
-      .setTitle("Date Accepted")
-      .setDescription(`${recipient} accepted ${request.requesterMention}'s date invitation. You are now officially dating.`)
-      .setColor(0x99ffcc);
-
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "datedeny",
-  category: "Dating",
-  description: "Deny a date invitation.",
-  async run(ctx) {
-    const recipient = ctx.message.author;
-    const key = pendingDateKey(ctx.message.guild.id, recipient.id);
-    const request = pendingDateRequests.get(key);
-
-    if (!request) {
-      const embed = new EmbedBuilder()
-        .setTitle("No Date Request")
-        .setDescription("You do not have any pending date invitations.")
-        .setColor(0xffcc99);
-      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
-      return;
-    }
-
-    pendingDateRequests.delete(key);
-    const embed = new EmbedBuilder()
-      .setTitle("Date Denied")
-      .setDescription(`${recipient} declined ${request.requesterMention}'s date invitation. Maybe the artifact will bless someone else.`)
-      .setColor(0xff6666);
-
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "datebreak",
-  category: "Dating",
-  description: "End your current dating relationship.",
-  async run(ctx) {
-    const requester = ctx.message.author;
-    const partnerId = currentDatePartner(requester.id);
-
-    if (!partnerId) {
-      const embed = new EmbedBuilder()
-        .setTitle("No Relationship")
-        .setDescription("You are not currently dating anyone.")
-        .setColor(0xffcc99);
-      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
-      return;
-    }
-
-    clearDatePair(requester.id);
-    const embed = new EmbedBuilder()
-      .setTitle("Date Broken")
-      .setDescription(`${requester} has ended their dating relationship with <@${partnerId}>. The ceremony is over.`)
-      .setColor(0xff9999);
-
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "datehelp",
-  category: "Dating",
-  description: "List all date-related commands.",
-  usage: "datehelp",
-  async run(ctx) {
-    const commandNames = [
-      "date",
-      "dateaccept",
-      "datedeny",
-      "datebreak",
-      "dateinfo",
-      "kiss",
-      "hug",
-      "holdhands",
-      "sex",
-      "homewreck",
-      "cheat"
-    ];
-    const commands = commandNames
-      .map((name) => ctx.commandList.find((command) => command.name === name))
-      .filter(Boolean);
-
-    const fields = commands.map((command) => ({
-      name: `${ctx.config.prefix}${command.usage || command.name}`,
-      value: command.description || "No description available.",
-      inline: false
-    }));
-
-    const embed = new EmbedBuilder()
-      .setTitle("Date Commands")
-      .setDescription("Use these commands to send requests, accept, deny, break up, or announce a dating scandal.")
-      .addFields(fields)
-      .setColor(0x99ccff);
-
-    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "cheat",
-  category: "Dating",
-  description: "Cheat on your partner with someone else.",
-  usage: "cheat @user",
-  async run(ctx) {
-    const mentions = [...ctx.message.mentions.users.values()];
-    const requester = ctx.message.author;
-
-    if (mentions.length !== 1) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
-      return;
-    }
-
-    const target = mentions[0];
-    if (target.id === requester.id) {
-      await ctx.message.reply("You cannot cheat with yourself.");
-      return;
-    }
-    if (!isUserDating(requester.id)) {
-      await ctx.message.reply("You are not currently dating anyone.");
-      return;
-    }
-
-    const partnerId = currentDatePartner(requester.id);
-    const embed = new EmbedBuilder()
-      .setTitle("Cheating Scandal")
-      .setDescription(`${requester} cheated on <@${partnerId}> with ${target}. The artifact is watching.`)
-      .setColor(0xff3366);
-
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "kiss",
-  category: "Dating",
-  description: "Send a Chipkittle kiss to someone.",
-  usage: "kiss @user",
-  async run(ctx) {
-    const mentions = [...ctx.message.mentions.users.values()];
-    const requester = ctx.message.author;
-
-    if (mentions.length !== 1) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
-      return;
-    }
-
-    const target = mentions[0];
-    if (target.id === requester.id) {
-      await ctx.message.reply("You cannot kiss yourself.");
-      return;
-    }
-    if (target.bot) {
-      await ctx.message.reply("Bots do not return kisses.");
-      return;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle("Sweet Kiss")
-      .setDescription(`${requester} gives ${target} a gentle Chipkittle kiss. Romance is in the air.`)
-      .setColor(0xff99cc);
-
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "hug",
-  category: "Dating",
-  description: "Wrap someone in a cozy Chipkittle hug.",
-  usage: "hug @user",
-  async run(ctx) {
-    const mentions = [...ctx.message.mentions.users.values()];
-    const requester = ctx.message.author;
-
-    if (mentions.length !== 1) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
-      return;
-    }
-
-    const target = mentions[0];
-    if (target.id === requester.id) {
-      await ctx.message.reply("You cannot hug yourself.");
-      return;
-    }
-    if (target.bot) {
-      await ctx.message.reply("Bots do not feel warm hugs.");
-      return;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle("Warm Hug")
-      .setDescription(`${requester} wraps ${target} in a comforting Chipkittle hug. Cozy vibes all around.`)
-      .setColor(0x99ccff);
-
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "holdhands",
-  category: "Dating",
-  description: "Take someone's hand in a Chipkittle way.",
-  usage: "holdhands @user",
-  async run(ctx) {
-    const mentions = [...ctx.message.mentions.users.values()];
-    const requester = ctx.message.author;
-
-    if (mentions.length !== 1) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
-      return;
-    }
-
-    const target = mentions[0];
-    if (target.id === requester.id) {
-      await ctx.message.reply("You cannot hold hands with yourself.");
-      return;
-    }
-    if (target.bot) {
-      await ctx.message.reply("Bots do not have hands to hold.");
-      return;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle("Hand Holding")
-      .setDescription(`${requester} takes ${target}'s hand and walks in silent Chipkittle solidarity.`)
-      .setColor(0xccaaff);
-
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "sex",
-  category: "Dating",
-  description: "Share a flirty Chipkittle moment with someone.",
-  usage: "sex @user",
-  async run(ctx) {
-    const mentions = [...ctx.message.mentions.users.values()];
-    const requester = ctx.message.author;
-
-    if (mentions.length !== 1) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
-      return;
-    }
-
-    const target = mentions[0];
-    if (target.id === requester.id) {
-      await ctx.message.reply("You cannot do that to yourself.");
-      return;
-    }
-    if (target.bot) {
-      await ctx.message.reply("Bots are not part of Chipkittle romance.");
-      return;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle("Hot Chipkittle Moment")
-      .setDescription(`${requester} and ${target} shared a very intimate Chipkittle moment. Keep it spicy.`)
-      .setColor(0xff3399);
-
-    await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "dateinfo",
-  category: "Dating",
-  description: "Check who you're actively dating.",
-  async run(ctx) {
-    const requester = ctx.message.author;
-    const partnerId = currentDatePartner(requester.id);
-
-    if (!partnerId) {
-      const embed = new EmbedBuilder()
-        .setTitle("Dating Status")
-        .setDescription("You are not currently dating anyone.")
-        .setColor(0xffcc99);
-      await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
-      return;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle("Dating Status")
-      .setDescription(`You are dating <@${partnerId}>.`)
-      .setColor(0x99ffcc);
-
-    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
-  }
-});
-
-define({
-  name: "homewreck",
-  category: "Dating",
-  description: "Homewreck someone's relationship with a steamy moment.",
-  usage: "homewreck @user",
-  async run(ctx) {
-    const mentions = [...ctx.message.mentions.users.values()];
-    const requester = ctx.message.author;
-
-    if (mentions.length !== 1) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\` — mention exactly one user.`);
-      return;
-    }
-
-    const target = mentions[0];
-    if (target.id === requester.id) {
-      await ctx.message.reply("You cannot homewreck yourself.");
-      return;
-    }
-    if (target.bot) {
-      await ctx.message.reply("Bots are not part of Chipkittle romance.");
-      return;
-    }
-    if (!isUserDating(target.id)) {
-      await ctx.message.reply(`${target} is not in a relationship. Use !sex instead.`);
-      return;
-    }
-
-    const partnerId = currentDatePartner(target.id);
-    const embed = new EmbedBuilder()
-      .setTitle("Homewrecking Scandal")
-      .setDescription(`${requester} homewrecked ${target}'s relationship with <@${partnerId}> in a steamy Chipkittle moment. Drama ensues.`)
-      .setColor(0xff3366);
 
     await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
   }
@@ -2421,109 +2074,161 @@ define({
 
 define({
   name: "chipkittle",
+  aliases: ["oath", "principles", "rules", "chiprules", "chipname", "name", "rank", "suit", "donation", "lore", "figures", "chipfigures", "familyfigures", "randomprinciple", "ruleofthestep", "principleroll"],
   category: "Chipkittle",
-  description: "Explain what a Chipkittle is.",
+  description: "Chipkittle lore hub for names, principles, ranks, suit, and family lore.",
   async run(ctx) {
+    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
+    const mode = ["oath", "principles", "rules", "chiprules", "chipname", "name", "rank", "suit", "donation", "lore", "figures", "chipfigures", "familyfigures", "randomprinciple", "ruleofthestep", "principleroll"].includes(invoked)
+      ? invoked
+      : (ctx.args[0] || "").toLowerCase();
+
+    if (["oath", "principles", "rules", "chiprules"].includes(mode)) {
+      await ctx.message.reply(CHIPKITTLE_LORE.principles.map((rule, index) => `${index + 1}. ${rule}`).join("\n"));
+      return;
+    }
+    if (["chipname", "name"].includes(mode)) {
+      if (isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
+        await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
+        return;
+      }
+      if (!ctx.ai.enabled) {
+        await ctx.message.reply("AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");
+        return;
+      }
+      const rateLimit = checkAiRateLimit({
+        guildId: ctx.message.guild.id,
+        userId: ctx.message.author.id,
+        cooldownSeconds: ctx.config.ai.apiCooldownSeconds,
+        bucket: "chat"
+      });
+      if (rateLimit.limited) {
+        await ctx.message.reply({ content: `The artifact is cooling down. Try again in ${rateLimit.retryAfterSeconds}s.`, allowedMentions: NO_MENTIONS });
+        return;
+      }
+      await ctx.message.channel.sendTyping();
+      const inspiration = ["chipname", "name"].includes(invoked) ? ctx.rest : ctx.args.slice(1).join(" ");
+      const name = await ctx.ai.chipkittleName(ctx.message, ctx.config, inspiration);
+      await ctx.message.reply(`Your Chipkittle name is **${name}**.`);
+      return;
+    }
+    if (mode === "rank") {
+      const member = mentionUser(ctx.message);
+      const rank = CHIPKITTLE_LORE.ranks[Math.floor(Math.random() * CHIPKITTLE_LORE.ranks.length)];
+      await ctx.message.reply(`${member} is now recognized as **${rank}**.`);
+      return;
+    }
+    if (mode === "suit") {
+      await ctx.message.reply(CHIPKITTLE_LORE.visual);
+      return;
+    }
+    if (mode === "donation") {
+      const amount = (Math.random() * 8 + 0.2).toFixed(1);
+      await ctx.message.reply(`${ctx.message.member.displayName} has pledged ${amount} million imaginary bread units to the Chipkittle Donation Fund.`);
+      return;
+    }
+    if (["lore", "figures", "chipfigures", "familyfigures"].includes(mode)) {
+      await ctx.message.reply(CHIPKITTLE_LORE.figures[Math.floor(Math.random() * CHIPKITTLE_LORE.figures.length)]);
+      return;
+    }
+    if (["randomprinciple", "ruleofthestep", "principleroll"].includes(mode)) {
+      const principle = CHIPKITTLE_LORE.principles[randomInt(0, CHIPKITTLE_LORE.principles.length - 1)];
+      await ctx.message.reply(`**Today's Principle**\n${principle}`);
+      return;
+    }
     await ctx.message.reply(`${CHIPKITTLE_LORE.visual} The family exists to protect the ancient artifact, honor the roster, and move in silence.`);
   }
 });
 
 define({
   name: "artifact",
-  aliases: ["quote", "chipquote", "artifactquote"],
+  aliases: ["quote", "chipquote", "artifactquote", "artifacttoday", "artifactrandom", "randomartifact", "artifactroll", "artifactregistry", "artifacts", "registry", "artifactsearch", "findartifact", "artifactfind", "artifactrarity", "raritysearch", "artifactsbyrarity", "artifactkeeper", "keeper", "findkeeper", "artifactcount", "artifactstats", "registrycount"],
   category: "Chipkittle",
-  description: "Receive artifact guidance.",
+  description: "Artifact hub for guidance, registry, search, rarity, keepers, and counts.",
   async run(ctx) {
+    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
+    const mode = this.aliases.includes(invoked) ? invoked : (ctx.args[0] || "").toLowerCase();
+    if (["artifacttoday"].includes(mode)) {
+      const item = artifactOfTheDay(ctx.config);
+      if (!item) {
+        await ctx.message.reply("No artifact has been recorded yet.");
+        return;
+      }
+      await ctx.message.reply([`**Artifact of the Day: ${item.name}**`, `Rarity: ${item.rarity}`, `Keeper: ${item.keeper}`, item.summary].join("\n"));
+      return;
+    }
+    if (["artifactrandom", "randomartifact", "artifactroll"].includes(mode)) {
+      const artifacts = ctx.config.community?.artifacts || [];
+      if (!artifacts.length) {
+        await ctx.message.reply("No artifacts are registered yet.");
+        return;
+      }
+      const item = artifacts[Math.floor(Math.random() * artifacts.length)];
+      await ctx.message.reply([`**Random Artifact: ${item.name}**`, `Rarity: ${item.rarity}`, `Keeper: ${item.keeper}`, item.summary].join("\n"));
+      return;
+    }
+    if (["artifactregistry", "artifacts", "registry"].includes(mode)) {
+      const artifacts = (ctx.config.community?.artifacts || []).slice(0, 12);
+      if (!artifacts.length) {
+        await ctx.message.reply("No artifacts are registered yet.");
+        return;
+      }
+      await ctx.message.reply(artifacts.map((item) => `• **${item.name}** (${item.rarity}) - ${item.keeper}\n  ${item.summary}`).join("\n"));
+      return;
+    }
+    if (["artifactsearch", "findartifact", "artifactfind"].includes(mode)) {
+      const query = (["artifactsearch", "findartifact", "artifactfind"].includes(invoked) ? ctx.rest : ctx.args.slice(1).join(" ")).trim().toLowerCase();
+      if (!query) {
+        await ctx.message.reply(`Usage: \`${ctx.config.prefix}artifact search keyword\``);
+        return;
+      }
+      const matches = (ctx.config.community?.artifacts || [])
+        .filter((item) => [item.name, item.rarity, item.keeper, item.summary].some((field) => String(field || "").toLowerCase().includes(query)))
+        .slice(0, 8);
+      if (!matches.length) {
+        await ctx.message.reply(`No artifacts matched **${query}**.`);
+        return;
+      }
+      await ctx.message.reply(matches.map((item) => `• **${item.name}** (${item.rarity}) - ${item.keeper}\n  ${item.summary}`).join("\n"));
+      return;
+    }
+    if (["artifactrarity", "raritysearch", "artifactsbyrarity"].includes(mode)) {
+      const query = (["artifactrarity", "raritysearch", "artifactsbyrarity"].includes(invoked) ? ctx.rest : ctx.args.slice(1).join(" ")).trim().toLowerCase();
+      if (!query) {
+        await ctx.message.reply(`Usage: \`${ctx.config.prefix}artifact rarity rare\``);
+        return;
+      }
+      const matches = (ctx.config.community?.artifacts || [])
+        .filter((item) => String(item.rarity || "").toLowerCase().includes(query))
+        .slice(0, 12);
+      await ctx.message.reply([
+        `**Artifacts Matching Rarity: ${query}**`,
+        matches.length ? matches.map((item) => `• **${item.name}** - ${item.keeper}`).join("\n") : "No artifacts matched that rarity."
+      ].join("\n"));
+      return;
+    }
+    if (["artifactkeeper", "keeper", "findkeeper"].includes(mode)) {
+      const query = (["artifactkeeper", "keeper", "findkeeper"].includes(invoked) ? ctx.rest : ctx.args.slice(1).join(" ")).trim().toLowerCase();
+      if (!query) {
+        await ctx.message.reply(`Usage: \`${ctx.config.prefix}artifact keeper artifact name\``);
+        return;
+      }
+      const item = (ctx.config.community?.artifacts || []).find((entry) => String(entry.name || "").toLowerCase().includes(query));
+      if (!item) {
+        await ctx.message.reply(`No artifact matched **${query}**.`);
+        return;
+      }
+      await ctx.message.reply(`**${item.name}** is kept by **${item.keeper || "Unknown Keeper"}**.\nRarity: ${item.rarity || "Unknown"}\n${item.summary || "No summary recorded."}`);
+      return;
+    }
+    if (["artifactcount", "artifactstats", "registrycount"].includes(mode)) {
+      const artifacts = ctx.config.community?.artifacts || [];
+      const rarities = artifacts.reduce((map, item) => ({ ...map, [item.rarity || "Unknown"]: (map[item.rarity || "Unknown"] || 0) + 1 }), {});
+      const rarityLine = Object.entries(rarities).slice(0, 5).map(([rarity, count]) => `${rarity}: ${count}`).join(" | ");
+      await ctx.message.reply([`**Artifact Registry Stats**`, `Total artifacts: **${artifacts.length}**`, rarityLine || "No rarity data yet."].join("\n"));
+      return;
+    }
     await ctx.message.reply(randomChipkittleQuote());
-  }
-});
-
-define({
-  name: "oath",
-  aliases: ["principles", "rules", "chiprules"],
-  category: "Chipkittle",
-  description: "Show the clean Chipkittle oath.",
-  async run(ctx) {
-    await ctx.message.reply(CHIPKITTLE_LORE.principles.map((rule, index) => `${index + 1}. ${rule}`).join("\n"));
-  }
-});
-
-define({
-  name: "chipname",
-  aliases: ["name"],
-  category: "Chipkittle",
-  description: "Use AI to generate a random Chipkittle name.",
-  usage: "chipname [inspiration]",
-  async run(ctx) {
-    if (isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
-      await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
-      return;
-    }
-    if (!ctx.ai.enabled) {
-      await ctx.message.reply("AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");
-      return;
-    }
-
-    const rateLimit = checkAiRateLimit({
-      guildId: ctx.message.guild.id,
-      userId: ctx.message.author.id,
-      cooldownSeconds: ctx.config.ai.apiCooldownSeconds,
-      bucket: "chat"
-    });
-
-    if (rateLimit.limited) {
-      await ctx.message.reply({
-        content: `The artifact is cooling down. Try again in ${rateLimit.retryAfterSeconds}s.`,
-        allowedMentions: NO_MENTIONS
-      });
-      return;
-    }
-
-    await ctx.message.channel.sendTyping();
-    const name = await ctx.ai.chipkittleName(ctx.message, ctx.config, ctx.rest);
-    await ctx.message.reply(`Your Chipkittle name is **${name}**.`);
-  }
-});
-
-define({
-  name: "rank",
-  category: "Chipkittle",
-  description: "Assign a ceremonial rank.",
-  usage: "rank [@user]",
-  async run(ctx) {
-    const member = mentionUser(ctx.message);
-    const rank = CHIPKITTLE_LORE.ranks[Math.floor(Math.random() * CHIPKITTLE_LORE.ranks.length)];
-    await ctx.message.reply(`${member} is now recognized as **${rank}**.`);
-  }
-});
-
-define({
-  name: "suit",
-  category: "Chipkittle",
-  description: "Describe the shared Chipkittle suit.",
-  async run(ctx) {
-    await ctx.message.reply(CHIPKITTLE_LORE.visual);
-  }
-});
-
-define({
-  name: "donation",
-  category: "Chipkittle",
-  description: "Generate a ceremonial donation total.",
-  async run(ctx) {
-    const amount = (Math.random() * 8 + 0.2).toFixed(1);
-    await ctx.message.reply(`${ctx.message.member.displayName} has pledged ${amount} million imaginary bread units to the Chipkittle Donation Fund.`);
-  }
-});
-
-define({
-  name: "lore",
-  aliases: ["figures", "chipfigures", "familyfigures"],
-  category: "Chipkittle",
-  description: "Show a random safe lore note.",
-  async run(ctx) {
-    const lore = ctx.args[0] === "rules" ? CHIPKITTLE_LORE.principles : CHIPKITTLE_LORE.figures;
-    await ctx.message.reply(lore[Math.floor(Math.random() * lore.length)]);
   }
 });
 
@@ -4012,61 +3717,6 @@ define({
 });
 
 define({
-  name: "artifacttoday",
-  category: "Chipkittle",
-  description: "Reveal the current artifact of the day.",
-  async run(ctx) {
-    const artifact = artifactOfTheDay(ctx.config);
-    if (!artifact) {
-      await ctx.message.reply("No artifact has been recorded yet.");
-      return;
-    }
-    await ctx.message.reply([
-      `**Artifact of the Day: ${artifact.name}**`,
-      `Rarity: ${artifact.rarity}`,
-      `Keeper: ${artifact.keeper}`,
-      artifact.summary
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "artifactrandom",
-  aliases: ["randomartifact", "artifactroll"],
-  category: "Chipkittle",
-  description: "Reveal a random artifact from the registry.",
-  async run(ctx) {
-    const artifacts = ctx.config.community?.artifacts || [];
-    if (!artifacts.length) {
-      await ctx.message.reply("No artifacts are registered yet.");
-      return;
-    }
-    const artifact = artifacts[Math.floor(Math.random() * artifacts.length)];
-    await ctx.message.reply([
-      `**Random Artifact: ${artifact.name}**`,
-      `Rarity: ${artifact.rarity}`,
-      `Keeper: ${artifact.keeper}`,
-      artifact.summary
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "artifactregistry",
-  aliases: ["artifacts", "registry"],
-  category: "Chipkittle",
-  description: "List the known Chipkittle artifacts.",
-  async run(ctx) {
-    const artifacts = (ctx.config.community?.artifacts || []).slice(0, 12);
-    if (!artifacts.length) {
-      await ctx.message.reply("No artifacts are registered yet.");
-      return;
-    }
-    await ctx.message.reply(artifacts.map((artifact) => `• **${artifact.name}** (${artifact.rarity}) - ${artifact.keeper}\n  ${artifact.summary}`).join("\n"));
-  }
-});
-
-define({
   name: "registerartifact",
   category: "Chipkittle",
   description: "Staff-only command to add an artifact to the public registry.",
@@ -4224,32 +3874,6 @@ define({
 });
 
 define({
-  name: "artifactsearch",
-  aliases: ["findartifact", "artifactfind"],
-  category: "Chipkittle",
-  description: "Search the artifact registry by name, keeper, rarity, or summary.",
-  usage: "artifactsearch keyword",
-  async run(ctx) {
-    const query = ctx.rest.trim().toLowerCase();
-    if (!query) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-    const matches = (ctx.config.community?.artifacts || [])
-      .filter((artifact) =>
-        [artifact.name, artifact.rarity, artifact.keeper, artifact.summary]
-          .some((field) => String(field || "").toLowerCase().includes(query))
-      )
-      .slice(0, 8);
-    if (!matches.length) {
-      await ctx.message.reply(`No artifacts matched **${ctx.rest.trim()}**.`);
-      return;
-    }
-    await ctx.message.reply(matches.map((artifact) => `• **${artifact.name}** (${artifact.rarity}) - ${artifact.keeper}\n  ${artifact.summary}`).join("\n"));
-  }
-});
-
-define({
   name: "ritualstatus",
   aliases: ["rituals", "communitystatus", "ritualpreview", "ritualinfo", "ritualpanel"],
   category: "Chipkittle",
@@ -4378,7 +4002,7 @@ define({
 
 define({
   name: "rob",
-  aliases: ["breadrob", "stealbread"],
+  aliases: ["breadrob", "stealbread", "mug"],
   category: "Gambling",
   description: "Attempt to steal bread from another member.",
   usage: "rob @user",
@@ -4598,60 +4222,6 @@ define({
     await ctx.message.reply([
       `**Badge Leaderboard**`,
       profiles.map((entry, index) => `${index + 1}. **${entry.name}** - ${entry.badges} badge${entry.badges === 1 ? "" : "s"}`).join("\n")
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "randomprinciple",
-  aliases: ["ruleofthestep", "principleroll"],
-  category: "Chipkittle",
-  description: "Get one random Chipkittle principle.",
-  async run(ctx) {
-    const principle = CHIPKITTLE_LORE.principles[randomInt(0, CHIPKITTLE_LORE.principles.length - 1)];
-    await ctx.message.reply(`**Today's Principle**\n${principle}`);
-  }
-});
-
-define({
-  name: "artifactkeeper",
-  aliases: ["keeper", "findkeeper"],
-  category: "Chipkittle",
-  description: "Find who keeps a specific artifact.",
-  usage: "artifactkeeper artifact name",
-  async run(ctx) {
-    const query = ctx.rest.trim().toLowerCase();
-    if (!query) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-    const artifact = (ctx.config.community?.artifacts || []).find((entry) =>
-      String(entry.name || "").toLowerCase().includes(query)
-    );
-    if (!artifact) {
-      await ctx.message.reply(`No artifact matched **${ctx.rest.trim()}**.`);
-      return;
-    }
-    await ctx.message.reply(`**${artifact.name}** is kept by **${artifact.keeper || "Unknown Keeper"}**.\nRarity: ${artifact.rarity || "Unknown"}\n${artifact.summary || "No summary recorded."}`);
-  }
-});
-
-define({
-  name: "artifactcount",
-  aliases: ["artifactstats", "registrycount"],
-  category: "Chipkittle",
-  description: "Show how many artifacts are registered.",
-  async run(ctx) {
-    const artifacts = ctx.config.community?.artifacts || [];
-    const rarities = artifacts.reduce((map, artifact) => ({
-      ...map,
-      [artifact.rarity || "Unknown"]: (map[artifact.rarity || "Unknown"] || 0) + 1
-    }), {});
-    const rarityLine = Object.entries(rarities).slice(0, 5).map(([rarity, count]) => `${rarity}: ${count}`).join(" | ");
-    await ctx.message.reply([
-      `**Artifact Registry Stats**`,
-      `Total artifacts: **${artifacts.length}**`,
-      rarityLine || "No rarity data yet."
     ].join("\n"));
   }
 });
@@ -5073,28 +4643,6 @@ define({
 });
 
 define({
-  name: "randommember",
-  aliases: ["pickmember", "memberroulette"],
-  category: "Fun",
-  description: "Pick a random member, optionally from a role.",
-  usage: "randommember [@role]",
-  async run(ctx) {
-    const role = mentionRole(ctx.message);
-    const pool = role
-      ? [...role.members.values()].filter((member) => !member.user.bot)
-      : ctx.message.guild.members.cache.filter((member) => !member.user.bot).map((member) => member);
-    if (!pool.length) {
-      await ctx.message.reply("No eligible members were found for that pick.");
-      return;
-    }
-    const winner = pool[randomInt(0, pool.length - 1)];
-    await ctx.message.reply(role
-      ? `Random pick from **${role.name}**: ${winner}`
-      : `Random member: ${winner}`);
-  }
-});
-
-define({
   name: "nickname",
   aliases: ["nick", "setnick"],
   category: "Moderation",
@@ -5200,30 +4748,6 @@ define({
       `**Command Access: ${ctx.config.prefix}${command.name}**`,
       `Category: ${command.category || "Other"}`,
       `Role overrides: ${roleIds.length ? roleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "None"}`
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "artifactrarity",
-  aliases: ["raritysearch", "artifactsbyrarity"],
-  category: "Chipkittle",
-  description: "List artifacts that match a rarity.",
-  usage: "artifactrarity rare",
-  async run(ctx) {
-    const query = ctx.rest.trim().toLowerCase();
-    if (!query) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-    const matches = (communityState(ctx.config).artifacts || [])
-      .filter((artifact) => String(artifact.rarity || "").toLowerCase().includes(query))
-      .slice(0, 12);
-    await ctx.message.reply([
-      `**Artifacts Matching Rarity: ${ctx.rest.trim()}**`,
-      matches.length
-        ? matches.map((artifact) => `• **${artifact.name}** - ${artifact.keeper}`).join("\n")
-        : "No artifacts matched that rarity."
     ].join("\n"));
   }
 });
