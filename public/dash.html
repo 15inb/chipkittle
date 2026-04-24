@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Game</title>
+  <meta name="description" content="Play as a small Chipkittle.">
+  <link rel="icon" type="image/png" href="/notativelogotransparent.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior game-page">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <img src="/notativelogotransparent.png" alt="">
+        <span>chipkittle</span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="/game">Games</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+
+    <section class="page-head game-head">
+      <p class="eyebrow">Artifact run</p>
+      <h1>Chipkittle Dash</h1>
+      <p>Collect glowing artifacts and bread while the curse stones drift across the ceremony floor.</p>
+    </section>
+
+    <section class="game-shell" aria-label="Chipkittle Dash game">
+      <div class="game-stage">
+        <canvas id="chipkittleGame" width="960" height="540" aria-label="Chipkittle Dash playfield"></canvas>
+      </div>
+      <aside class="game-panel">
+        <div class="game-stat">
+          <span>Score</span>
+          <strong id="scoreValue">0</strong>
+        </div>
+        <div class="game-stat">
+          <span>Bread</span>
+          <strong id="breadValue">0</strong>
+        </div>
+        <div class="game-stat">
+          <span>Best</span>
+          <strong id="bestValue">0</strong>
+        </div>
+        <div class="game-controls">
+          <button class="button primary" type="button" id="startGame">Start</button>
+          <button class="button secondary" type="button" id="pauseGame">Pause</button>
+          <button class="button secondary" type="button" id="resetGame">Reset</button>
+        </div>
+        <div class="game-status" id="powerupStatus">Power-up: None</div>
+        <form class="score-form" id="scoreForm" hidden>
+          <label>
+            Add your name
+            <input id="playerName" name="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
+          </label>
+          <button class="button primary" type="submit">Save Score</button>
+        </form>
+        <div class="claim-card" id="claimCard">
+          <span>Discord claim</span>
+          <small>Collect bread, finish a run, then save your score to get a claim code.</small>
+        </div>
+        <div class="leaderboard">
+          <div class="leaderboard-head">
+            <span>Leaderboard</span>
+            <button type="button" id="refreshLeaderboard">Refresh</button>
+          </div>
+          <ol id="leaderboardList"></ol>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const canvas = document.querySelector("#chipkittleGame");
+    const ctx = canvas.getContext("2d");
+    const scoreValue = document.querySelector("#scoreValue");
+    const breadValue = document.querySelector("#breadValue");
+    const bestValue = document.querySelector("#bestValue");
+    const powerupStatus = document.querySelector("#powerupStatus");
+    const startButton = document.querySelector("#startGame");
+    const pauseButton = document.querySelector("#pauseGame");
+    const resetButton = document.querySelector("#resetGame");
+    const scoreForm = document.querySelector("#scoreForm");
+    const playerName = document.querySelector("#playerName");
+    const claimCard = document.querySelector("#claimCard");
+    const leaderboardList = document.querySelector("#leaderboardList");
+    const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
+    const leaderboardUrl = "https://panel.chipkittle.com/api/public/game-leaderboard";
+    const storageKey = "chipkittle-dash-best";
+    const leaderboardKey = "chipkittle-dash-leaderboard";
+    const keys = new Set();
+    const pointer = { active: false, x: 0, y: 0 };
+    const player = {
+      x: 150,
+      y: 270,
+      radius: 28,
+      speed: 320,
+      baseSpeed: 320,
+      shield: false,
+      shieldTimer: 0,
+      speedTimer: 0
+    };
+    const playerFurGradient = (() => {
+      const gradient = ctx.createRadialGradient(0, -4, 6, 0, 0, 44);
+      gradient.addColorStop(0, "#ffffff");
+      gradient.addColorStop(0.55, "#eef0ed");
+      gradient.addColorStop(1, "#cfd4cc");
+      return gradient;
+    })();
+    const backgroundPresets = [
+      { colors: ["#eef6ed", "#d5ddd6", "#8f9898"], stroke: "rgba(26, 138, 56, 0.11)" },
+      { colors: ["#f4f2ea", "#d9c7a2", "#a37a38"], stroke: "rgba(142, 95, 23, 0.12)" },
+      { colors: ["#e8f1fa", "#cbddee", "#8ba6c7"], stroke: "rgba(55, 96, 148, 0.13)" },
+      { colors: ["#f6eaef", "#dfc6d2", "#b67b98"], stroke: "rgba(141, 86, 107, 0.13)" }
+    ];
+    let powerups = [];
+    let score = 0;
+    let bread = 0;
+    let best = Number(localStorage.getItem(storageKey) || 0);
+    let running = false;
+    let gameOver = false;
+    let lastTime = 0;
+    let artifactTimer = 0;
+    let stoneTimer = 0;
+    let bonusTimer = 0;
+    let nextPowerupScore = 200;
+    let scorePrompted = false;
+    let elapsedTime = 0;
+    let audioContext;
+
+    bestValue.textContent = best;
+
+    function safeName(value) {
+      return String(value || "")
+        .replace(/[^\w .#-]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 24) || "Anonymous Chipkittle";
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function ensureAudio() {
+      if (!audioContext && typeof AudioContext !== "undefined") {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    function resumeAudio() {
+      ensureAudio();
+      if (audioContext && audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+    }
+
+    function playTone(freq, type = "sine", duration = 0.12, volume = 0.16) {
+      try {
+        ensureAudio();
+        if (!audioContext) return;
+        const now = audioContext.currentTime;
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.start(now);
+        osc.stop(now + duration + 0.02);
+      } catch (error) {
+        // ignore audio errors
+      }
+    }
+
+    function playSound(name) {
+      switch (name) {
+        case "pickup":
+          playTone(760, "triangle", 0.08, 0.18);
+          break;
+        case "bonus":
+          playTone(980, "sawtooth", 0.16, 0.22);
+          break;
+        case "powerup":
+          playTone(620, "square", 0.16, 0.2);
+          break;
+        case "hit":
+          playTone(180, "sine", 0.24, 0.24);
+          break;
+        case "background":
+          playTone(520, "triangle", 0.14, 0.14);
+          break;
+      }
+    }
+
+    function currentBackgroundPreset() {
+      const index = Math.floor(score / 500) % backgroundPresets.length;
+      return backgroundPresets[index];
+    }
+
+    function spawnPowerup() {
+      const type = Math.random() < 0.5 ? "shield" : "speed";
+      powerups.push({
+        x: canvas.width + 40,
+        y: randomY(60),
+        radius: 18,
+        speed: 160 + Math.random() * 60,
+        type
+      });
+    }
+
+    function maybeSpawnPowerup() {
+      while (score >= nextPowerupScore) {
+        spawnPowerup();
+        nextPowerupScore += 300;
+      }
+    }
+
+    function spawnBonusArtifact() {
+      artifacts.push({
+        x: canvas.width + 40,
+        y: randomY(),
+        radius: 20,
+        speed: 210 + Math.random() * 80,
+        bonus: true,
+        spin: Math.random() * Math.PI
+      });
+    }
+
+    function applyPowerup(item) {
+      if (item.type === "shield") {
+        player.shield = true;
+        player.shieldTimer = 8;
+      } else {
+        player.speed = player.baseSpeed * 1.55;
+        player.speedTimer = 6;
+      }
+      playSound("powerup");
+    }
+
+    function updatePowerupState(dt) {
+      if (player.shieldTimer > 0) {
+        player.shieldTimer -= dt;
+        if (player.shieldTimer <= 0) {
+          player.shield = false;
+        }
+      }
+      if (player.speedTimer > 0) {
+        player.speedTimer -= dt;
+        if (player.speedTimer <= 0) {
+          player.speed = player.baseSpeed;
+        }
+      }
+    }
+
+    function updatePowerupDisplay() {
+      if (player.shield) {
+        powerupStatus.textContent = `Power-up: Shield ${Math.ceil(player.shieldTimer)}s`;
+      } else if (player.speedTimer > 0) {
+        powerupStatus.textContent = `Power-up: Speed ${Math.ceil(player.speedTimer)}s`;
+      } else {
+        powerupStatus.textContent = "Power-up: None";
+      }
+    }
+
+    function drawPowerup(item) {
+      ctx.save();
+      ctx.translate(item.x, item.y);
+      if (item.type === "shield") {
+        ctx.fillStyle = "#4f91f2";
+        ctx.strokeStyle = "#c3e1ff";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, item.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "#f2d34f";
+        ctx.strokeStyle = "#c18f1f";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, -item.radius);
+        ctx.lineTo(item.radius * 0.45, -item.radius * 0.2);
+        ctx.lineTo(item.radius, 0);
+        ctx.lineTo(item.radius * 0.35, item.radius * 0.1);
+        ctx.lineTo(item.radius * 0.55, item.radius);
+        ctx.lineTo(0, item.radius * 0.35);
+        ctx.lineTo(-item.radius * 0.55, item.radius);
+        ctx.lineTo(-item.radius * 0.35, item.radius * 0.1);
+        ctx.lineTo(-item.radius, 0);
+        ctx.lineTo(-item.radius * 0.45, -item.radius * 0.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawBackground() {
+      const preset = currentBackgroundPreset();
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, preset.colors[0]);
+      gradient.addColorStop(0.55, preset.colors[1]);
+      gradient.addColorStop(1, preset.colors[2]);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = preset.stroke;
+      ctx.lineWidth = 2;
+      const lineGap = 72 - Math.min(30, Math.floor(score / 500) * 4);
+      for (let x = -80; x < canvas.width + 120; x += lineGap) {
+        ctx.beginPath();
+        ctx.moveTo(x, canvas.height);
+        ctx.lineTo(x + 250, 0);
+        ctx.stroke();
+      }
+      for (let y = 70; y < canvas.height; y += lineGap) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y + 30);
+        ctx.stroke();
+      }
+    }
+
+    function loadLeaderboard() {
+      try {
+        const scores = JSON.parse(localStorage.getItem(leaderboardKey) || "[]");
+        return Array.isArray(scores) ? scores : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveLocalLeaderboard(scores) {
+      localStorage.setItem(leaderboardKey, JSON.stringify(scores.slice(0, 10)));
+    }
+
+    function renderLeaderboard(scores = loadLeaderboard()) {
+      if (!scores.length) {
+        leaderboardList.innerHTML = '<li><span>No runs saved yet</span><strong>0</strong></li>';
+        return;
+      }
+
+      leaderboardList.innerHTML = scores
+        .slice(0, 10)
+        .map((entry) => `
+          <li>
+            <span>${escapeHtml(safeName(entry.name))}</span>
+            <strong>${Number(entry.score) || 0}</strong>
+          </li>
+        `)
+        .join("");
+    }
+
+    function setClaimCard(message, code = "", amount = 0) {
+      claimCard.hidden = false;
+      claimCard.innerHTML = code
+        ? `
+          <span>Discord claim</span>
+          <strong>${escapeHtml(code)}</strong>
+          <small>Use <code>!claimdash ${escapeHtml(code)}</code> for ${Number(amount) || 0} bread.</small>
+        `
+        : `
+          <span>Discord claim</span>
+          <small>${escapeHtml(message)}</small>
+        `;
+    }
+
+    async function loadPublicLeaderboard() {
+      try {
+        const response = await fetch(leaderboardUrl, { cache: "no-store" });
+        if (!response.ok) throw new Error("Leaderboard request failed.");
+        const payload = await response.json();
+        if (!Array.isArray(payload.scores)) throw new Error("Leaderboard response was invalid.");
+        saveLocalLeaderboard(payload.scores);
+        renderLeaderboard(payload.scores);
+      } catch {
+        renderLeaderboard();
+      }
+    }
+
+    async function submitScore(name) {
+      if (score <= 0) return;
+      const entry = {
+        name: safeName(name),
+        score,
+        bread,
+        createdAt: new Date().toISOString()
+      };
+      const localScores = [...loadLeaderboard(), entry].sort((a, b) => b.score - a.score || b.bread - a.bread);
+      saveLocalLeaderboard(localScores);
+      renderLeaderboard(localScores);
+      scoreForm.hidden = true;
+
+      try {
+        const response = await fetch(leaderboardUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(entry)
+        });
+        if (!response.ok) throw new Error("Leaderboard save failed.");
+        const payload = await response.json();
+        if (Array.isArray(payload.scores)) {
+          saveLocalLeaderboard(payload.scores);
+          renderLeaderboard(payload.scores);
+        }
+        if (payload.claimCode && Number(payload.claimBread) > 0) {
+          setClaimCard("", payload.claimCode, payload.claimBread);
+        } else if (bread > 0) {
+          setClaimCard("Your score saved, but no claim code came back. Try refreshing and saving another run.");
+        } else {
+          setClaimCard("No claim code for this run because it ended with 0 bread.");
+        }
+      } catch {
+        renderLeaderboard(localScores);
+        setClaimCard("The leaderboard save failed, so no claim code was created. Try again in a moment.");
+      }
+    }
+
+    function resetGame() {
+      player.x = 150;
+      player.y = canvas.height / 2;
+      player.speed = player.baseSpeed;
+      player.shield = false;
+      player.shieldTimer = 0;
+      player.speedTimer = 0;
+      artifacts = [];
+      stones = [];
+      powerups = [];
+      score = 0;
+      bread = 0;
+      artifactTimer = 0;
+      stoneTimer = 0;
+      bonusTimer = 120 + Math.random() * 30;
+      nextPowerupScore = 200;
+      elapsedTime = 0;
+      gameOver = false;
+      scorePrompted = false;
+      scoreForm.hidden = true;
+      setClaimCard("Collect bread, finish a run, then save your score to get a claim code.");
+      updateStats();
+      draw();
+    }
+
+    function updateStats() {
+      scoreValue.textContent = score;
+      breadValue.textContent = bread;
+      bestValue.textContent = best;
+      updatePowerupDisplay();
+    }
+
+    function randomY(padding = 45) {
+      return padding + Math.random() * (canvas.height - padding * 2);
+    }
+
+    function timeMultiplier() {
+      return 1 + Math.min(1.4, elapsedTime / 60);
+    }
+
+    function spawnArtifact() {
+      const breadDrop = Math.random() > 0.72;
+      artifacts.push({
+        x: canvas.width + 40,
+        y: randomY(),
+        radius: breadDrop ? 16 : 18,
+        speed: 190 + Math.random() * 70,
+        bread: breadDrop,
+        spin: Math.random() * Math.PI
+      });
+    }
+
+    function spawnBonusArtifact() {
+      artifacts.push({
+        x: canvas.width + 40,
+        y: randomY(),
+        radius: 20,
+        speed: 210 + Math.random() * 80,
+        bonus: true,
+        spin: Math.random() * Math.PI
+      });
+    }
+
+    function spawnStone() {
+      const difficulty = timeMultiplier();
+      const stoneCount = elapsedTime > 90 && Math.random() < 0.22 ? 2 : 1;
+      for (let i = 0; i < stoneCount; i += 1) {
+        stones.push({
+          x: canvas.width + 48 + i * 28,
+          y: randomY(52),
+          radius: 22 + Math.random() * 10 + difficulty * 1.6,
+          speed: (210 + Math.random() * 110) * difficulty,
+          wobble: Math.random() * Math.PI * 2
+        });
+      }
+    }
+
+    function distanceSq(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return dx * dx + dy * dy;
+    }
+
+    function update(dt) {
+      if (!running || gameOver) return;
+
+      const move = { x: 0, y: 0 };
+      if (keys.has("ArrowLeft") || keys.has("a")) move.x -= 1;
+      if (keys.has("ArrowRight") || keys.has("d")) move.x += 1;
+      if (keys.has("ArrowUp") || keys.has("w")) move.y -= 1;
+      if (keys.has("ArrowDown") || keys.has("s")) move.y += 1;
+
+      if (pointer.active) {
+        const dx = pointer.x - player.x;
+        const dy = pointer.y - player.y;
+        const length = Math.hypot(dx, dy);
+        if (length > 4) {
+          move.x += dx / length;
+          move.y += dy / length;
+        }
+      }
+
+      const length = Math.hypot(move.x, move.y) || 1;
+      player.x += (move.x / length) * player.speed * dt;
+      player.y += (move.y / length) * player.speed * dt;
+      player.x = Math.max(player.radius + 8, Math.min(canvas.width - player.radius - 8, player.x));
+      player.y = Math.max(player.radius + 8, Math.min(canvas.height - player.radius - 8, player.y));
+
+      elapsedTime += dt;
+      artifactTimer -= dt;
+      stoneTimer -= dt;
+      bonusTimer -= dt;
+      if (artifactTimer <= 0) {
+        spawnArtifact();
+        artifactTimer = 0.7 + Math.random() * 0.55;
+      }
+      if (stoneTimer <= 0) {
+        spawnStone();
+        stoneTimer = Math.max(0.34, 1.15 - elapsedTime * 0.015) / timeMultiplier() + Math.random() * 0.45;
+      }
+      if (bonusTimer <= 0) {
+        spawnBonusArtifact();
+        bonusTimer = 120 + Math.random() * 40;
+      }
+
+      artifacts.forEach((item) => {
+        item.x -= item.speed * dt;
+        item.spin += dt * 4;
+      });
+      powerups.forEach((item) => {
+        item.x -= item.speed * dt;
+      });
+      stones.forEach((stone) => {
+        stone.x -= stone.speed * dt;
+        stone.y += Math.sin(performance.now() / 280 + stone.wobble) * 0.7;
+      });
+
+      artifacts = artifacts.filter((item) => {
+        const combined = player.radius + item.radius;
+        if (distanceSq(player, item) < combined * combined) {
+          if (item.bread) bread += 1;
+          score += item.bonus ? 20 : item.bread ? 5 : 10;
+          playSound(item.bonus ? "bonus" : "pickup");
+          if (score > best) {
+            best = score;
+            localStorage.setItem(storageKey, String(best));
+          }
+          maybeSpawnPowerup();
+          updateStats();
+          return false;
+        }
+        return item.x > -50;
+      });
+
+      powerups = powerups.filter((item) => {
+        const combined = player.radius + item.radius;
+        if (distanceSq(player, item) < combined * combined) {
+          applyPowerup(item);
+          return false;
+        }
+        return item.x > -50;
+      });
+
+      for (const stone of stones) {
+        const combined = player.radius + stone.radius - 4;
+        if (distanceSq(player, stone) < combined * combined) {
+          if (player.shield) {
+            player.shield = false;
+            player.shieldTimer = 0;
+            playSound("pickup");
+            stone.x = -100;
+            continue;
+          }
+          playSound("hit");
+          gameOver = true;
+          running = false;
+          if (!scorePrompted && score > 0) {
+            scorePrompted = true;
+            scoreForm.hidden = false;
+            setClaimCard(bread > 0 ? "Save your score now to create a Discord claim code." : "This run has 0 bread, so there is nothing to claim.");
+            playerName.focus();
+          }
+          break;
+        }
+      }
+      stones = stones.filter((stone) => stone.x > -70);
+      updatePowerupState(dt);
+      updatePowerupDisplay();
+    }
+
+    function draw() {
+      drawBackground();
+      powerups.forEach(drawPowerup);
+      artifacts.forEach(drawArtifact);
+      stones.forEach(drawStone);
+      drawChipkittle();
+      drawOverlay();
+    }
+
+    function drawChipkittle() {
+      ctx.save();
+      ctx.translate(player.x, player.y);
+
+      ctx.fillStyle = playerFurGradient;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 42, 46, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#111917";
+      ctx.beginPath();
+      ctx.ellipse(-12, -12, 8, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(12, -12, 8, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#90f37a";
+      ctx.beginPath();
+      ctx.arc(-12, -12, 2.5, 0, Math.PI * 2);
+      ctx.arc(12, -12, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#f1d0bd";
+      ctx.beginPath();
+      ctx.ellipse(0, 18, 18, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#111917";
+      ctx.font = "700 12px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("Chipkittle", 0, 38);
+
+      ctx.restore();
+    }
+
+    function drawArtifact(item) {
+      ctx.save();
+      ctx.translate(item.x, item.y);
+      ctx.rotate(item.spin);
+      if (item.bread) {
+        ctx.fillStyle = "#d69a3c";
+        ctx.strokeStyle = "#8d5a20";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(-17, -12, 34, 24, 8);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.45)";
+        ctx.fillRect(-9, -6, 18, 4);
+      } else if (item.bonus) {
+        ctx.shadowColor = "#f0d54b";
+        ctx.shadowBlur = 26;
+        ctx.fillStyle = "#f7d25a";
+        ctx.beginPath();
+        ctx.moveTo(0, -28);
+        ctx.lineTo(10, -4);
+        ctx.lineTo(28, -2);
+        ctx.lineTo(14, 10);
+        ctx.lineTo(18, 26);
+        ctx.lineTo(0, 18);
+        ctx.lineTo(-18, 26);
+        ctx.lineTo(-14, 10);
+        ctx.lineTo(-28, -2);
+        ctx.lineTo(-10, -4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#8b6a11";
+        ctx.beginPath();
+        ctx.moveTo(-6, -8);
+        ctx.lineTo(0, 4);
+        ctx.lineTo(6, -4);
+        ctx.lineTo(4, 12);
+        ctx.lineTo(0, 2);
+        ctx.lineTo(-6, 4);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.shadowColor = "#65d64a";
+        ctx.shadowBlur = 24;
+        ctx.fillStyle = "#66dc62";
+        ctx.beginPath();
+        ctx.moveTo(0, -25);
+        ctx.quadraticCurveTo(9, -9, 25, 0);
+        ctx.quadraticCurveTo(9, 9, 0, 25);
+        ctx.quadraticCurveTo(-9, 9, -25, 0);
+        ctx.quadraticCurveTo(-9, -9, 0, -25);
+        ctx.fill();
+        ctx.fillStyle = "#073d1e";
+        ctx.beginPath();
+        ctx.moveTo(0, -11);
+        ctx.lineTo(12, 0);
+        ctx.lineTo(0, 11);
+        ctx.lineTo(-12, 0);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawStone(stone) {
+      ctx.save();
+      ctx.translate(stone.x, stone.y);
+      ctx.fillStyle = "#1a211f";
+      ctx.strokeStyle = "#4b5550";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-stone.radius, -6);
+      ctx.quadraticCurveTo(-10, -stone.radius, 12, -stone.radius + 6);
+      ctx.quadraticCurveTo(stone.radius, 4, 7, stone.radius);
+      ctx.quadraticCurveTo(-16, stone.radius - 2, -stone.radius, -6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawOverlay() {
+      if (!running && !gameOver && score === 0 && bread === 0) {
+        ctx.fillStyle = "rgba(255,255,255,0.72)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#101915";
+        ctx.font = "900 58px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText("Chipkittle Dash", canvas.width / 2, canvas.height / 2 - 14);
+      }
+      if (gameOver) {
+        ctx.fillStyle = "rgba(5,12,10,0.62)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "900 58px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText("The ritual slipped", canvas.width / 2, canvas.height / 2 - 10);
+        ctx.font = "800 24px system-ui";
+        ctx.fillText(`Score ${score} · Bread ${bread}`, canvas.width / 2, canvas.height / 2 + 34);
+      }
+    }
+
+    function draw() {
+      drawBackground();
+      artifacts.forEach(drawArtifact);
+      stones.forEach(drawStone);
+      drawChipkittle();
+      drawOverlay();
+    }
+
+    function loop(time) {
+      const dt = Math.min((time - lastTime) / 1000 || 0, 0.033);
+      lastTime = time;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    startButton.addEventListener("click", () => {
+      resumeAudio();
+      if (gameOver) resetGame();
+      running = true;
+    });
+    pauseButton.addEventListener("click", () => {
+      running = !running;
+      pauseButton.textContent = running ? "Pause" : "Resume";
+    });
+    resetButton.addEventListener("click", () => {
+      running = false;
+      pauseButton.textContent = "Pause";
+      resetGame();
+    });
+    scoreForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitScore(playerName.value);
+    });
+    refreshLeaderboard.addEventListener("click", loadPublicLeaderboard);
+
+    window.addEventListener("keydown", (event) => {
+      resumeAudio();
+      keys.add(event.key);
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(event.key)) {
+        event.preventDefault();
+      }
+      if (event.key === " ") running = true;
+    });
+    window.addEventListener("keyup", (event) => keys.delete(event.key));
+
+    function pointerPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      const point = event.touches?.[0] || event;
+      pointer.x = (point.clientX - rect.left) * (canvas.width / rect.width);
+      pointer.y = (point.clientY - rect.top) * (canvas.height / rect.height);
+    }
+
+    canvas.addEventListener("pointerdown", (event) => {
+      resumeAudio();
+      pointer.active = true;
+      pointerPosition(event);
+      running = true;
+    });
+    canvas.addEventListener("pointermove", pointerPosition);
+    canvas.addEventListener("pointerup", () => {
+      pointer.active = false;
+    });
+    canvas.addEventListener("pointerleave", () => {
+      pointer.active = false;
+    });
+
+    resetGame();
+    loadPublicLeaderboard();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

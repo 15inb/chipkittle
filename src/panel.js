@@ -248,6 +248,46 @@ function writeGameLeaderboard(entries = []) {
   fs.renameSync(`${filePath}.tmp`, filePath);
 }
 
+function deleteGameLeaderboardEntry(index) {
+  const entries = publicLeaderboardEntries(readGameLeaderboard());
+  entries.splice(index, 1);
+  writeGameLeaderboard(entries);
+  return entries;
+}
+
+function gameLeaderboardControls(guildId = "") {
+  const entries = publicLeaderboardEntries(readGameLeaderboard());
+  return `
+    <section class="panel-section leaderboard-admin">
+      <div class="section-heading">
+        <h2>Dash Leaderboard</h2>
+        <p>Remove saved Chipkittle Dash scores from the public leaderboard.</p>
+      </div>
+      ${
+        entries.length
+          ? `<div class="leaderboard-admin-list">
+              ${entries
+                .map(
+                  (entry, index) => `
+                    <div class="leaderboard-admin-row">
+                      <div>
+                        <strong>${escapeHtml(entry.name)}</strong>
+                        <small>Score ${escapeHtml(entry.score)} / Bread ${escapeHtml(entry.bread)}</small>
+                      </div>
+                      <form method="post" action="/admin/game-leaderboard/delete?guildId=${encodeURIComponent(guildId)}" class="inline-form">
+                        <input type="hidden" name="index" value="${index}">
+                        <button type="submit" class="danger-button">Remove</button>
+                      </form>
+                    </div>`
+                )
+                .join("")}
+            </div>`
+          : '<p class="muted">No Dash scores are saved yet.</p>'
+      }
+    </section>
+  `;
+}
+
 function parseConfigForm(body) {
   const aiChannelIds = arrayFromFormValue(body.aiChannelIds);
   const aiBlacklistedChannelIds = arrayFromFormValue(body.aiBlacklistedChannelIds);
@@ -847,6 +887,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
 
           <section class="${sectionClass("server", currentSection)}">
             ${updateControls()}
+            ${gameLeaderboardControls(guild.id)}
           </section>
         </div>
       </div>
@@ -1156,6 +1197,15 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       console.error("Could not start panel restart:", error);
       response.redirect(`${updateRedirectTarget(request)}restart-failed`);
     }
+  });
+
+  app.post("/admin/game-leaderboard/delete", requireAuth, (request, response) => {
+    const index = Math.floor(Number(request.body?.index));
+    if (Number.isInteger(index) && index >= 0) {
+      deleteGameLeaderboardEntry(index);
+    }
+    const targetGuildId = String(request.query.guildId || "");
+    response.redirect(targetGuildId ? `/guilds/${encodeURIComponent(targetGuildId)}?section=server&saved=1` : "/?section=server");
   });
 
   app.post("/guilds/:guildId/config", requireAuth, async (request, response, next) => {

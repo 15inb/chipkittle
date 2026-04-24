@@ -280,6 +280,15 @@ button:hover {
   background: var(--surface-3);
 }
 
+.danger-button {
+  background: var(--danger);
+  color: #1b0505;
+}
+
+.danger-button:hover {
+  background: #ff9a9a;
+}
+
 .guild-icon img {
   width: 100%;
   height: 100%;
@@ -618,6 +627,32 @@ textarea:focus {
   gap: 10px;
 }
 
+.leaderboard-admin-list {
+  display: grid;
+  gap: 8px;
+}
+
+.leaderboard-admin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 12px;
+}
+
+.leaderboard-admin-row strong,
+.leaderboard-admin-row small {
+  display: block;
+}
+
+.leaderboard-admin-row small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
 .server-update-card {
   margin-bottom: 0;
 }
@@ -751,7 +786,8 @@ code {
   }
 
   .metrics,
-  .commit-row {
+  .commit-row,
+  .leaderboard-admin-row {
     grid-template-columns: 1fr;
   }
 }

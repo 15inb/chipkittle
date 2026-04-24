@@ -658,6 +658,7 @@ a {
 
 .directory,
 .commit-shell,
+.games-hub,
 .game-shell {
   padding-bottom: clamp(56px, 8vw, 104px);
 }
@@ -670,31 +671,71 @@ a {
   padding-bottom: 24px;
 }
 
-.game-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 0 clamp(20px, 5vw, 80px) 18px;
+.games-hub {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding-inline: clamp(20px, 5vw, 80px);
 }
 
-.game-tab {
-  min-height: 46px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 18px;
+.game-card {
+  min-height: 360px;
+  display: grid;
+  align-content: end;
+  gap: 22px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 14px;
+  padding: clamp(24px, 4vw, 38px);
   background: var(--card-bg);
-  color: var(--soft-ink);
-  font-size: 14px;
-  font-weight: 900;
+  box-shadow: 0 30px 86px rgba(16, 25, 21, 0.16);
+  backdrop-filter: blur(18px);
 }
 
-.game-tab.is-active {
-  border-color: rgba(26, 138, 56, 0.28);
-  background: var(--green);
-  color: var(--white);
+.game-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-image: var(--game-card-art);
+  background-position: center;
+  background-size: cover;
+  opacity: 0.42;
+}
+
+.game-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(5, 12, 10, 0.04), var(--card-bg) 78%);
+}
+
+.dash-card {
+  --game-card-art: url("/assets/chipkittle-hero.png");
+}
+
+.eight-card {
+  --game-card-art: url("/notativelogotransparent.png");
+}
+
+.game-card h2 {
+  margin: 0 0 10px;
+  font-size: clamp(34px, 4vw, 58px);
+  line-height: 0.96;
+}
+
+.game-card p:not(.eyebrow) {
+  max-width: 520px;
+  margin: 0;
+  color: var(--soft-ink);
+  font-size: 19px;
+  line-height: 1.5;
+}
+
+.game-card .button {
+  width: fit-content;
 }
 
 .game-shell {
@@ -1132,6 +1173,7 @@ a {
 
   .member-card,
   .commit-row,
+  .games-hub,
   .game-shell {
     grid-template-columns: 1fr;
   }

@@ -14,6 +14,18 @@
     {
       "source": "/commits",
       "destination": "/commits.html"
+    },
+    {
+      "source": "/game",
+      "destination": "/game.html"
+    },
+    {
+      "source": "/dash",
+      "destination": "/dash.html"
+    },
+    {
+      "source": "/8ball",
+      "destination": "/8ball.html"
     }
   ]
 }
