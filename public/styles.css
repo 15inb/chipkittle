@@ -638,6 +638,35 @@ textarea:focus {
   font-weight: 800;
 }
 
+.filter-pills,
+.case-meta,
+.case-row-actions,
+.mini-stats {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.filter-pills {
+  gap: 10px;
+}
+
+.filter-pill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.filter-pill.is-active,
+.filter-pill:hover {
+  border-color: rgba(89, 215, 138, 0.45);
+  background: rgba(89, 215, 138, 0.12);
+  color: var(--text);
+}
+
 .leaderboard-admin-list {
   display: grid;
   gap: 8px;
@@ -840,13 +869,17 @@ code {
 }
 
 .member-editor-list,
-.member-chip-grid {
+.member-chip-grid,
+.case-table,
+.warning-ledger {
   display: grid;
   gap: 12px;
 }
 
 .member-editor-row,
-.member-mini-card {
+.member-mini-card,
+.case-row,
+.warning-row {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface-2);
@@ -882,6 +915,99 @@ code {
   padding: 16px;
   display: grid;
   gap: 8px;
+}
+
+.case-row,
+.warning-row {
+  padding: 16px;
+}
+
+.case-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+.case-row-main,
+.warning-row-main {
+  display: grid;
+  gap: 8px;
+}
+
+.case-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.case-status {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.case-status.is-open {
+  background: rgba(247, 198, 106, 0.16);
+  color: var(--warning);
+}
+
+.case-status.is-closed {
+  background: rgba(89, 215, 138, 0.14);
+  color: var(--accent);
+}
+
+.case-meta {
+  gap: 8px;
+}
+
+.case-meta span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.case-row-main p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.case-notes summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.case-row-actions {
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.warning-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+.warning-row-main small {
+  color: var(--muted);
+}
+
+.warning-row ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
 }
 
 .member-mini-card small,
@@ -973,7 +1099,9 @@ code {
   }
 
   .member-editor-row,
-  .member-editor-fields {
+  .member-editor-fields,
+  .case-row,
+  .warning-row {
     grid-template-columns: 1fr;
   }
 

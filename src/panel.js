@@ -12,7 +12,8 @@ import {
   communitySnapshot,
   parseArtifactDirectory,
   publicMemberCards,
-  topCommands
+  topCommands,
+  updateCase
 } from "./communityFeatures.js";
 import { CHIPKITTLE_LORE } from "./chipkittleLore.js";
 import { createDashClaim } from "./dashClaims.js";
@@ -187,6 +188,7 @@ function updateControls() {
         </form>
         <a class="primary-link secondary-link" href="/admin/export/config">Export config</a>
         <a class="primary-link secondary-link" href="/admin/export/community">Export community</a>
+        <a class="primary-link secondary-link" href="/admin/export/moderation">Export moderation</a>
         <a class="primary-link secondary-link" href="/admin/export/full">Full backup snapshot</a>
       </div>
       ${
@@ -201,6 +203,22 @@ function updateControls() {
       }
     </section>
   `;
+}
+
+function shortDurationLabel(value) {
+  const ms = Math.max(Number(value) || 0, 0);
+  if (!ms) return "";
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  return `${days}d`;
+}
+
+function normalizeCaseStatusFilter(value = "") {
+  const normalized = String(value || "").toLowerCase();
+  return ["open", "closed", "all"].includes(normalized) ? normalized : "open";
 }
 
 function moderationCenter(config = {}) {
@@ -256,6 +274,83 @@ function moderationCenter(config = {}) {
           }
         </div>
       </div>
+    </section>
+  `;
+}
+
+function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
+  const filter = normalizeCaseStatusFilter(caseStatus);
+  const warnings = Object.entries(config.moderation?.warnings || {})
+    .map(([userId, entries]) => ({
+      userId,
+      entries: Array.isArray(entries) ? entries : []
+    }))
+    .filter((entry) => entry.entries.length)
+    .sort((a, b) => b.entries.length - a.entries.length || a.userId.localeCompare(b.userId));
+  const cases = (Array.isArray(config.community?.cases) ? config.community.cases : [])
+    .map((entry) => ({
+      ...entry,
+      isClosed: String(entry.status || "open").toLowerCase() === "closed"
+    }))
+    .filter((entry) => (filter === "all" ? true : filter === "closed" ? entry.isClosed : !entry.isClosed))
+    .slice(0, 18);
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Case Queue</h2>
+        <p>Browse recorded moderation cases and close them from the panel when they are resolved.</p>
+      </div>
+      <div class="filter-pills">
+        ${["open", "closed", "all"].map((value) => `<a class="filter-pill ${filter === value ? "is-active" : ""}" href="/guilds/${guildId}?section=moderation&caseStatus=${value}">${escapeHtml(value[0].toUpperCase() + value.slice(1))}</a>`).join("")}
+      </div>
+      ${
+        cases.length
+          ? `<div class="case-table">${cases.map((entry) => `
+              <article class="case-row">
+                <div class="case-row-main">
+                  <div class="case-row-head">
+                    <strong>Case #${escapeHtml(entry.id)} • ${escapeHtml(entry.action || "action")}</strong>
+                    <span class="case-status ${entry.isClosed ? "is-closed" : "is-open"}">${escapeHtml(entry.status || (entry.isClosed ? "closed" : "open"))}</span>
+                  </div>
+                  <div class="case-meta">
+                    <span>Target: ${escapeHtml(entry.targetTag || entry.targetId || "Unknown target")}</span>
+                    <span>Moderator: ${escapeHtml(entry.moderatorTag || entry.moderatorId || "Unknown")}</span>
+                    <span>${escapeHtml(entry.createdAt || "")}</span>
+                    ${entry.durationMs ? `<span>Duration: ${escapeHtml(shortDurationLabel(entry.durationMs))}</span>` : ""}
+                    ${entry.updates?.length ? `<span>${escapeHtml(entry.updates.length)} note${entry.updates.length === 1 ? "" : "s"}</span>` : ""}
+                  </div>
+                  <p>${escapeHtml(entry.reason || "No reason recorded.")}</p>
+                  ${entry.updates?.length ? `<details class="case-notes"><summary>Case notes</summary><div class="stack-list">${entry.updates.map((note) => `<div class="audit-row"><strong>${escapeHtml(note.authorTag || "Staff")}</strong><small>${escapeHtml(note.createdAt || "")}</small><p>${escapeHtml(note.note || "")}</p></div>`).join("")}</div></details>` : ""}
+                </div>
+                <div class="case-row-actions">
+                  ${entry.isClosed ? '<span class="muted">Closed</span>' : `<form method="post" action="/guilds/${guildId}/cases/${entry.id}/close?section=moderation&caseStatus=${filter}"><button type="submit" class="secondary-button">Mark closed</button></form>`}
+                </div>
+              </article>
+            `).join("")}</div>`
+          : '<p class="muted">No cases match this filter.</p>'
+      }
+    </section>
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Warning Ledger</h2>
+        <p>See every member with active warnings and clear them from the panel when needed.</p>
+      </div>
+      ${
+        warnings.length
+          ? `<div class="warning-ledger">${warnings.map((entry) => `
+              <article class="warning-row">
+                <div class="warning-row-main">
+                  <strong>${escapeHtml(entry.userId)}</strong>
+                  <small>${escapeHtml(entry.entries.length)} active warning${entry.entries.length === 1 ? "" : "s"}</small>
+                  <ul>${entry.entries.slice(-5).reverse().map((reason) => `<li>${escapeHtml(reason || "Warning recorded")}</li>`).join("")}</ul>
+                </div>
+                <form method="post" action="/guilds/${guildId}/warnings/${entry.userId}/clear?section=moderation">
+                  <button type="submit" class="secondary-button">Clear warnings</button>
+                </form>
+              </article>
+            `).join("")}</div>`
+          : '<p class="muted">No active warnings to review.</p>'
+      }
     </section>
   `;
 }
@@ -972,10 +1067,11 @@ function settingsNav(guildId, activeSection) {
   `;
 }
 
-function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general" }) {
+function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general", caseStatus = "open" }) {
   const currentSection = normalizeSettingsSection(activeSection);
   const currentMeta = activeSectionMeta(currentSection);
   const gameSettings = publicGameSettings(config);
+  const moderationCaseStatus = normalizeCaseStatusFilter(caseStatus);
   const memberDirectoryScript = `
     <script>
       (() => {
@@ -1136,6 +1232,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
             <section class="${sectionClass("moderation", currentSection)}">
               <div class="settings-stack">
                 ${moderationCenter(config)}
+                ${moderationWorkspace(guild.id, config, moderationCaseStatus)}
                 <section class="panel-section">
                   <div class="section-heading">
                     <h2>Automod</h2>
@@ -1764,7 +1861,8 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       defaultAiModel,
       ai,
       flash: flashFromQuery(request.query),
-      activeSection: normalizeSettingsSection(String(request.query.section || ""))
+      activeSection: normalizeSettingsSection(String(request.query.section || "")),
+      caseStatus: normalizeCaseStatusFilter(String(request.query.caseStatus || ""))
     }));
   });
 
@@ -1839,11 +1937,77 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     downloadJson(response, "chipkittle-community-export.json", payload);
   });
 
+  app.get("/admin/export/moderation", requireAuth, (_request, response) => {
+    const payload = Object.fromEntries(
+      Object.entries(store.data?.guilds || {}).map(([guildEntryId, config]) => [
+        guildEntryId,
+        {
+          warnings: config.moderation?.warnings || {},
+          cases: config.community?.cases || [],
+          auditLog: config.community?.auditLog || [],
+          exportedAt: new Date().toISOString()
+        }
+      ])
+    );
+    downloadJson(response, "chipkittle-moderation-export.json", payload);
+  });
+
   app.get("/admin/export/full", requireAuth, (_request, response) => {
     downloadJson(response, "chipkittle-backup-snapshot.json", {
       generatedAt: new Date().toISOString(),
       guilds: store.data?.guilds || {}
     });
+  });
+
+  app.post("/guilds/:guildId/cases/:caseId/close", requireAuth, async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      await updateCase(store, discordGuild.id, Number(request.params.caseId), (entry) => ({
+        ...entry,
+        status: "closed",
+        updates: [
+          {
+            authorTag: "Panel",
+            note: "Case closed from the web panel.",
+            createdAt: new Date().toISOString()
+          },
+          ...(entry.updates || [])
+        ].slice(0, 12)
+      }));
+      await addAuditLog(store, discordGuild.id, {
+        type: "case",
+        label: "Case closed from panel",
+        details: `Closed case #${request.params.caseId} from the web panel.`,
+        actor: "Panel"
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=moderation&caseStatus=${normalizeCaseStatusFilter(String(request.query.caseStatus || ""))}`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/warnings/:userId/clear", requireAuth, async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      await store.clearWarnings(discordGuild.id, String(request.params.userId || ""));
+      await addAuditLog(store, discordGuild.id, {
+        type: "warning",
+        label: "Warnings cleared from panel",
+        details: `Cleared warnings for ${request.params.userId} from the web panel.`,
+        actor: "Panel"
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=moderation`);
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.post("/admin/game-leaderboard/delete", requireAuth, (request, response) => {
