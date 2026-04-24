@@ -10,11 +10,11 @@
   --about-bg: #e8eee8;
   --card-bg: rgba(255, 255, 255, 0.72);
   --card-hover: rgba(255, 255, 255, 0.92);
-  --hero-radial: rgba(97, 216, 66, 0.26);
-  --hero-radial-soft: rgba(97, 216, 66, 0.1);
-  --hero-wash-start: rgba(250, 252, 247, 0.98);
-  --hero-wash-mid: rgba(250, 252, 247, 0.9);
-  --hero-wash-glass: rgba(250, 252, 247, 0.3);
+  --hero-radial: rgba(97, 216, 66, 0.2);
+  --hero-radial-soft: rgba(97, 216, 66, 0.08);
+  --hero-wash-start: rgba(250, 252, 247, 0.84);
+  --hero-wash-mid: rgba(250, 252, 247, 0.54);
+  --hero-wash-glass: rgba(250, 252, 247, 0.08);
   --hero-wash-end: rgba(250, 252, 247, 0);
   --interior-wash: linear-gradient(90deg, rgba(250, 252, 247, 0.98), rgba(250, 252, 247, 0.9) 48%, rgba(250, 252, 247, 0.72));
   --green: #1a8a38;
@@ -87,8 +87,8 @@ a {
   inset: 0;
   z-index: -2;
   background-image:
-    radial-gradient(circle at 51% 42%, var(--hero-radial) 0 10%, var(--hero-radial-soft) 19%, transparent 34%),
-    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 34%, var(--hero-wash-glass) 63%, var(--hero-wash-end) 100%),
+    radial-gradient(circle at 60% 48%, var(--hero-radial) 0 11%, var(--hero-radial-soft) 22%, transparent 40%),
+    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 24%, var(--hero-wash-glass) 48%, var(--hero-wash-end) 74%),
     url("/assets/ckwebsitebg3.png");
   background-repeat: no-repeat;
   background-size: cover, cover, auto 100%;
@@ -104,10 +104,10 @@ a {
 
 .hero-logo-overlay {
   position: absolute;
-  left: clamp(59%, 64vw, 69%);
-  top: clamp(50%, 55vh, 58%);
+  left: clamp(60%, 65vw, 70%);
+  top: clamp(49%, 54vh, 57%);
   z-index: -1;
-  width: clamp(220px, 18vw, 320px);
+  width: clamp(250px, 20vw, 360px);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -117,17 +117,23 @@ a {
   width: 100%;
   height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 26px 52px rgba(97, 216, 66, 0.34));
-  animation: hero-logo-hover 4.6s ease-in-out infinite;
+  filter: drop-shadow(0 30px 58px rgba(97, 216, 66, 0.38));
+  animation: hero-logo-hover 5.4s cubic-bezier(0.42, 0, 0.18, 1) infinite;
 }
 
 @keyframes hero-logo-hover {
   0%,
   100% {
-    transform: translateY(0) scale(1);
+    transform: translateY(0) scale(1) rotate(-3deg);
+  }
+  25% {
+    transform: translateY(-10px) scale(1.03) rotate(1deg);
   }
   50% {
-    transform: translateY(-10px) scale(1.018);
+    transform: translateY(-18px) scale(1.05) rotate(4deg);
+  }
+  75% {
+    transform: translateY(-8px) scale(1.025) rotate(-1deg);
   }
 }
 
@@ -148,18 +154,18 @@ a {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   font-size: clamp(22px, 2.7vw, 34px);
   font-weight: 900;
   line-height: 1;
 }
 
 .brand img {
-  width: 68px;
-  height: 68px;
+  width: 76px;
+  height: 76px;
   object-fit: contain;
   filter: drop-shadow(0 8px 20px rgba(26, 138, 56, 0.22));
-  transform: translateY(2px);
+  transform: translateY(3px);
 }
 
 .topbar nav {
@@ -713,9 +719,9 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 66%;
-    top: 60%;
-    width: clamp(160px, 20vw, 230px);
+    left: 67%;
+    top: 59%;
+    width: clamp(190px, 22vw, 270px);
   }
 
   .hero-copy {
@@ -766,8 +772,8 @@ a {
   }
 
   .brand img {
-    width: 54px;
-    height: 54px;
+    width: 60px;
+    height: 60px;
   }
 
   .nav-button,
@@ -788,9 +794,9 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 68%;
-    top: 61%;
-    width: 136px;
+    left: 69%;
+    top: 60%;
+    width: 152px;
   }
 
   .trusted strong {
