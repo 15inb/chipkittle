@@ -32,6 +32,7 @@ const SETTINGS_SECTIONS = [
   { id: "dashboard", label: "Dashboard", description: "At-a-glance stats, audit activity, and quick links." },
   { id: "general", label: "General", description: "Slash commands, legacy prefix, welcome, and autorole." },
   { id: "members", label: "Members", description: "Edit the public member directory and review community profiles." },
+  { id: "public", label: "Public Site", description: "Quick links, exports, and live public-facing content summaries." },
   { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
   { id: "ai", label: "AI", description: "Chipkittle AI channels, model, cooldowns, and personality." },
   { id: "applications", label: "Applications", description: "DM questions, review threads, roles, and cooldowns." },
@@ -190,6 +191,7 @@ function updateControls() {
         <a class="primary-link secondary-link" href="/admin/export/community">Export community</a>
         <a class="primary-link secondary-link" href="/admin/export/moderation">Export moderation</a>
         <a class="primary-link secondary-link" href="/admin/export/applications">Export applications</a>
+        <a class="primary-link secondary-link" href="/admin/export/public">Export public site</a>
         <a class="primary-link secondary-link" href="/admin/export/full">Full backup snapshot</a>
       </div>
       ${
@@ -335,7 +337,7 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
                   ${entry.updates?.length ? `<details class="case-notes"><summary>Case notes</summary><div class="stack-list">${entry.updates.map((note) => `<div class="audit-row"><strong>${escapeHtml(note.authorTag || "Staff")}</strong><small>${escapeHtml(note.createdAt || "")}</small><p>${escapeHtml(note.note || "")}</p></div>`).join("")}</div></details>` : ""}
                 </div>
                 <div class="case-row-actions">
-                  ${entry.isClosed ? '<span class="muted">Closed</span>' : `<form method="post" action="/guilds/${guildId}/cases/${entry.id}/close?section=moderation&caseStatus=${filter}"><button type="submit" class="secondary-button">Mark closed</button></form>`}
+                  ${entry.isClosed ? '<span class="muted">Closed</span>' : `<button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/cases/${entry.id}/close?section=moderation&caseStatus=${filter}">Mark closed</button>`}
                 </div>
               </article>
             `).join("")}</div>`
@@ -356,9 +358,7 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
                   <small>${escapeHtml(entry.entries.length)} active warning${entry.entries.length === 1 ? "" : "s"}</small>
                   <ul>${entry.entries.slice(-5).reverse().map((reason) => `<li>${escapeHtml(reason || "Warning recorded")}</li>`).join("")}</ul>
                 </div>
-                <form method="post" action="/guilds/${guildId}/warnings/${entry.userId}/clear?section=moderation">
-                  <button type="submit" class="secondary-button">Clear warnings</button>
-                </form>
+                <button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/warnings/${entry.userId}/clear?section=moderation">Clear warnings</button>
               </article>
             `).join("")}</div>`
           : '<p class="muted">No active warnings to review.</p>'
@@ -431,7 +431,7 @@ function applicationsWorkspace(guildId, guild, config = {}) {
       </div>
       ${
         tickets.length
-          ? `<div class="warning-ledger">${tickets.map((ticket) => `<article class="warning-row"><div class="warning-row-main"><strong>${escapeHtml(ticket.userId)}</strong><small>${escapeHtml(ticket.completed ? "Completed" : "In progress")} • Question ${escapeHtml(Math.min(ticket.questionIndex + 1, Math.max(questions.length, 1)))}</small><ul><li>Thread: ${escapeHtml(ticket.channelId || "Missing")}</li><li>Parent: ${escapeHtml(displayChannelName(guild, ticket.parentChannelId))}</li><li>Updated: ${escapeHtml(ticket.updatedAt || "Unknown")}</li></ul></div><form method="post" action="/guilds/${guildId}/applications/${ticket.userId}/clear-ticket?section=applications"><button type="submit" class="secondary-button">Clear ticket</button></form></article>`).join("")}</div>`
+          ? `<div class="warning-ledger">${tickets.map((ticket) => `<article class="warning-row"><div class="warning-row-main"><strong>${escapeHtml(ticket.userId)}</strong><small>${escapeHtml(ticket.completed ? "Completed" : "In progress")} • Question ${escapeHtml(Math.min(ticket.questionIndex + 1, Math.max(questions.length, 1)))}</small><ul><li>Thread: ${escapeHtml(ticket.channelId || "Missing")}</li><li>Parent: ${escapeHtml(displayChannelName(guild, ticket.parentChannelId))}</li><li>Updated: ${escapeHtml(ticket.updatedAt || "Unknown")}</li></ul></div><button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/applications/${ticket.userId}/clear-ticket?section=applications">Clear ticket</button></article>`).join("")}</div>`
           : '<p class="muted">No stored application tickets right now.</p>'
       }
     </section>
@@ -442,9 +442,73 @@ function applicationsWorkspace(guildId, guild, config = {}) {
       </div>
       ${
         cooldowns.length
-          ? `<div class="warning-ledger">${cooldowns.map((entry) => `<article class="warning-row"><div class="warning-row-main"><strong>${escapeHtml(entry.userId)}</strong><small>Last applied ${escapeHtml(entry.lastAppliedAt || "Unknown")}</small></div><form method="post" action="/guilds/${guildId}/applications/${entry.userId}/clear-cooldown?section=applications"><button type="submit" class="secondary-button">Clear cooldown</button></form></article>`).join("")}</div>`
+          ? `<div class="warning-ledger">${cooldowns.map((entry) => `<article class="warning-row"><div class="warning-row-main"><strong>${escapeHtml(entry.userId)}</strong><small>Last applied ${escapeHtml(entry.lastAppliedAt || "Unknown")}</small></div><button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/applications/${entry.userId}/clear-cooldown?section=applications">Clear cooldown</button></article>`).join("")}</div>`
           : '<p class="muted">No active application cooldowns.</p>'
       }
+    </section>
+  `;
+}
+
+function publicSiteWorkspace(config = {}, commandList = []) {
+  const publicMembers = publicMembersFromConfig(config);
+  const artifacts = config.community?.artifacts || [];
+  const rituals = config.community?.rituals || {};
+  const leaderboardEntries = publicLeaderboardFileEntries(readGameLeaderboard(), publicGameSettings(config));
+  const gameCounts = ["dash", "runner", "mines", "catch"].map((gameId) => ({
+    gameId,
+    label: gameLabel(gameId),
+    count: publicLeaderboardEntries(leaderboardEntries, gameId, publicGameSettings(config)).length
+  }));
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Public Site Overview</h2>
+        <p>Quick visibility into what visitors see across the public Chipkittle pages.</p>
+      </div>
+      <div class="stats-grid">
+        <article class="stat-card"><strong>${escapeHtml(publicMembers.length)}</strong><span>Public Members</span></article>
+        <article class="stat-card"><strong>${escapeHtml(artifacts.length)}</strong><span>Artifacts</span></article>
+        <article class="stat-card"><strong>${escapeHtml(commandList.length)}</strong><span>Published Commands</span></article>
+        <article class="stat-card"><strong>${escapeHtml(leaderboardEntries.length)}</strong><span>Saved Game Scores</span></article>
+      </div>
+      <div class="dashboard-grid">
+        <div class="sub-panel">
+          <div class="section-heading">
+            <h2>Quick Links</h2>
+            <p>Jump straight to the public pages from the panel.</p>
+          </div>
+          <div class="link-grid">
+            <a class="primary-link secondary-link" href="https://chipkittle.com/" target="_blank" rel="noreferrer">Home</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/members" target="_blank" rel="noreferrer">Members</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/commands" target="_blank" rel="noreferrer">Commands</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/archive" target="_blank" rel="noreferrer">Archive</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/commits" target="_blank" rel="noreferrer">Commits</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/status" target="_blank" rel="noreferrer">Status</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/game" target="_blank" rel="noreferrer">Dash</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/8ball" target="_blank" rel="noreferrer">8 Ball</a>
+          </div>
+        </div>
+        <div class="sub-panel">
+          <div class="section-heading">
+            <h2>Live Public Copy</h2>
+            <p>The ritual text and status snippets currently exposed on the website.</p>
+          </div>
+          <div class="stack-list">
+            <div class="audit-row"><strong>Current event</strong><p>${escapeHtml(rituals.currentEvent || "No public event set.")}</p></div>
+            <div class="audit-row"><strong>Seasonal message</strong><p>${escapeHtml(rituals.seasonalMessage || "No seasonal message set.")}</p></div>
+            <div class="audit-row"><strong>Next trial</strong><p>${escapeHtml(rituals.nextTrial || "No next trial scheduled.")}</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Game Leaderboard Snapshot</h2>
+        <p>A quick count of how much public score data each game is carrying right now.</p>
+      </div>
+      <div class="dashboard-grid">
+        ${gameCounts.map((entry) => `<div class="sub-panel"><strong>${escapeHtml(entry.label)}</strong><p class="muted">${escapeHtml(entry.count)} saved leaderboard entr${entry.count === 1 ? "y" : "ies"}.</p></div>`).join("")}
+      </div>
     </section>
   `;
 }
@@ -813,7 +877,8 @@ function gameLeaderboardControls(guildId = "", settings = DEFAULT_PUBLIC_GAME_SE
   `;
 }
 
-function parseConfigForm(body) {
+function parseConfigForm(body, section = "general") {
+  const currentSection = normalizeSettingsSection(section);
   const aiChannelIds = arrayFromFormValue(body.aiChannelIds);
   const aiBlacklistedChannelIds = arrayFromFormValue(body.aiBlacklistedChannelIds);
   const reviewerRoleIds = arrayFromFormValue(body.applicationReviewerRoleIds);
@@ -824,76 +889,103 @@ function parseConfigForm(body) {
       .map(([key, value]) => [key.replace("commandRole_", ""), arrayFromFormValue(value).map(String)])
       .filter(([, roleIds]) => roleIds.length)
   );
-
-  return {
-    prefix: String(body.prefix || "!").trim().slice(0, 5) || "!",
-    welcome: {
-      enabled: body.welcomeEnabled === "on",
-      channelId: String(body.welcomeChannelId || ""),
-      message: String(body.welcomeMessage || "").trim().slice(0, 500)
-    },
-    autoRoleId: String(body.autoRoleId || ""),
-    automod: {
-      enabled: body.automodEnabled === "on",
-      blockedWords: String(body.blockedWords || "")
-        .split(",")
-        .map((word) => word.trim())
-        .filter(Boolean)
-        .slice(0, 50),
-      deleteInvites: body.deleteInvites === "on",
-      deleteLinks: body.deleteLinks === "on"
-    },
-    moderation: {
-      logChannelId: String(body.logChannelId || "")
-    },
-    commandRoles: {
-      overrides: commandOverrides
-    },
-    publicSite: {
-      members: parseMemberDirectory(body.publicMembers),
-      games: {
-        blockedLeaderboardWords: normalizeBlockedWordList(body.blockedLeaderboardWords),
-        maxLeaderboardEntriesPerGame: Math.min(Math.max(Number(body.maxLeaderboardEntriesPerGame) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardEntriesPerGame, 1), 50),
-        maxLeaderboardScore: Math.min(Math.max(Number(body.maxLeaderboardScore) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardScore, 1), 1000000),
-        maxLeaderboardBread: Math.min(Math.max(Number(body.maxLeaderboardBread) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardBread, 0), 1000000),
-        maxClaimBreadPerRun: Math.min(Math.max(Number(body.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000)
-      }
-    },
-    community: {
-      artifacts: parseArtifactDirectory(body.communityArtifacts),
-      rituals: {
-        currentEvent: String(body.currentEvent || "").trim().slice(0, 220),
-        seasonalMessage: String(body.seasonalMessage || "").trim().slice(0, 220),
-        nextTrial: String(body.nextTrial || "").trim().slice(0, 120)
-      }
-    },
-    ai: {
-      enabled: body.aiEnabled === "on",
-      channelIds: aiChannelIds.map(String),
-      blacklistedChannelIds: aiBlacklistedChannelIds.map(String),
-      mode: String(body.aiMode || "").toLowerCase() === "evil" ? "evil" : "normal",
-      model: String(body.aiModel || "").trim().slice(0, 80),
-      apiCooldownSeconds: Math.min(Math.max(Number(body.aiApiCooldownSeconds) || 0, 0), 3600),
-      imageCooldownSeconds: Math.min(Math.max(Number(body.aiImageCooldownSeconds) || 0, 0), 7200),
-      replyToMentions: body.aiReplyToMentions === "on",
-      personality: String(body.aiPersonality || "").trim().slice(0, 1200)
-    },
-    applications: {
-      enabled: body.applicationsEnabled === "on",
-      channelId: String(body.applicationChannelId || ""),
-      threadChannelId: String(body.applicationThreadChannelId || ""),
-      categoryId: String(body.applicationCategoryId || ""),
-      reviewerRoleIds: reviewerRoleIds.map(String),
-      approvedRoleId: String(body.applicationApprovedRoleId || ""),
-      blockedRoleIds: blockedRoleIds.map(String),
-      cooldownMinutes: Math.min(Math.max(Number(body.applicationCooldownMinutes) || 0, 0), 10080),
-      questions: String(body.applicationQuestions || "")
-        .split("\n")
-        .map((question) => question.trim())
-        .filter(Boolean)
-        .slice(0, 10)
-    }
-  };
+  switch (currentSection) {
+    case "general":
+      return {
+        prefix: String(body.prefix || "!").trim().slice(0, 5) || "!",
+        welcome: {
+          enabled: body.welcomeEnabled === "on",
+          channelId: String(body.welcomeChannelId || ""),
+          message: String(body.welcomeMessage || "").trim().slice(0, 500)
+        },
+        autoRoleId: String(body.autoRoleId || "")
+      };
+    case "members":
+      return {
+        publicSite: {
+          members: parseMemberDirectory(body.publicMembers)
+        }
+      };
+    case "moderation":
+      return {
+        automod: {
+          enabled: body.automodEnabled === "on",
+          blockedWords: String(body.blockedWords || "")
+            .split(",")
+            .map((word) => word.trim())
+            .filter(Boolean)
+            .slice(0, 50),
+          deleteInvites: body.deleteInvites === "on",
+          deleteLinks: body.deleteLinks === "on"
+        },
+        moderation: {
+          logChannelId: String(body.logChannelId || "")
+        }
+      };
+    case "ai":
+      return {
+        ai: {
+          enabled: body.aiEnabled === "on",
+          channelIds: aiChannelIds.map(String),
+          blacklistedChannelIds: aiBlacklistedChannelIds.map(String),
+          mode: String(body.aiMode || "").toLowerCase() === "evil" ? "evil" : "normal",
+          model: String(body.aiModel || "").trim().slice(0, 80),
+          apiCooldownSeconds: Math.min(Math.max(Number(body.aiApiCooldownSeconds) || 0, 0), 3600),
+          imageCooldownSeconds: Math.min(Math.max(Number(body.aiImageCooldownSeconds) || 0, 0), 7200),
+          replyToMentions: body.aiReplyToMentions === "on",
+          personality: String(body.aiPersonality || "").trim().slice(0, 1200)
+        }
+      };
+    case "applications":
+      return {
+        applications: {
+          enabled: body.applicationsEnabled === "on",
+          channelId: String(body.applicationChannelId || ""),
+          threadChannelId: String(body.applicationThreadChannelId || ""),
+          categoryId: String(body.applicationCategoryId || ""),
+          reviewerRoleIds: reviewerRoleIds.map(String),
+          approvedRoleId: String(body.applicationApprovedRoleId || ""),
+          blockedRoleIds: blockedRoleIds.map(String),
+          cooldownMinutes: Math.min(Math.max(Number(body.applicationCooldownMinutes) || 0, 0), 10080),
+          questions: String(body.applicationQuestions || "")
+            .split("\n")
+            .map((question) => question.trim())
+            .filter(Boolean)
+            .slice(0, 10)
+        }
+      };
+    case "games":
+      return {
+        publicSite: {
+          games: {
+            blockedLeaderboardWords: normalizeBlockedWordList(body.blockedLeaderboardWords),
+            maxLeaderboardEntriesPerGame: Math.min(Math.max(Number(body.maxLeaderboardEntriesPerGame) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardEntriesPerGame, 1), 50),
+            maxLeaderboardScore: Math.min(Math.max(Number(body.maxLeaderboardScore) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardScore, 1), 1000000),
+            maxLeaderboardBread: Math.min(Math.max(Number(body.maxLeaderboardBread) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardBread, 0), 1000000),
+            maxClaimBreadPerRun: Math.min(Math.max(Number(body.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000)
+          }
+        }
+      };
+    case "community":
+      return {
+        community: {
+          artifacts: parseArtifactDirectory(body.communityArtifacts),
+          rituals: {
+            currentEvent: String(body.currentEvent || "").trim().slice(0, 220),
+            seasonalMessage: String(body.seasonalMessage || "").trim().slice(0, 220),
+            nextTrial: String(body.nextTrial || "").trim().slice(0, 120)
+          }
+        }
+      };
+    case "permissions":
+      return {
+        commandRoles: {
+          overrides: commandOverrides
+        }
+      };
+    default:
+      return {};
+  }
 }
 
 function layout({ title, body, user, flash = "" }) {
@@ -1166,10 +1258,23 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
   const currentMeta = activeSectionMeta(currentSection);
   const gameSettings = publicGameSettings(config);
   const moderationCaseStatus = normalizeCaseStatusFilter(caseStatus);
-  const memberDirectoryScript = `
+  const panelClientScript = `
     <script>
       (() => {
         const editor = document.querySelector("[data-member-directory-editor]");
+        const actionButtons = document.querySelectorAll("[data-post-action]");
+
+        actionButtons.forEach((button) => {
+          button.addEventListener("click", () => {
+            const form = document.createElement("form");
+            form.method = "post";
+            form.action = button.getAttribute("data-post-action");
+            form.style.display = "none";
+            document.body.appendChild(form);
+            form.submit();
+          });
+        });
+
         if (!editor) return;
         const list = editor.querySelector("[data-member-rows]");
         const count = editor.querySelector("[data-member-count]");
@@ -1320,6 +1425,12 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               <div class="settings-stack">
                 ${memberDirectoryEditor(config.publicSite.members)}
                 ${profileDirectoryCards(config)}
+              </div>
+            </section>
+
+            <section class="${sectionClass("public", currentSection)}">
+              <div class="settings-stack">
+                ${publicSiteWorkspace(config, commandList)}
               </div>
             </section>
 
@@ -1566,7 +1677,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               </section>
             </section>
 
-            <div class="form-actions ${["commands", "server", "dashboard"].includes(currentSection) ? "is-hidden" : ""}">
+            <div class="form-actions ${["commands", "server", "dashboard", "public"].includes(currentSection) ? "is-hidden" : ""}">
               <button type="submit">Save ${escapeHtml(currentMeta.label)}</button>
             </div>
           </form>
@@ -1589,7 +1700,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
             ${updateControls()}
           </section>
         </div>
-      </div>${memberDirectoryScript}
+      </div>${panelClientScript}
     `
   });
 }
@@ -2071,6 +2182,22 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     downloadJson(response, "chipkittle-applications-export.json", payload);
   });
 
+  app.get("/admin/export/public", requireAuth, (_request, response) => {
+    const payload = Object.fromEntries(
+      Object.entries(store.data?.guilds || {}).map(([guildEntryId, config]) => [
+        guildEntryId,
+        {
+          publicSite: config.publicSite || {},
+          rituals: config.community?.rituals || {},
+          artifacts: config.community?.artifacts || [],
+          leaderboard: publicLeaderboardFileEntries(readGameLeaderboard(), publicGameSettings(config)),
+          exportedAt: new Date().toISOString()
+        }
+      ])
+    );
+    downloadJson(response, "chipkittle-public-site-export.json", payload);
+  });
+
   app.get("/admin/export/full", requireAuth, (_request, response) => {
     downloadJson(response, "chipkittle-backup-snapshot.json", {
       generatedAt: new Date().toISOString(),
@@ -2204,16 +2331,16 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
         return;
       }
 
-      const nextConfig = parseConfigForm(request.body);
-      await store.updateGuild(discordGuild.id, nextConfig);
-      writePublicMembersFile(nextConfig.publicSite.members);
+      const section = normalizeSettingsSection(String(request.query.section || ""));
+      const nextConfig = parseConfigForm(request.body, section);
+      const mergedConfig = await store.updateGuild(discordGuild.id, nextConfig);
+      writePublicMembersFile(mergedConfig.publicSite?.members || []);
       await addAuditLog(store, discordGuild.id, {
         type: "panel",
         label: "Panel settings saved",
-        details: `Saved ${normalizeSettingsSection(String(request.query.section || ""))} settings from the web panel.`,
+        details: `Saved ${section} settings from the web panel.`,
         actor: "Panel"
       }).catch(() => {});
-      const section = normalizeSettingsSection(String(request.query.section || ""));
       response.redirect(`/guilds/${discordGuild.id}?saved=1&section=${section}`);
     } catch (error) {
       next(error);

@@ -641,12 +641,25 @@ textarea:focus {
 .filter-pills,
 .case-meta,
 .case-row-actions,
-.mini-stats {
+.mini-stats,
+.link-grid {
   display: flex;
   flex-wrap: wrap;
 }
 
 .filter-pills {
+  gap: 10px;
+}
+
+.link-grid {
+  gap: 10px;
+}
+
+.application-question-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
   gap: 10px;
 }
 
