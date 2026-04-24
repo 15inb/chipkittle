@@ -20,7 +20,8 @@ import {
 } from "./applicationTickets.js";
 import {
   CHIPKITTLE_LORE,
-  randomChipkittleQuote
+  randomChipkittleQuote,
+  randomChipkittleName
 } from "./chipkittleLore.js";
 import { NO_MENTIONS } from "./discordSafety.js";
 import {
@@ -944,8 +945,14 @@ define({
   description: "Make a lil Chipkittle for someone.",
   usage: "creampie @user",
   async run(ctx) {
-    const member = mentionUser(ctx.message);
-    await ctx.message.reply(`${member} made a lil Chipkittle.`);
+    const target = ctx.message.mentions.users.first();
+    if (!target) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const babyName = randomChipkittleName();
+    await ctx.message.reply(`${ctx.message.author} creampied ${target} and they made a baby called ${babyName}!`);
   }
 });
 
