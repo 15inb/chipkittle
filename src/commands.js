@@ -72,6 +72,11 @@ const PROFILE_BIO_MAX = 220;
 const pendingDateRequests = new Map();
 const currentDates = new Map();
 const PUBLIC_GAME_IDS = ["dash", "runner", "mines", "catch"];
+const breadCooldowns = {
+  beg: new Map(),
+  work: new Map(),
+  rob: new Map()
+};
 
 function pendingDateKey(guildId, targetId) {
   return `${guildId}:${targetId}`;
@@ -415,6 +420,16 @@ function formatCooldown(ms) {
   if (hours && minutes) return `${hours}h ${minutes}m`;
   if (hours) return `${hours}h`;
   return `${Math.max(minutes, 1)}m`;
+}
+
+function checkRuntimeCooldown(bucket, userId, cooldownMs) {
+  const lastUsedAt = bucket.get(userId) || 0;
+  const remainingMs = cooldownMs - (Date.now() - lastUsedAt);
+  if (remainingMs > 0) {
+    return { limited: true, remainingMs };
+  }
+  bucket.set(userId, Date.now());
+  return { limited: false, remainingMs: 0 };
 }
 
 function isBlockedFromApplying(member, config) {
@@ -4086,6 +4101,629 @@ define({
       actor: ctx.message.author.tag
     }).catch(() => {});
     await ctx.message.reply(`Game record alerts will now go to ${channel}.`);
+  }
+});
+
+define({
+  name: "beg",
+  aliases: ["panhandle", "breadbeg"],
+  category: "Gambling",
+  description: "Beg the artifact for a little spare bread.",
+  async run(ctx) {
+    const cooldown = checkRuntimeCooldown(breadCooldowns.beg, ctx.message.author.id, 10 * 60_000);
+    if (cooldown.limited) {
+      await ctx.message.reply(`The artifact already heard you. Try begging again in ${formatCooldown(cooldown.remainingMs)}.`);
+      return;
+    }
+
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const amount = randomInt(25, 140);
+      const nextBalance = breadBalance(economy, ctx.message.author.id) + amount;
+      setBreadBalance(economy, ctx.message.author.id, nextBalance);
+      return `A passing Chipkittle tosses you **${formatBread(amount)}**.\nBalance: **${formatBread(nextBalance)}**.`;
+    });
+
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "work",
+  aliases: ["breadwork", "shift"],
+  category: "Gambling",
+  description: "Work a suspiciously ceremonial shift for bread.",
+  async run(ctx) {
+    const cooldown = checkRuntimeCooldown(breadCooldowns.work, ctx.message.author.id, 30 * 60_000);
+    if (cooldown.limited) {
+      await ctx.message.reply(`Your shift is still in progress. Try again in ${formatCooldown(cooldown.remainingMs)}.`);
+      return;
+    }
+
+    const jobs = [
+      "polished the artifact display case",
+      "stood guard at the Round Table",
+      "swept ceremonial crumbs into the vault",
+      "inspected the horns for structural excellence",
+      "filed family records without asking questions"
+    ];
+
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const amount = randomInt(90, 260);
+      const nextBalance = breadBalance(economy, ctx.message.author.id) + amount;
+      setBreadBalance(economy, ctx.message.author.id, nextBalance);
+      return `You ${jobs[randomInt(0, jobs.length - 1)]} and earned **${formatBread(amount)}**.\nBalance: **${formatBread(nextBalance)}**.`;
+    });
+
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "rob",
+  aliases: ["breadrob", "stealbread"],
+  category: "Gambling",
+  description: "Attempt to steal bread from another member.",
+  usage: "rob @user",
+  async run(ctx) {
+    const target = ctx.message.mentions.users.first?.();
+    if (!target || target.bot || target.id === ctx.message.author.id) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const cooldown = checkRuntimeCooldown(breadCooldowns.rob, ctx.message.author.id, 45 * 60_000);
+    if (cooldown.limited) {
+      await ctx.message.reply(`Lay low for a bit. You can rob again in ${formatCooldown(cooldown.remainingMs)}.`);
+      return;
+    }
+
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const attackerId = ctx.message.author.id;
+      const victimBalance = breadBalance(economy, target.id);
+      if (victimBalance < 50) {
+        return `${target.username || target.tag} does not have enough bread worth stealing.`;
+      }
+
+      const success = Math.random() < 0.45;
+      if (success) {
+        const stolen = Math.min(randomInt(40, Math.max(60, Math.floor(victimBalance * 0.3))), victimBalance, 1500);
+        setBreadBalance(economy, target.id, victimBalance - stolen);
+        setBreadBalance(economy, attackerId, breadBalance(economy, attackerId) + stolen);
+        return `You slipped away with **${formatBread(stolen)}** from **${target.username || target.tag}**.`;
+      }
+
+      const attackerBalance = breadBalance(economy, attackerId);
+      const fine = Math.min(randomInt(20, 120), attackerBalance);
+      setBreadBalance(economy, attackerId, attackerBalance - fine);
+      setBreadBalance(economy, target.id, victimBalance + fine);
+      return `The robbery failed. You had to pay **${formatBread(fine)}** back to **${target.username || target.tag}**.`;
+    });
+
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "breadset",
+  aliases: ["setbread", "balanceset"],
+  category: "Gambling",
+  description: "Staff-only bread balance setter.",
+  usage: "breadset @user 5000",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const member = ctx.message.mentions.members.first();
+    const amount = Math.max(Math.floor(Number(ctx.args.find((arg) => !arg.includes("<@")))), 0);
+    if (!member || Number.isNaN(amount)) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      setBreadBalance(economy, member.id, amount);
+      return `${member} now has **${formatBread(amount)}**.`;
+    });
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "breadadd",
+  aliases: ["addbread", "breadgrant"],
+  category: "Gambling",
+  description: "Staff-only bread grant.",
+  usage: "breadadd @user 500",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const member = ctx.message.mentions.members.first();
+    const amount = Math.max(Math.floor(Number(ctx.args.find((arg) => !arg.includes("<@")))), 0);
+    if (!member || !amount) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const nextBalance = breadBalance(economy, member.id) + amount;
+      setBreadBalance(economy, member.id, nextBalance);
+      return `Added **${formatBread(amount)}** to ${member}.\nNew balance: **${formatBread(nextBalance)}**.`;
+    });
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "breadtake",
+  aliases: ["takebread", "breadremove"],
+  category: "Gambling",
+  description: "Staff-only bread removal.",
+  usage: "breadtake @user 500",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const member = ctx.message.mentions.members.first();
+    const amount = Math.max(Math.floor(Number(ctx.args.find((arg) => !arg.includes("<@")))), 0);
+    if (!member || !amount) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const nextBalance = Math.max(breadBalance(economy, member.id) - amount, 0);
+      setBreadBalance(economy, member.id, nextBalance);
+      return `Removed **${formatBread(amount)}** from ${member}.\nNew balance: **${formatBread(nextBalance)}**.`;
+    });
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "breadpoor",
+  aliases: ["poorbread", "breadbottom"],
+  category: "Gambling",
+  description: "Show the most bread-impoverished members.",
+  async run(ctx) {
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const entries = Object.entries(economy.balances)
+      .map(([userId, amount]) => [userId, Math.max(Math.floor(Number(amount) || 0), 0)])
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, 10);
+
+    if (!entries.length) {
+      await ctx.message.reply("Nobody has touched their bread balance yet.");
+      return;
+    }
+
+    await ctx.message.reply([
+      `**Bread Poverty Index**`,
+      entries.map(([userId, amount], index) => `${index + 1}. <@${userId}> - **${formatBread(amount)}**`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "breadworth",
+  aliases: ["economyworth", "breadtotal"],
+  category: "Gambling",
+  description: "Show total bread circulating in the server economy.",
+  async run(ctx) {
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const balances = Object.values(economy.balances || {}).map((amount) => Math.max(Math.floor(Number(amount) || 0), 0));
+    const total = balances.reduce((sum, amount) => sum + amount, 0);
+    const average = balances.length ? Math.floor(total / balances.length) : 0;
+    await ctx.message.reply([
+      `**Server Bread Economy**`,
+      `Tracked wallets: **${balances.length}**`,
+      `Total bread: **${formatBread(total)}**`,
+      `Average wallet: **${formatBread(average)}**`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "giftitem",
+  aliases: ["itemgift", "senditem"],
+  category: "Gambling",
+  description: "Give a shop item from your inventory to another member.",
+  usage: "giftitem @user item-id",
+  async run(ctx) {
+    const member = ctx.message.mentions.members.first();
+    const itemId = cleanText(ctx.args.slice(1).join(" "), 60).toLowerCase();
+    if (!member || member.id === ctx.message.author.id || !itemId) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const item = shopCatalog().find((entry) => entry.id === itemId);
+    if (!item) {
+      await ctx.message.reply(`No shop item matches **${itemId}**.`);
+      return;
+    }
+
+    const senderProfile = profileFor(ctx.config, ctx.message.author.id, ctx.message.member.displayName);
+    const senderOwned = Math.max(Number(senderProfile.inventory?.[item.id]) || 0, 0);
+    if (senderOwned < 1) {
+      await ctx.message.reply(`You do not own **${item.name}**.`);
+      return;
+    }
+
+    await updateProfile(ctx.store, ctx.message.guild.id, ctx.message.author.id, (profile) => {
+      const inventory = { ...(profile.inventory || {}) };
+      inventory[item.id] = Math.max((inventory[item.id] || 0) - 1, 0);
+      if (!inventory[item.id]) delete inventory[item.id];
+      return {
+        ...profile,
+        displayName: ctx.message.member.displayName,
+        inventory
+      };
+    }, ctx.message.member.displayName);
+
+    await updateProfile(ctx.store, ctx.message.guild.id, member.id, (profile) => {
+      const inventory = { ...(profile.inventory || {}) };
+      inventory[item.id] = (inventory[item.id] || 0) + 1;
+      const badges = [...(profile.badges || [])];
+      if (item.type === "badge" && !badges.includes(item.name)) badges.push(item.name);
+      return {
+        ...profile,
+        displayName: member.displayName,
+        inventory,
+        badges
+      };
+    }, member.displayName);
+
+    await ctx.message.reply(`Gave **${item.name}** to ${member}.`);
+  }
+});
+
+define({
+  name: "inventorytop",
+  aliases: ["itemleaderboard", "collectorboard"],
+  category: "Chipkittle",
+  description: "Show who has collected the most shop items.",
+  async run(ctx) {
+    const profiles = Object.entries(ctx.config.community?.profiles || {})
+      .map(([userId, profile]) => ({
+        userId,
+        name: profile.displayName || `User ${userId}`,
+        total: Object.values(profile.inventory || {}).reduce((sum, amount) => sum + Math.max(Number(amount) || 0, 0), 0)
+      }))
+      .filter((entry) => entry.total > 0)
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+      .slice(0, 10);
+
+    if (!profiles.length) {
+      await ctx.message.reply("Nobody has collected any items yet.");
+      return;
+    }
+
+    await ctx.message.reply([
+      `**Inventory Leaderboard**`,
+      profiles.map((entry, index) => `${index + 1}. **${entry.name}** - ${entry.total} item${entry.total === 1 ? "" : "s"}`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "badgeboard",
+  aliases: ["badgeleaderboard", "badgetop"],
+  category: "Chipkittle",
+  description: "Show who has the most public badges.",
+  async run(ctx) {
+    const profiles = Object.values(ctx.config.community?.profiles || {})
+      .map((profile) => ({
+        name: profile.displayName || "Unknown Chipkittle",
+        badges: Array.isArray(profile.badges) ? profile.badges.length : 0
+      }))
+      .filter((entry) => entry.badges > 0)
+      .sort((a, b) => b.badges - a.badges || a.name.localeCompare(b.name))
+      .slice(0, 10);
+
+    if (!profiles.length) {
+      await ctx.message.reply("No badges have been earned yet.");
+      return;
+    }
+
+    await ctx.message.reply([
+      `**Badge Leaderboard**`,
+      profiles.map((entry, index) => `${index + 1}. **${entry.name}** - ${entry.badges} badge${entry.badges === 1 ? "" : "s"}`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "title",
+  aliases: ["profiletitle", "mytitle"],
+  category: "Chipkittle",
+  description: "Show a member's ceremonial profile title.",
+  usage: "title [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const profile = profileFor(ctx.config, member.id, member.displayName);
+    await ctx.message.reply(`**${member.displayName}** currently bears the title **${profile.title || "Unranked Witness"}**.`);
+  }
+});
+
+define({
+  name: "quote",
+  aliases: ["chipquote", "artifactquote"],
+  category: "Chipkittle",
+  description: "Get a random Chipkittle quote.",
+  async run(ctx) {
+    await ctx.message.reply(randomChipkittleQuote());
+  }
+});
+
+define({
+  name: "principles",
+  aliases: ["rules", "chiprules"],
+  category: "Chipkittle",
+  description: "List the Chipkittle principles.",
+  async run(ctx) {
+    await ctx.message.reply(CHIPKITTLE_LORE.principles.map((rule, index) => `${index + 1}. ${rule}`).join("\n"));
+  }
+});
+
+define({
+  name: "figures",
+  aliases: ["chipfigures", "familyfigures"],
+  category: "Chipkittle",
+  description: "List the major figures in the lore.",
+  async run(ctx) {
+    await ctx.message.reply(CHIPKITTLE_LORE.figures.map((entry, index) => `${index + 1}. ${entry}`).join("\n"));
+  }
+});
+
+define({
+  name: "randomprinciple",
+  aliases: ["ruleofthestep", "principleroll"],
+  category: "Chipkittle",
+  description: "Get one random Chipkittle principle.",
+  async run(ctx) {
+    const principle = CHIPKITTLE_LORE.principles[randomInt(0, CHIPKITTLE_LORE.principles.length - 1)];
+    await ctx.message.reply(`**Today's Principle**\n${principle}`);
+  }
+});
+
+define({
+  name: "artifactkeeper",
+  aliases: ["keeper", "findkeeper"],
+  category: "Chipkittle",
+  description: "Find who keeps a specific artifact.",
+  usage: "artifactkeeper artifact name",
+  async run(ctx) {
+    const query = ctx.rest.trim().toLowerCase();
+    if (!query) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const artifact = (ctx.config.community?.artifacts || []).find((entry) =>
+      String(entry.name || "").toLowerCase().includes(query)
+    );
+    if (!artifact) {
+      await ctx.message.reply(`No artifact matched **${ctx.rest.trim()}**.`);
+      return;
+    }
+    await ctx.message.reply(`**${artifact.name}** is kept by **${artifact.keeper || "Unknown Keeper"}**.\nRarity: ${artifact.rarity || "Unknown"}\n${artifact.summary || "No summary recorded."}`);
+  }
+});
+
+define({
+  name: "artifactcount",
+  aliases: ["artifactstats", "registrycount"],
+  category: "Chipkittle",
+  description: "Show how many artifacts are registered.",
+  async run(ctx) {
+    const artifacts = ctx.config.community?.artifacts || [];
+    const rarities = artifacts.reduce((map, artifact) => ({
+      ...map,
+      [artifact.rarity || "Unknown"]: (map[artifact.rarity || "Unknown"] || 0) + 1
+    }), {});
+    const rarityLine = Object.entries(rarities).slice(0, 5).map(([rarity, count]) => `${rarity}: ${count}`).join(" | ");
+    await ctx.message.reply([
+      `**Artifact Registry Stats**`,
+      `Total artifacts: **${artifacts.length}**`,
+      rarityLine || "No rarity data yet."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "auditlog",
+  aliases: ["recentactions", "audit"],
+  category: "Moderation",
+  description: "Show recent panel and staff activity from the audit log.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const events = (ctx.config.community?.auditLog || []).slice(0, 8);
+    if (!events.length) {
+      await ctx.message.reply("No audit events have been recorded yet.");
+      return;
+    }
+    await ctx.message.reply([
+      `**Recent Audit Log**`,
+      events.map((entry) => `• **${entry.label || entry.type || "Event"}** - ${entry.details || "No details"}${entry.actor ? ` (${entry.actor})` : ""}`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "modsummary",
+  aliases: ["membermod", "usercases"],
+  category: "Moderation",
+  description: "Show warnings, cases, and staff notes for a member.",
+  usage: "modsummary @user",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const member = ctx.message.mentions.members.first();
+    if (!member) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const warnings = ctx.config.moderation?.warnings?.[member.id] || [];
+    const notes = ctx.config.community?.staffNotes?.[member.id] || [];
+    const cases = casesForUser(ctx.config, member.id).slice(0, 5);
+    await ctx.message.reply([
+      `**Moderation Summary: ${member.displayName}**`,
+      `Warnings: **${warnings.length}**`,
+      `Staff notes: **${notes.length}**`,
+      `Cases: **${cases.length} shown / ${casesForUser(ctx.config, member.id).length} total**`,
+      "",
+      cases.length ? cases.map((entry) => `• #${entry.id} ${entry.action} - ${entry.status} - ${entry.reason || "No reason"}`).join("\n") : "No recent cases."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "applicationstatus",
+  aliases: ["appstatus", "applystatus"],
+  category: "Applications",
+  description: "Check a member's application cooldown and open review thread.",
+  usage: "applicationstatus [@user]",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild) && ctx.message.mentions.members.first()) {
+      return;
+    }
+    const member = ctx.message.mentions.members.first() || ctx.message.member;
+    const ticket = ctx.config.applications?.tickets?.[member.id] || null;
+    const cooldown = applicationCooldownStatus(ctx.config, member.id);
+    await ctx.message.reply([
+      `**Application Status: ${member.displayName}**`,
+      `Open review thread: ${ticket?.channelId ? `<#${ticket.channelId}>` : "None"}`,
+      `DM question progress: ${ticket?.step ? `${ticket.step}/${applicationQuestions().length}` : "No active application"}`,
+      `Cooldown: ${cooldown.limited ? formatCooldown(cooldown.remainingMs) : "No cooldown"}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "openapplications",
+  aliases: ["appsopen", "applicationqueue"],
+  category: "Applications",
+  description: "List the currently open application review threads.",
+  async run(ctx) {
+    if (!isApplicationStaff(ctx) && !requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const entries = Object.entries(ctx.config.applications?.tickets || {}).slice(0, 10);
+    if (!entries.length) {
+      await ctx.message.reply("There are no open applications right now.");
+      return;
+    }
+    await ctx.message.reply([
+      `**Open Applications**`,
+      entries.map(([userId, ticket]) => `• <@${userId}> - ${ticket.channelId ? `<#${ticket.channelId}>` : "missing thread"} - question ${ticket.step || 0}/${applicationQuestions().length}`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "aistatus",
+  aliases: ["chipstatusai", "aiinfo"],
+  category: "AI",
+  description: "Show the current AI settings without editing them.",
+  async run(ctx) {
+    await ctx.message.reply([
+      `**Chipkittle AI Status**`,
+      `Enabled: **${ctx.config.ai.enabled ? "Yes" : "No"}**`,
+      `Mode: **${ctx.config.ai.mode === "evil" ? "evil" : "normal"}**`,
+      `Model: **${ctx.config.ai.model || ctx.defaultAiModel}**`,
+      `Cooldown: **${ctx.config.ai.apiCooldownSeconds}s**`,
+      `Whitelisted channels: ${channelMentionList(ctx.config.ai.channelIds)}`,
+      `Blacklisted channels: ${channelMentionList(ctx.config.ai.blacklistedChannelIds || [])}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "aipreview",
+  aliases: ["promptpreview", "aiprompt"],
+  category: "AI",
+  description: "Preview the current extra AI personality guidance.",
+  async run(ctx) {
+    const personality = ctx.config.ai.personality?.trim();
+    await ctx.message.reply([
+      `**AI Personality Preview**`,
+      `Mode: **${ctx.config.ai.mode === "evil" ? "evil" : "normal"}**`,
+      personality ? personality.slice(0, 1200) : "No extra personality guidance set."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "gameinfo",
+  aliases: ["gameabout", "browsergame"],
+  category: "Games",
+  description: "Show details about one public Chipkittle browser game.",
+  usage: "gameinfo [dash|runner|mines|catch]",
+  async run(ctx) {
+    const gameId = cleanPublicGameId(ctx.args[0] || "dash");
+    const entries = publicGameEntries(readPublicLeaderboardEntries(), gameId, 1);
+    const top = entries[0];
+    const descriptions = {
+      dash: "A fast score-chasing run where you claim bread after surviving the chaos.",
+      runner: "A ritual obstacle run for pure score, timing, and dignity management.",
+      mines: "A risky bread-picking game where one bad click ruins the ceremony.",
+      catch: "A reflex game about catching bread and not fumbling the offering."
+    };
+    await ctx.message.reply([
+      `**${publicGameLabel(gameId)}**`,
+      descriptions[gameId],
+      top ? `Current record: **${top.name}** with **${top.score.toLocaleString()}** points.` : "No public record yet.",
+      `Use \`${ctx.config.prefix}leaderboard ${gameId}\` to see the top scores.`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "gamerank",
+  aliases: ["findrank", "leaderboardrank"],
+  category: "Games",
+  description: "Find a player's rank on a public game leaderboard by display name.",
+  usage: "gamerank [dash|runner|mines|catch] player name",
+  async run(ctx) {
+    const gameId = cleanPublicGameId(ctx.args[0] || "dash");
+    const query = ctx.args.slice(1).join(" ").trim().toLowerCase();
+    if (!query) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const entries = publicGameEntries(readPublicLeaderboardEntries(), gameId, 100);
+    const index = entries.findIndex((entry) => entry.name.toLowerCase().includes(query));
+    if (index === -1) {
+      await ctx.message.reply(`Nobody named **${ctx.args.slice(1).join(" ").trim()}** is on the **${publicGameLabel(gameId)}** board right now.`);
+      return;
+    }
+    const entry = entries[index];
+    await ctx.message.reply(`**${entry.name}** is rank **#${index + 1}** on **${publicGameLabel(gameId)}** with **${entry.score.toLocaleString()}** points.`);
+  }
+});
+
+define({
+  name: "recordalerttest",
+  aliases: ["testrecordalert", "gametestalert"],
+  category: "Games",
+  description: "Send a test message to the configured game record alert channel.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const channelId = gameRecordChannelId(ctx.config);
+    if (!channelId) {
+      await ctx.message.reply("No record alert channel is configured.");
+      return;
+    }
+    const channel =
+      ctx.message.guild.channels.cache.get(channelId) ||
+      (await ctx.message.guild.channels.fetch(channelId).catch(() => null));
+    if (!channel?.isTextBased()) {
+      await ctx.message.reply("The configured record alert channel is missing or unusable.");
+      return;
+    }
+    await channel.send({
+      embeds: [
+        buildPrettyEmbed({
+          title: "Game Record Alert Test",
+          description: "This is a test ping from the Chipkittle panel/bot command flow.",
+          color: 0x65d6ad,
+          footer: `Requested by ${ctx.message.author.tag}`
+        })
+      ],
+      allowedMentions: NO_MENTIONS
+    }).catch(() => {});
+    await ctx.message.reply(`Sent a test alert to <#${channelId}>.`);
   }
 });
 
