@@ -313,7 +313,7 @@ function layout({ title, body, user, flash = "" }) {
   <div class="shell">
     <aside class="sidebar">
       <a class="brand" href="/">
-        <span class="brand-mark">C</span>
+        <span class="brand-mark"><img src="/chipkittle-logo.svg" alt="Chipkittle logo"></span>
         <span>
           <strong>Chipkittle Panel</strong>
           <small>Server configuration</small>
