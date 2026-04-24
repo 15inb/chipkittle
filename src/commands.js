@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import {
   ActionRowBuilder,
   AttachmentBuilder,
@@ -69,6 +71,7 @@ const PROFILE_BIO_MAX = 220;
 
 const pendingDateRequests = new Map();
 const currentDates = new Map();
+const PUBLIC_GAME_IDS = ["dash", "runner", "mines", "catch"];
 
 function pendingDateKey(guildId, targetId) {
   return `${guildId}:${targetId}`;
@@ -660,6 +663,52 @@ function setBreadBalance(economy, userId, amount) {
 
 function formatBread(amount) {
   return `${Math.floor(amount).toLocaleString()} bread`;
+}
+
+function publicLeaderboardPath() {
+  return path.join(process.cwd(), "data", "game-leaderboard.json");
+}
+
+function cleanPublicGameId(value = "") {
+  const gameId = String(value || "dash").toLowerCase().replace(/[^a-z0-9-]/g, "");
+  return PUBLIC_GAME_IDS.includes(gameId) ? gameId : "dash";
+}
+
+function publicGameLabel(gameId = "") {
+  const labels = {
+    dash: "Chipkittle Dash",
+    runner: "Ritual Runner",
+    mines: "Bread Mines",
+    catch: "Bread Catch"
+  };
+  return labels[cleanPublicGameId(gameId)] || "Chipkittle Dash";
+}
+
+function readPublicLeaderboardEntries() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(publicLeaderboardPath(), "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function publicGameEntries(entries = [], gameId = "dash", limit = 10) {
+  return entries
+    .filter((entry) => cleanPublicGameId(entry.game) === cleanPublicGameId(gameId))
+    .map((entry) => ({
+      game: cleanPublicGameId(entry.game),
+      name: String(entry.name || "Anonymous Chipkittle").slice(0, 24),
+      score: Math.max(Math.floor(Number(entry.score) || 0), 0),
+      bread: Math.max(Math.floor(Number(entry.bread) || 0), 0),
+      createdAt: String(entry.createdAt || "")
+    }))
+    .sort((a, b) => b.score - a.score || b.bread - a.bread)
+    .slice(0, limit);
+}
+
+function gameRecordChannelId(config = {}) {
+  return String(config.publicSite?.games?.recordAlertChannelId || "");
 }
 
 function parseBreadAmount(input, balance) {
@@ -3753,6 +3802,142 @@ define({
       `**Top Commands**`,
       hotCommands.length ? hotCommands.map((item) => `• ${item.name} (${item.count})`).join("\n") : "No command usage yet."
     ].join("\n"));
+  }
+});
+
+define({
+  name: "leaderboard",
+  aliases: ["gameleaderboard", "gamelb"],
+  category: "Games",
+  description: "Show the top scores for a public Chipkittle browser game.",
+  usage: "leaderboard [dash|runner|mines|catch]",
+  async run(ctx) {
+    const gameId = cleanPublicGameId(ctx.args[0] || "dash");
+    const limit = Math.max(Math.min(Number(ctx.config.publicSite?.games?.maxLeaderboardEntriesPerGame) || 10, 10), 1);
+    const entries = publicGameEntries(readPublicLeaderboardEntries(), gameId, limit);
+    if (!entries.length) {
+      await ctx.message.reply(`No public scores are saved yet for **${publicGameLabel(gameId)}**.`);
+      return;
+    }
+    await ctx.message.reply([
+      `**${publicGameLabel(gameId)} Leaderboard**`,
+      entries.map((entry, index) => `${index + 1}. **${entry.name}** — ${entry.score.toLocaleString()} points | ${entry.bread.toLocaleString()} bread`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "gamerecords",
+  aliases: ["records", "gameranks"],
+  category: "Games",
+  description: "Show the current top record holder for each public browser game.",
+  async run(ctx) {
+    const entries = readPublicLeaderboardEntries();
+    const lines = PUBLIC_GAME_IDS
+      .map((gameId) => {
+        const top = publicGameEntries(entries, gameId, 1)[0];
+        return top
+          ? `• **${publicGameLabel(gameId)}** — ${top.name} with **${top.score.toLocaleString()}** points`
+          : `• **${publicGameLabel(gameId)}** — no record yet`;
+      });
+    await ctx.message.reply([`**Public Game Records**`, ...lines].join("\n"));
+  }
+});
+
+define({
+  name: "artifactsearch",
+  aliases: ["findartifact", "artifactfind"],
+  category: "Chipkittle",
+  description: "Search the artifact registry by name, keeper, rarity, or summary.",
+  usage: "artifactsearch keyword",
+  async run(ctx) {
+    const query = ctx.rest.trim().toLowerCase();
+    if (!query) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const matches = (ctx.config.community?.artifacts || [])
+      .filter((artifact) =>
+        [artifact.name, artifact.rarity, artifact.keeper, artifact.summary]
+          .some((field) => String(field || "").toLowerCase().includes(query))
+      )
+      .slice(0, 8);
+    if (!matches.length) {
+      await ctx.message.reply(`No artifacts matched **${ctx.rest.trim()}**.`);
+      return;
+    }
+    await ctx.message.reply(matches.map((artifact) => `• **${artifact.name}** (${artifact.rarity}) - ${artifact.keeper}\n  ${artifact.summary}`).join("\n"));
+  }
+});
+
+define({
+  name: "ritualstatus",
+  aliases: ["rituals", "communitystatus"],
+  category: "Chipkittle",
+  description: "Show the current Chipkittle ritual status and public event text.",
+  async run(ctx) {
+    const rituals = ctx.config.community?.rituals || {};
+    await ctx.message.reply([
+      `**Chipkittle Ritual Status**`,
+      `Current event: ${rituals.currentEvent || "No current event set."}`,
+      `Seasonal message: ${rituals.seasonalMessage || "No seasonal message set."}`,
+      `Next trial: ${rituals.nextTrial || "No next trial scheduled."}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "recordchannel",
+  aliases: ["gamealerts", "recordalerts"],
+  category: "Config",
+  description: "Set which channel receives browser-game record alerts.",
+  usage: "recordchannel [#channel|off]",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const raw = (ctx.args[0] || "").toLowerCase();
+    if (!ctx.args[0]) {
+      const channelId = gameRecordChannelId(ctx.config);
+      await ctx.message.reply(channelId ? `Game record alerts go to <#${channelId}>.` : "No game record alert channel is configured.");
+      return;
+    }
+    if (raw === "off" || raw === "none") {
+      await ctx.store.updateGuild(ctx.message.guild.id, {
+        publicSite: {
+          games: {
+            ...ctx.config.publicSite?.games,
+            recordAlertChannelId: ""
+          }
+        }
+      });
+      await addAuditLog(ctx.store, ctx.message.guild.id, {
+        type: "games",
+        label: "Game record alerts disabled",
+        details: "Disabled public game record alerts from a command.",
+        actor: ctx.message.author.tag
+      }).catch(() => {});
+      await ctx.message.reply("Game record alerts are now disabled.");
+      return;
+    }
+    const channel = targetTextChannel(ctx.message);
+    if (!channel?.isTextBased?.()) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      publicSite: {
+        games: {
+          ...ctx.config.publicSite?.games,
+          recordAlertChannelId: channel.id
+        }
+      }
+    });
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "games",
+      label: "Game record alert channel updated",
+      details: `Set game record alerts to #${channel.name}.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+    await ctx.message.reply(`Game record alerts will now go to ${channel}.`);
   }
 });
 

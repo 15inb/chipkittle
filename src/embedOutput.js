@@ -9,6 +9,7 @@ const CATEGORY_COLORS = {
   Dating: 0xec4899,
   Gambling: 0xf59e0b,
   Utility: 0xa78bfa,
+  Games: 0x14b8a6,
   Chipkittle: 0x22c55e,
   Moderation: 0xef4444,
   Config: 0x38bdf8,

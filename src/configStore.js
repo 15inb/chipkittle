@@ -45,7 +45,8 @@ const DEFAULT_CONFIG = {
       maxLeaderboardEntriesPerGame: 10,
       maxLeaderboardScore: 100000,
       maxLeaderboardBread: 100000,
-      maxClaimBreadPerRun: 100000
+      maxClaimBreadPerRun: 100000,
+      recordAlertChannelId: ""
     }
   },
   ai: {

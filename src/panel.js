@@ -18,6 +18,7 @@ import {
 } from "./communityFeatures.js";
 import { CHIPKITTLE_LORE } from "./chipkittleLore.js";
 import { createDashClaim } from "./dashClaims.js";
+import { buildPrettyEmbed } from "./embedOutput.js";
 import {
   createEightBallRoom,
   getEightBallRoomState,
@@ -49,7 +50,8 @@ const DEFAULT_PUBLIC_GAME_SETTINGS = {
   maxLeaderboardEntriesPerGame: 10,
   maxLeaderboardScore: 100000,
   maxLeaderboardBread: 100000,
-  maxClaimBreadPerRun: 100000
+  maxClaimBreadPerRun: 100000,
+  recordAlertChannelId: ""
 };
 
 const BUILT_IN_BLOCKED_LEADERBOARD_TERMS = [
@@ -827,8 +829,40 @@ function publicGameSettings(config = {}) {
     maxLeaderboardEntriesPerGame: Math.min(Math.max(Number(games.maxLeaderboardEntriesPerGame) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardEntriesPerGame, 1), 50),
     maxLeaderboardScore: Math.min(Math.max(Number(games.maxLeaderboardScore) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardScore, 1), 1000000),
     maxLeaderboardBread: Math.min(Math.max(Number(games.maxLeaderboardBread) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardBread, 0), 1000000),
-    maxClaimBreadPerRun: Math.min(Math.max(Number(games.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000)
+    maxClaimBreadPerRun: Math.min(Math.max(Number(games.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000),
+    recordAlertChannelId: String(games.recordAlertChannelId || "")
   };
+}
+
+async function sendGameRecordAlert(client, channelId, entry, previousTop = null) {
+  if (!channelId) return;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased?.()) return;
+
+  const description = previousTop
+    ? [
+        `**${entry.name}** just broke the **${gameLabel(entry.game)}** record.`,
+        `New score: **${entry.score.toLocaleString()}**`,
+        `Previous record: **${Number(previousTop.score || 0).toLocaleString()}** by **${previousTop.name || "Unknown"}**`,
+        `Bread from run: **${Math.floor(Number(entry.bread) || 0).toLocaleString()}**`
+      ].join("\n")
+    : [
+        `**${entry.name}** set the first public **${gameLabel(entry.game)}** record.`,
+        `Opening score: **${entry.score.toLocaleString()}**`,
+        `Bread from run: **${Math.floor(Number(entry.bread) || 0).toLocaleString()}**`
+      ].join("\n");
+
+  const embed = buildPrettyEmbed({
+    title: `${gameLabel(entry.game)} Record Broken`,
+    description,
+    color: 0x14b8a6,
+    footer: "Chipkittle game records"
+  });
+
+  await channel.send({
+    embeds: [embed],
+    allowedMentions: { parse: [], roles: [], users: [] }
+  }).catch(() => {});
 }
 
 function normalizeNameModerationText(value = "") {
@@ -1063,7 +1097,8 @@ function parseConfigForm(body, section = "general") {
             maxLeaderboardEntriesPerGame: Math.min(Math.max(Number(body.maxLeaderboardEntriesPerGame) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardEntriesPerGame, 1), 50),
             maxLeaderboardScore: Math.min(Math.max(Number(body.maxLeaderboardScore) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardScore, 1), 1000000),
             maxLeaderboardBread: Math.min(Math.max(Number(body.maxLeaderboardBread) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardBread, 0), 1000000),
-            maxClaimBreadPerRun: Math.min(Math.max(Number(body.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000)
+            maxClaimBreadPerRun: Math.min(Math.max(Number(body.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000),
+            recordAlertChannelId: String(body.recordAlertChannelId || "")
           }
         }
       };
@@ -1771,6 +1806,12 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
                       Max claim bread per run
                       <input type="number" name="maxClaimBreadPerRun" min="0" max="1000000" value="${escapeHtml(gameSettings.maxClaimBreadPerRun)}">
                     </label>
+                    <label>
+                      Record alert channel
+                      <select name="recordAlertChannelId">
+                        ${optionList(guild.channels, gameSettings.recordAlertChannelId, "No alert channel selected")}
+                      </select>
+                    </label>
                   </div>
                 </section>
               </div>
@@ -2029,6 +2070,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     const config = getPublicGuildConfig();
     const settings = publicGameSettings(config);
     const blockedTerm = blockedLeaderboardTerm(request.body?.name, config);
+    const previousTop = publicLeaderboardEntries(readGameLeaderboard(), request.body?.game, settings)[0] || null;
     const entry = {
       game: cleanGameId(request.body?.game),
       name: cleanLeaderboardName(request.body?.name),
@@ -2048,6 +2090,9 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
 
     writeGameLeaderboard([...readGameLeaderboard(), entry], settings);
+    if (!previousTop || entry.score > Number(previousTop.score || 0)) {
+      sendGameRecordAlert(client, settings.recordAlertChannelId, entry, previousTop).catch(() => {});
+    }
     response.json({
       scores: publicLeaderboardEntries(readGameLeaderboard(), entry.game, settings),
       updatedAt: new Date().toISOString()
