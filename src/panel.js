@@ -307,6 +307,7 @@ function layout({ title, body, user, flash = "" }) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
+  <link rel="icon" type="image/svg+xml" href="/chipkittle-logo.svg">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
