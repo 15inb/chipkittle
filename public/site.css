@@ -104,10 +104,10 @@ a {
 
 .hero-logo-overlay {
   position: absolute;
-  left: clamp(49%, 53vw, 58%);
-  top: clamp(52%, 59vh, 62%);
+  left: clamp(59%, 64vw, 69%);
+  top: clamp(50%, 55vh, 58%);
   z-index: -1;
-  width: clamp(110px, 12vw, 180px);
+  width: clamp(220px, 18vw, 320px);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -117,24 +117,18 @@ a {
   width: 100%;
   height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 24px 40px rgba(97, 216, 66, 0.28));
+  filter: drop-shadow(0 26px 52px rgba(97, 216, 66, 0.34));
+  animation: hero-logo-hover 4.6s ease-in-out infinite;
 }
 
-.hero::after {
-  content: "";
-  position: absolute;
-  inset: 8% 26% auto auto;
-  width: 42vw;
-  height: 42vw;
-  max-width: 680px;
-  max-height: 680px;
-  z-index: -1;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 80px rgba(255, 255, 255, 0.07),
-    0 0 0 160px rgba(255, 255, 255, 0.05);
-  pointer-events: none;
+@keyframes hero-logo-hover {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-10px) scale(1.018);
+  }
 }
 
 :root[data-theme="dark"] .hero-bg,
@@ -154,17 +148,18 @@ a {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   font-size: clamp(22px, 2.7vw, 34px);
   font-weight: 900;
   line-height: 1;
 }
 
 .brand img {
-  width: 48px;
-  height: 48px;
+  width: 68px;
+  height: 68px;
   object-fit: contain;
   filter: drop-shadow(0 8px 20px rgba(26, 138, 56, 0.22));
+  transform: translateY(2px);
 }
 
 .topbar nav {
@@ -718,9 +713,9 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 57%;
-    top: 61%;
-    width: clamp(96px, 16vw, 150px);
+    left: 66%;
+    top: 60%;
+    width: clamp(160px, 20vw, 230px);
   }
 
   .hero-copy {
@@ -771,8 +766,8 @@ a {
   }
 
   .brand img {
-    width: 40px;
-    height: 40px;
+    width: 54px;
+    height: 54px;
   }
 
   .nav-button,
@@ -793,9 +788,9 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 58%;
-    top: 64%;
-    width: 96px;
+    left: 68%;
+    top: 61%;
+    width: 136px;
   }
 
   .trusted strong {
