@@ -87,13 +87,15 @@
             <li class="player-card"><strong>Waiting for room</strong><span>Create or join a table to start.</span></li>
           </ol>
         </div>
-        <p class="table-note" id="tableNote">Click and drag backward from the cue ball, then release to shoot. Use two browsers or phones for a proper little duel.</p>
+        <p class="table-note" id="tableNote">Click anywhere on the table to aim, then release to shoot. Use the power slider for force, and two browsers or phones for a proper little duel.</p>
       </aside>
     </section>
   </main>
 
   <script>
-    const apiRoot = "https://panel.chipkittle.com/api/public/eight-ball";
+    const apiRoot = ["localhost", "127.0.0.1", "panel.chipkittle.com"].includes(window.location.hostname)
+      ? `${window.location.origin}/api/public/eight-ball`
+      : `${window.location.protocol}//panel.chipkittle.com/api/public/eight-ball`;
     const storageKeys = {
       name: "chipkittle-8ball-name",
       room: "chipkittle-8ball-room",
@@ -172,6 +174,13 @@
       localStorage.setItem(storageKeys.tokens, JSON.stringify(tokens));
     }
 
+    function clearToken(roomCode) {
+      const code = String(roomCode || "").toUpperCase();
+      const tokens = tokenMap();
+      delete tokens[code];
+      localStorage.setItem(storageKeys.tokens, JSON.stringify(tokens));
+    }
+
     function tokenFor(roomCode) {
       return tokenMap()[String(roomCode || "").toUpperCase()] || "";
     }
@@ -190,6 +199,10 @@
     }
 
     function clearRoom() {
+      const code = currentRoomCode();
+      if (code) {
+        clearToken(code);
+      }
       localStorage.removeItem(storageKeys.room);
       state = null;
       displayBalls = freshBalls();
@@ -203,6 +216,15 @@
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 24) || "Anonymous Chipkittle";
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
     async function request(path, options = {}) {
@@ -243,7 +265,7 @@
       matchState.textContent = state ? state.status : "No room";
       seatValue.textContent = state && state.selfPlayerIndex >= 0 ? `P${state.selfPlayerIndex + 1}` : "-";
       turnValue.textContent = state && state.currentTurn >= 0 ? `P${state.currentTurn + 1}` : "-";
-      tableNote.textContent = note || state?.message || "Click and drag backward from the cue ball, then release to shoot.";
+      tableNote.textContent = note || state?.message || "Click anywhere on the table to aim, then release to shoot.";
 
       const players = Array.isArray(state?.players) ? state.players : [];
       if (!players.length) {
@@ -263,7 +285,7 @@
               : index === state.selfPlayerIndex
                 ? "You"
                 : "Waiting";
-          return `<li class="${classes}"><strong>${player.name}</strong><span>Player ${index + 1} · ${detail}</span></li>`;
+          return `<li class="${classes}"><strong>${escapeHtml(player.name)}</strong><span>Player ${index + 1} - ${escapeHtml(detail)}</span></li>`;
         }).join("");
       }
 
@@ -507,16 +529,15 @@
       const cue = displayBalls.cue;
       if (!cue || cue.pocketed) return;
 
-      const dx = cue.x - pointer.x;
-      const dy = cue.y - pointer.y;
+      const dx = pointer.x - cue.x;
+      const dy = pointer.y - cue.y;
       const length = Math.hypot(dx, dy);
       if (length < 8) return;
 
-      const power = Math.min(length / 180, 1);
       const nx = dx / length;
       const ny = dy / length;
-      const endX = cue.x + nx * (180 * power);
-      const endY = cue.y + ny * (180 * power);
+      const endX = cue.x + nx * 220;
+      const endY = cue.y + ny * 220;
 
       ctx.strokeStyle = "rgba(255,255,255,0.72)";
       ctx.lineWidth = 3;
@@ -610,13 +631,12 @@
     canvas.addEventListener("pointerdown", (event) => {
       if (!canShoot()) return;
       const point = tableCoords(event);
-      const cue = displayBalls.cue;
-      if (!cue || cue.pocketed) return;
-      if (Math.hypot(point.x - cue.x, point.y - cue.y) > fallbackTable.ballRadius * 2) return;
       pointer.active = true;
       pointer.x = point.x;
       pointer.y = point.y;
-      canvas.setPointerCapture(event.pointerId);
+      if (typeof canvas.setPointerCapture === "function") {
+        canvas.setPointerCapture(event.pointerId);
+      }
     });
 
     canvas.addEventListener("pointermove", (event) => {
@@ -631,19 +651,25 @@
       const point = tableCoords(event);
       const cue = displayBalls.cue;
       pointer.active = false;
-      canvas.releasePointerCapture(event.pointerId);
+      if (typeof canvas.releasePointerCapture === "function") {
+        canvas.releasePointerCapture(event.pointerId);
+      }
       if (!cue || cue.pocketed || !canShoot()) return;
 
-      const dx = cue.x - point.x;
-      const dy = cue.y - point.y;
+      const dx = point.x - cue.x;
+      const dy = point.y - cue.y;
       const distance = Math.hypot(dx, dy);
       if (distance < 12) return;
 
-      const power = Math.min(Math.max(distance / 180, 0.22), 1) * (Number(powerSlider.value) / 100);
+      const power = Math.min(Math.max(Number(powerSlider.value) / 100, 0.25), 1);
       shoot(dx, dy, power).catch((error) => updatePanel(error.message));
     });
 
     canvas.addEventListener("pointerleave", () => {
+      pointer.active = false;
+    });
+
+    canvas.addEventListener("pointercancel", () => {
       pointer.active = false;
     });
 
@@ -660,6 +686,12 @@
     pollTimer = window.setInterval(() => {
       loadRoomState().catch(() => {});
     }, 1200);
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        loadRoomState().catch(() => {});
+      }
+    });
 
     restoreRoom();
     updatePanel();
