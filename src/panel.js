@@ -26,9 +26,12 @@ import {
   hashPanelPassword,
   normalizePanelAccessLevel,
   panelAccessAtLeast,
+  panelAccessCanManage,
   panelAccessLabel,
+  panelAccessRank,
   panelAccessUser,
   panelAccessUsers,
+  randomPanelPassword,
   verifyPanelPassword
 } from "./panelAccess.js";
 import {
@@ -1733,7 +1736,7 @@ function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
   const users = Object.entries(panelAccessUsers(config))
     .filter(([, entry]) => !entry?.revokedAt)
     .sort((a, b) => String(a[1]?.username || "").localeCompare(String(b[1]?.username || "")));
-  const canRevoke = panelAccessAtLeast(panelUser?.level || "root", "artifact_contributor");
+  const actorLevel = panelUser?.level || "root";
   return `
     <section class="panel-section">
       <div class="section-heading">
@@ -1768,22 +1771,46 @@ function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
       <div class="member-action-list">
         ${
           users.length
-            ? users.map(([userId, entry]) => `
-              <article class="access-user-row">
-                <div>
-                  <strong>${escapeHtml(entry.username || userId)}</strong>
-                  <small>${escapeHtml(userId)} &middot; ${escapeHtml(panelAccessLabel(entry.level))}</small>
-                  <small>Granted ${escapeHtml(entry.grantedAt || "unknown")} by ${escapeHtml(entry.grantedBy || "unknown")}</small>
-                </div>
-                ${canRevoke && normalizePanelAccessLevel(entry.level) !== "root"
-                  ? `<form method="post" action="/guilds/${guildId}/panel-access/${userId}/revoke" onsubmit="return confirm('Revoke this panel user?');"><button type="submit" class="danger-button">Revoke</button></form>`
-                  : '<span class="muted">Protected</span>'}
-              </article>
-            `).join("")
+            ? users.map(([userId, entry]) => panelAccessUserRow(guildId, userId, entry, actorLevel)).join("")
             : '<p class="muted">No panel users have been granted yet. The legacy password can still sign in as root.</p>'
         }
       </div>
     </section>
+  `;
+}
+
+function panelAccessUserRow(guildId, userId, entry, actorLevel = "root") {
+  const targetLevel = normalizePanelAccessLevel(entry.level);
+  const manageable = panelAccessCanManage(actorLevel, targetLevel, targetLevel);
+  const options = PANEL_ACCESS_LEVELS
+    .filter((level) => panelAccessCanManage(actorLevel, targetLevel, level))
+    .map((level) => `<option value="${level}" ${selected(targetLevel, level)}>${escapeHtml(panelAccessLabel(level))}</option>`)
+    .join("");
+  return `
+    <article class="access-user-row">
+      <div>
+        <strong>${escapeHtml(entry.username || userId)}</strong>
+        <small>${escapeHtml(userId)} &middot; ${escapeHtml(panelAccessLabel(entry.level))}</small>
+        <small>Granted ${escapeHtml(entry.grantedAt || "unknown")} by ${escapeHtml(entry.grantedBy || "unknown")}</small>
+      </div>
+      ${manageable
+        ? `<div class="access-user-actions">
+            <form method="post" action="/guilds/${guildId}/panel-access/${userId}/level">
+              <label>
+                Access level
+                <select name="level">${options}</select>
+              </label>
+              <button type="submit">Update</button>
+            </form>
+            <form method="post" action="/guilds/${guildId}/panel-access/${userId}/reset-password" onsubmit="return confirm('Reset this panel password and DM the user?');">
+              <button type="submit" class="secondary-button">Reset password</button>
+            </form>
+            <form method="post" action="/guilds/${guildId}/panel-access/${userId}/revoke" onsubmit="return confirm('Revoke this panel user?');">
+              <button type="submit" class="danger-button">Revoke</button>
+            </form>
+          </div>`
+        : '<span class="muted">Protected</span>'}
+    </article>
   `;
 }
 
@@ -1819,6 +1846,10 @@ function allowedPanelSection(sectionId = "dashboard", accessLevel = "root") {
 function panelUserLabel(panelUser = null) {
   if (!panelUser) return "Legacy Root";
   return `${panelUser.username || panelUser.userId} (${panelAccessLabel(panelUser.level)})`;
+}
+
+function panelAccessDenied(response, message = "You do not have permission to manage that panel user.") {
+  response.status(403).send(layout({ title: "Forbidden", user: true, body: `<p class="empty">${escapeHtml(message)}</p>` }));
 }
 
 function settingsNav(guild, config, activeSection, currentMeta, panelUser = null) {
@@ -3290,15 +3321,15 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
         return;
       }
       const panelUser = currentPanelUser(request, discordGuild.id);
-      if (!panelAccessAtLeast(panelUser?.level || "", "artifact_contributor")) {
-        response.status(403).send(layout({ title: "Forbidden", user: true, body: '<p class="empty">You do not have permission to revoke panel users.</p>' }));
-        return;
-      }
       const targetUserId = String(request.params.userId || "");
       const config = store.getGuild(discordGuild.id);
       const target = config.panelAccess?.users?.[targetUserId];
-      if (!target || normalizePanelAccessLevel(target.level) === "root") {
+      if (!target) {
         response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+        return;
+      }
+      if (!panelAccessCanManage(panelUser?.level || "", target.level, target.level)) {
+        panelAccessDenied(response);
         return;
       }
       await store.updateGuild(discordGuild.id, {
@@ -3318,6 +3349,118 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
         type: "panel-access",
         label: "Panel access revoked",
         details: `Revoked panel access for ${target.username || targetUserId}.`,
+        actor: panelUserLabel(panelUser)
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/panel-access/:userId/level", requireAuth, async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      const targetUserId = String(request.params.userId || "");
+      const nextLevel = normalizePanelAccessLevel(request.body?.level);
+      const config = store.getGuild(discordGuild.id);
+      const target = config.panelAccess?.users?.[targetUserId];
+      if (!target || !nextLevel) {
+        response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+        return;
+      }
+      if (!panelAccessCanManage(panelUser?.level || "", target.level, nextLevel)) {
+        panelAccessDenied(response, "You cannot set a panel user to that access level.");
+        return;
+      }
+      await store.updateGuild(discordGuild.id, {
+        panelAccess: {
+          ...config.panelAccess,
+          users: {
+            ...config.panelAccess.users,
+            [targetUserId]: {
+              ...target,
+              level: nextLevel,
+              username: target.username || targetUserId,
+              updatedAt: new Date().toISOString(),
+              updatedBy: panelUser?.userId || "panel"
+            }
+          }
+        }
+      });
+      const member = await discordGuild.members.fetch(targetUserId).catch(() => null);
+      await member?.send?.([
+        "**Chipkittle Panel Access Updated**",
+        `Access level: **${panelAccessLabel(nextLevel)}**`,
+        "Your password did not change."
+      ].join("\n")).catch(() => {});
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel-access",
+        label: "Panel access level changed",
+        details: `${panelUserLabel(panelUser)} changed ${target.username || targetUserId} to ${panelAccessLabel(nextLevel)}.`,
+        actor: panelUserLabel(panelUser)
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/panel-access/:userId/reset-password", requireAuth, async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      const targetUserId = String(request.params.userId || "");
+      const config = store.getGuild(discordGuild.id);
+      const target = config.panelAccess?.users?.[targetUserId];
+      if (!target) {
+        response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+        return;
+      }
+      if (!panelAccessCanManage(panelUser?.level || "", target.level, target.level)) {
+        panelAccessDenied(response, "You cannot reset that panel user's password.");
+        return;
+      }
+      const member = await discordGuild.members.fetch(targetUserId).catch(() => null);
+      if (!member) {
+        response.redirect(`/guilds/${discordGuild.id}?section=access&modAction=missing-target`);
+        return;
+      }
+      const password = randomPanelPassword();
+      await member.send([
+        "**Chipkittle Panel Password Reset**",
+        `Username: \`${target.username || member.user.username}\``,
+        `Password: \`${password}\``,
+        `Access level: **${panelAccessLabel(target.level)}**`,
+        "This password is only shown once."
+      ].join("\n"));
+      await store.updateGuild(discordGuild.id, {
+        panelAccess: {
+          ...config.panelAccess,
+          users: {
+            ...config.panelAccess.users,
+            [targetUserId]: {
+              ...target,
+              username: target.username || member.user.username,
+              passwordHash: hashPanelPassword(password),
+              passwordResetAt: new Date().toISOString(),
+              passwordResetBy: panelUser?.userId || "panel"
+            }
+          }
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel-access",
+        label: "Panel password reset",
+        details: `${panelUserLabel(panelUser)} reset the panel password for ${target.username || targetUserId}.`,
         actor: panelUserLabel(panelUser)
       }).catch(() => {});
       response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);

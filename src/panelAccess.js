@@ -35,6 +35,18 @@ export function panelAccessAtLeast(level = "", required = "root") {
   return currentRank >= requiredRank;
 }
 
+export function panelAccessRank(level = "") {
+  return PANEL_ACCESS_RANKS[normalizePanelAccessLevel(level)] ?? -1;
+}
+
+export function panelAccessCanManage(actorLevel = "", targetLevel = "", nextLevel = targetLevel) {
+  const actor = normalizePanelAccessLevel(actorLevel);
+  if (actor === "root") return true;
+  if (actor !== "artifact_contributor") return false;
+  const actorRank = panelAccessRank(actor);
+  return panelAccessRank(targetLevel) < actorRank && panelAccessRank(nextLevel) < actorRank;
+}
+
 export function randomPanelPassword() {
   return crypto.randomBytes(12).toString("base64url");
 }

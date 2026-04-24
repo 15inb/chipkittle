@@ -1155,10 +1155,26 @@ code {
 
 .access-user-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
   gap: 14px;
-  align-items: center;
+  align-items: start;
   padding: 14px 16px;
+}
+
+.access-user-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.access-user-actions form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.access-user-actions form:not(:first-child) {
+  grid-template-columns: 1fr;
 }
 
 .access-user-row strong,
@@ -1814,6 +1830,7 @@ textarea {
   .member-action-row,
   .member-action-form,
   .access-user-row,
+  .access-user-actions form,
   .case-row,
   .warning-row {
     grid-template-columns: 1fr;
@@ -1865,6 +1882,7 @@ textarea {
   .moderation-search .primary-link,
   .member-action-form button,
   .access-user-row button,
+  .access-user-actions form,
   .warning-row > button,
   .form-actions button {
     width: 100%;

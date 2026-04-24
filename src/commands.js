@@ -1111,27 +1111,43 @@ define({
     const grantorLevel = hasGrantCommandOverride
       ? "root"
       : normalizePanelAccessLevel(existingUsers[ctx.message.author.id]?.level || (hasAnyPanelUsers ? "" : "root"));
-    if (!panelAccessAtLeast(grantorLevel, level)) {
+    if (grantorLevel !== "root" && !panelAccessAtLeast(grantorLevel, level)) {
       await ctx.message.reply("You cannot grant an access level higher than your own.");
       return;
     }
 
-    const password = randomPanelPassword();
+    const existingEntry = existingUsers[member.id];
+    const existingActiveUser = existingEntry && !existingEntry.revokedAt && existingEntry.passwordHash;
+    if (grantorLevel !== "root" && existingActiveUser && panelAccessAtLeast(existingEntry.level, grantorLevel)) {
+      await ctx.message.reply("You cannot change access for someone at your rank or higher.");
+      return;
+    }
+    const password = existingActiveUser ? "" : randomPanelPassword();
     let dmSent = true;
-    await member.send([
-      "**Chipkittle Panel Access Granted**",
-      `Username: \`${member.user.username}\``,
-      `Password: \`${password}\``,
-      `Access level: **${panelAccessLabel(level)}**`,
-      `Panel: ${ctx.publicUrl}`,
-      "",
-      "This password is only shown once. Ask root for a reset if you lose it."
-    ].join("\n")).catch(() => {
+    const dmLines = existingActiveUser
+      ? [
+          "**Chipkittle Panel Access Updated**",
+          `Username: \`${member.user.username}\``,
+          `Access level: **${panelAccessLabel(level)}**`,
+          `Panel: ${ctx.publicUrl}`,
+          "",
+          "Your password did not change."
+        ]
+      : [
+          "**Chipkittle Panel Access Granted**",
+          `Username: \`${member.user.username}\``,
+          `Password: \`${password}\``,
+          `Access level: **${panelAccessLabel(level)}**`,
+          `Panel: ${ctx.publicUrl}`,
+          "",
+          "This password is only shown once. Ask root for a reset if you lose it."
+        ];
+    await member.send(dmLines.join("\n")).catch(() => {
       dmSent = false;
     });
 
     if (!dmSent) {
-      await ctx.message.reply("I could not DM that user, so panel access was not granted.");
+      await ctx.message.reply("I could not DM that user, so panel access was not changed.");
       return;
     }
 
@@ -1141,9 +1157,10 @@ define({
         users: {
           ...existingUsers,
           [member.id]: {
+            ...(existingEntry || {}),
             username: member.user.username,
             level,
-            passwordHash: hashPanelPassword(password),
+            passwordHash: existingActiveUser ? existingEntry.passwordHash : hashPanelPassword(password),
             grantedBy: ctx.message.author.id,
             grantedAt: new Date().toISOString(),
             revokedAt: ""
@@ -1154,12 +1171,12 @@ define({
 
     await addAuditLog(ctx.store, ctx.message.guild.id, {
       type: "panel-access",
-      label: "Panel access granted",
-      details: `${ctx.message.author.tag} granted ${panelAccessLabel(level)} access to ${member.user.tag}.`,
+      label: existingActiveUser ? "Panel access changed" : "Panel access granted",
+      details: `${ctx.message.author.tag} ${existingActiveUser ? "changed" : "granted"} ${member.user.tag} to ${panelAccessLabel(level)}.`,
       actor: ctx.message.author.tag
     }).catch(() => {});
 
-    await ctx.message.reply(`Granted ${panelAccessLabel(level)} panel access to ${member.user.tag} and sent their login by DM.`);
+    await ctx.message.reply(`${existingActiveUser ? "Changed" : "Granted"} ${member.user.tag} to ${panelAccessLabel(level)} and sent them a DM.`);
   }
 });
 
