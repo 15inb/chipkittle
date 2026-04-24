@@ -24,31 +24,74 @@ function captionText(value) {
     .trim();
 }
 
-function drawTextEscape(value) {
-  return String(value || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
-    .replace(/,/g, "\\,")
-    .replace(/%/g, "\\%");
+function ffmpegFilterPath(filePath) {
+  return filePath.replace(/\\/g, "/").replace(/:/g, "\\:");
 }
 
-function esmCaptionFilter({ text, width = 720 } = {}) {
-  const safeText = drawTextEscape(captionText(text));
+function assEscape(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}")
+    .replace(/\r\n|\r|\n/g, "\\N");
+}
+
+function wrapCaptionLines(text, maxChars) {
+  const lines = [];
+  for (const rawLine of captionText(text).split("\n")) {
+    const words = rawLine.split(/\s+/).filter(Boolean);
+    let line = "";
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (next.length > maxChars && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
+    }
+    if (line) lines.push(line);
+  }
+  return lines.length ? lines : [captionText(text)];
+}
+
+function captionLayout(text, width = 720) {
   const fontSize = Math.max(28, Math.min(54, Math.floor(width / 13)));
   const lineSpacing = Math.max(4, Math.floor(fontSize / 7));
-  const horizontalPadding = Math.max(18, Math.floor(width * 0.04));
   const verticalPadding = Math.max(16, Math.floor(fontSize * 0.55));
-  const estimatedLines = Math.max(1, safeText.split(/\\n|\n/).length);
-  const boxHeight = Math.max(96, Math.min(260, (fontSize + lineSpacing) * estimatedLines + verticalPadding * 2));
-  const textY = Math.max(8, Math.floor((boxHeight - fontSize * estimatedLines - lineSpacing * Math.max(0, estimatedLines - 1)) / 2));
+  const lines = wrapCaptionLines(text, Math.max(18, Math.floor(width / (fontSize * 0.5))));
+  const boxHeight = Math.max(96, Math.min(300, (fontSize + lineSpacing) * lines.length + verticalPadding * 2));
+  const marginV = Math.max(14, Math.floor((boxHeight - fontSize * lines.length - lineSpacing * Math.max(0, lines.length - 1)) / 2));
+  return { boxHeight, fontSize, lineSpacing, lines, marginV };
+}
 
+function buildCaptionAss({ text, width = 720 }) {
+  const { fontSize, lineSpacing, lines, marginV } = captionLayout(text, width);
+  return [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    `PlayResX: ${width}`,
+    "PlayResY: 720",
+    "WrapStyle: 0",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
+    `Style: Caption,Arial,${fontSize},&H00000000,&H000000FF,&H00FFFFFF,&H00FFFFFF,-1,0,0,0,100,100,0,0,1,0,0,8,24,24,${marginV},1`,
+    "",
+    "[Events]",
+    "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
+    `Dialogue: 0,0:00:00.00,9:59:59.00,Caption,,0,0,0,,{\\q2\\fsp0\\fnArial\\b1\\an8\\fs${fontSize}\\blur0\\shad0\\bord0\\pos(${Math.floor(width / 2)},${marginV})\\1c&H000000&}${assEscape(lines.join("\n"))}`,
+    ""
+  ].join("\n");
+}
+
+function esmCaptionFilter({ assPath, text, width = 720 } = {}) {
+  const { boxHeight } = captionLayout(text, width);
   return [
     `scale='min(${width},iw)':-1:flags=lanczos`,
     `pad=iw:ih+${boxHeight}:0:${boxHeight}:white`,
-    `drawtext=text='${safeText}':fontcolor=black:fontsize=${fontSize}:font='Arial':x=${horizontalPadding}:y=${textY}:line_spacing=${lineSpacing}:box=0`
+    `subtitles='${ffmpegFilterPath(assPath)}':original_size=${width}x720`
   ].join(",");
 }
 
@@ -132,11 +175,13 @@ export async function captionMedia(media, { topText = "", bottomText = "", force
 
   return withMediaFiles(media, async ({ workDir, inputPath }) => {
     const isGif = media.mimeType === "image/gif";
+    const assPath = path.join(workDir, "caption.ass");
 
     if (isGif || forceGif) {
       const outputPath = path.join(workDir, "captioned.gif");
       const sourceArgs = isGif ? ["-i", inputPath] : staticInputArgs(inputPath, DEFAULT_STATIC_GIF_SECONDS);
-      const filter = gifFinalizeChain(`${esmCaptionFilter({ text: caption })},fps=15`);
+      await writeFile(assPath, buildCaptionAss({ text: caption, width: MAX_GIF_DIMENSION }));
+      const filter = gifFinalizeChain(`${esmCaptionFilter({ assPath, text: caption, width: MAX_GIF_DIMENSION })},fps=15`);
 
       await runFfmpeg([
         "-y",
@@ -156,7 +201,8 @@ export async function captionMedia(media, { topText = "", bottomText = "", force
     }
 
     const outputPath = path.join(workDir, "captioned.png");
-    const captionFilter = esmCaptionFilter({ text: caption, width: 1024 });
+    await writeFile(assPath, buildCaptionAss({ text: caption, width: 1024 }));
+    const captionFilter = esmCaptionFilter({ assPath, text: caption, width: 1024 });
     await runFfmpeg([
       "-y",
       "-i",
