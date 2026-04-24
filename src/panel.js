@@ -1124,7 +1124,11 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   app.get("/api/public/eight-ball/:roomCode", (request, response) => {
     setPublicApiHeaders(response);
     try {
-      const state = getEightBallRoomState(request.params.roomCode, String(request.query.token || ""));
+      const state = getEightBallRoomState(
+        request.params.roomCode,
+        String(request.query.token || ""),
+        { sinceShotId: Number(request.query.sinceShotId) }
+      );
       response.json(state);
     } catch (error) {
       response.status(404).json({ error: error.message || "That room could not be found." });

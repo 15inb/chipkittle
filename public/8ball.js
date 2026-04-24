@@ -8,6 +8,7 @@
     room: "chipkittle-8ball-room",
     tokens: "chipkittle-8ball-tokens"
   };
+  const MAX_RENDER_DPR = 1.5;
 
   const tableFallback = {
     width: 1180,
@@ -46,7 +47,7 @@
   };
 
   const canvas = document.querySelector("#eightBallCanvas");
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
   const playerNameInput = document.querySelector("#playerName");
   const roomCodeInput = document.querySelector("#roomCode");
   const createRoomButton = document.querySelector("#createRoom");
@@ -84,13 +85,17 @@
   let pointerId = null;
   let pollTimer = 0;
   let animationHandle = 0;
+  let drawQueued = false;
   let transientNote = "";
   let transientTimer = 0;
   let cuePlacementValid = true;
   const pointer = { x: 0, y: 0, moved: false };
+  const backgroundCache = { key: "", canvas: null };
+  const ballSpriteCache = new Map();
 
   playerNameInput.value = localStorage.getItem(storageKeys.name) || "";
   powerValue.textContent = `${powerSlider.value}%`;
+  ctx.imageSmoothingEnabled = true;
 
   function clamp(value, min, max) {
     const number = Number(value);
@@ -163,18 +168,6 @@
     return start + (end - start) * amount;
   }
 
-  function interpolateFrames(fromFrame, toFrame, amount) {
-    const nextFrame = cloneBalls(toFrame);
-    const previousByNumber = new Map(fromFrame.map((ball) => [ball.number, ball]));
-    for (const ball of nextFrame) {
-      const previous = previousByNumber.get(ball.number);
-      if (!previous || ball.pocketed || previous.pocketed) continue;
-      ball.x = lerp(previous.x, ball.x, amount);
-      ball.y = lerp(previous.y, ball.y, amount);
-    }
-    return nextFrame;
-  }
-
   function tokenMap() {
     try {
       const parsed = JSON.parse(localStorage.getItem(storageKeys.tokens) || "{}");
@@ -236,7 +229,7 @@
     localStorage.removeItem(storageKeys.room);
     setRoomQuery("");
     state = null;
-    renderedBalls = createFallbackBalls();
+    syncRenderBuffer(createFallbackBalls());
     renderedShotId = -1;
     previewCuePlacement = null;
     aiming = false;
@@ -246,7 +239,7 @@
     cancelAnimationFrame(animationHandle);
     clearTimeout(pollTimer);
     updatePanel();
-    draw();
+    requestDraw();
   }
 
   function flashNote(message) {
@@ -314,22 +307,50 @@
       id: number === 0 ? "cue" : `ball-${number}`,
       number,
       kind: groupForNumber(number),
-      style: { ...(ballStyles[number] || ballStyles[0]) },
+      style: ballStyles[number] || ballStyles[0],
       x,
       y,
       pocketed: false
     };
   }
 
-  function cloneBall(ball) {
-    return {
-      ...ball,
-      style: { ...(ball.style || {}) }
-    };
+  function assignBallState(target, source) {
+    const number = Number(source?.number) || 0;
+    target.id = number === 0 ? "cue" : `ball-${number}`;
+    target.number = number;
+    target.kind = source?.kind || groupForNumber(number);
+    target.style = ballStyles[number] || ballStyles[0];
+    target.x = Number(source?.x) || 0;
+    target.y = Number(source?.y) || 0;
+    target.pocketed = Boolean(source?.pocketed);
+    return target;
   }
 
-  function cloneBalls(balls) {
-    return (balls || []).map(cloneBall);
+  function syncRenderBuffer(sourceBalls) {
+    const length = Array.isArray(sourceBalls) ? sourceBalls.length : 0;
+    renderedBalls.length = length;
+    for (let index = 0; index < length; index += 1) {
+      const source = sourceBalls[index];
+      renderedBalls[index] = assignBallState(renderedBalls[index] || {}, source);
+    }
+    return renderedBalls;
+  }
+
+  function interpolateIntoRenderBuffer(fromFrame, toFrame, amount) {
+    const length = Math.max(fromFrame?.length || 0, toFrame?.length || 0);
+    renderedBalls.length = length;
+    for (let index = 0; index < length; index += 1) {
+      const target = renderedBalls[index] || {};
+      const next = toFrame?.[index] || fromFrame?.[index];
+      const previous = fromFrame?.[index] || next;
+      assignBallState(target, next);
+      if (previous && next && !previous.pocketed && !next.pocketed) {
+        target.x = lerp(Number(previous.x) || 0, Number(next.x) || 0, amount);
+        target.y = lerp(Number(previous.y) || 0, Number(next.y) || 0, amount);
+      }
+      renderedBalls[index] = target;
+    }
+    return renderedBalls;
   }
 
   function createFallbackBalls() {
@@ -586,9 +607,20 @@
     localStorage.setItem(storageKeys.name, safeName(playerNameInput.value));
   }
 
+  function requestDraw() {
+    if (drawQueued) return;
+    drawQueued = true;
+    requestAnimationFrame(() => {
+      drawQueued = false;
+      if (!animating) {
+        draw();
+      }
+    });
+  }
+
   function ensureCanvasResolution() {
     const table = currentTable();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, window.innerWidth < 900 ? 1.25 : MAX_RENDER_DPR);
     const width = Math.round(table.width * dpr);
     const height = Math.round(table.height * dpr);
     if (canvas.width !== width || canvas.height !== height) {
@@ -598,126 +630,149 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function roundRectPath(x, y, width, height, radius) {
-    const r = Math.min(radius, width / 2, height / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + width - r, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-    ctx.lineTo(x + width, y + height - r);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-    ctx.lineTo(x + r, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
+  function createSurface(width, height) {
+    const surface = document.createElement("canvas");
+    surface.width = width;
+    surface.height = height;
+    return surface;
   }
 
-  function drawBackground(table) {
-    ctx.clearRect(0, 0, table.width, table.height);
+  function roundRectPath(x, y, width, height, radius, context = ctx) {
+    const r = Math.min(radius, width / 2, height / 2);
+    context.beginPath();
+    context.moveTo(x + r, y);
+    context.lineTo(x + width - r, y);
+    context.quadraticCurveTo(x + width, y, x + width, y + r);
+    context.lineTo(x + width, y + height - r);
+    context.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    context.lineTo(x + r, y + height);
+    context.quadraticCurveTo(x, y + height, x, y + height - r);
+    context.lineTo(x, y + r);
+    context.quadraticCurveTo(x, y, x + r, y);
+    context.closePath();
+  }
+
+  function backgroundKey(table) {
+    return [
+      table.width,
+      table.height,
+      table.rail,
+      table.ballRadius,
+      table.cornerPocketRadius,
+      table.sidePocketRadius,
+      table.cornerPocketMouth,
+      table.sidePocketHalf,
+      table.sideJawInset,
+      table.sideJawDepth
+    ].join(":");
+  }
+
+  function renderTableBackground(targetCtx, table) {
     const pockets = pocketsForTable(table);
     const cushionSegments = cushionSegmentsForTable(table);
 
-    const roomGlow = ctx.createRadialGradient(table.width * 0.64, table.height * 0.46, 40, table.width * 0.64, table.height * 0.46, 540);
+    targetCtx.clearRect(0, 0, table.width, table.height);
+
+    const roomGlow = targetCtx.createRadialGradient(table.width * 0.64, table.height * 0.46, 40, table.width * 0.64, table.height * 0.46, 540);
     roomGlow.addColorStop(0, "rgba(87, 236, 115, 0.20)");
     roomGlow.addColorStop(0.36, "rgba(39, 111, 65, 0.18)");
     roomGlow.addColorStop(1, "rgba(4, 12, 10, 0)");
-    ctx.fillStyle = roomGlow;
-    ctx.fillRect(0, 0, table.width, table.height);
+    targetCtx.fillStyle = roomGlow;
+    targetCtx.fillRect(0, 0, table.width, table.height);
 
-    const wood = ctx.createLinearGradient(0, 0, 0, table.height);
+    const wood = targetCtx.createLinearGradient(0, 0, 0, table.height);
     wood.addColorStop(0, "#4b3423");
     wood.addColorStop(0.45, "#2d1e14");
     wood.addColorStop(1, "#1c120c");
-    roundRectPath(10, 10, table.width - 20, table.height - 20, 52);
-    ctx.fillStyle = wood;
-    ctx.fill();
+    roundRectPath(10, 10, table.width - 20, table.height - 20, 52, targetCtx);
+    targetCtx.fillStyle = wood;
+    targetCtx.fill();
 
     const feltInset = table.rail;
     const feltWidth = table.width - feltInset * 2;
     const feltHeight = table.height - feltInset * 2;
-    const felt = ctx.createRadialGradient(table.width * 0.55, table.height * 0.48, 80, table.width * 0.55, table.height * 0.48, table.width * 0.6);
+    const felt = targetCtx.createRadialGradient(table.width * 0.55, table.height * 0.48, 80, table.width * 0.55, table.height * 0.48, table.width * 0.6);
     felt.addColorStop(0, "#1f8e53");
     felt.addColorStop(0.48, "#13673a");
     felt.addColorStop(1, "#0a321f");
-    roundRectPath(feltInset, feltInset, feltWidth, feltHeight, 34);
-    ctx.fillStyle = felt;
-    ctx.fill();
+    roundRectPath(feltInset, feltInset, feltWidth, feltHeight, 34, targetCtx);
+    targetCtx.fillStyle = felt;
+    targetCtx.fill();
 
-    ctx.save();
-    ctx.globalCompositeOperation = "destination-out";
+    targetCtx.save();
+    targetCtx.globalCompositeOperation = "destination-out";
     for (const pocket of pockets) {
-      ctx.beginPath();
-      ctx.arc(pocket.x, pocket.y, pocket.radius + 3, 0, Math.PI * 2);
-      ctx.fill();
+      targetCtx.beginPath();
+      targetCtx.arc(pocket.x, pocket.y, pocket.radius + 3, 0, Math.PI * 2);
+      targetCtx.fill();
     }
-    ctx.restore();
+    targetCtx.restore();
 
-    ctx.save();
-    roundRectPath(feltInset, feltInset, feltWidth, feltHeight, 34);
-    ctx.clip();
-    ctx.strokeStyle = "rgba(183, 255, 200, 0.05)";
-    ctx.lineWidth = 1;
+    targetCtx.save();
+    roundRectPath(feltInset, feltInset, feltWidth, feltHeight, 34, targetCtx);
+    targetCtx.clip();
+    targetCtx.strokeStyle = "rgba(183, 255, 200, 0.05)";
+    targetCtx.lineWidth = 1;
     for (let index = -2; index < 20; index += 1) {
       const y = 70 + index * 34;
-      ctx.beginPath();
-      ctx.moveTo(feltInset - 30, y);
-      ctx.bezierCurveTo(table.width * 0.24, y + 12, table.width * 0.48, y - 12, table.width - feltInset + 30, y + 8);
-      ctx.stroke();
+      targetCtx.beginPath();
+      targetCtx.moveTo(feltInset - 30, y);
+      targetCtx.bezierCurveTo(table.width * 0.24, y + 12, table.width * 0.48, y - 12, table.width - feltInset + 30, y + 8);
+      targetCtx.stroke();
     }
 
-    ctx.lineWidth = 6;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "rgba(3, 8, 6, 0.96)";
+    targetCtx.lineWidth = 6;
+    targetCtx.lineCap = "round";
+    targetCtx.strokeStyle = "rgba(3, 8, 6, 0.96)";
     for (const segment of cushionSegments) {
-      ctx.beginPath();
-      ctx.moveTo(segment.ax, segment.ay);
-      ctx.lineTo(segment.bx, segment.by);
-      ctx.stroke();
+      targetCtx.beginPath();
+      targetCtx.moveTo(segment.ax, segment.ay);
+      targetCtx.lineTo(segment.bx, segment.by);
+      targetCtx.stroke();
     }
 
-    ctx.lineWidth = 1.6;
-    ctx.strokeStyle = "rgba(225, 248, 220, 0.10)";
+    targetCtx.lineWidth = 1.6;
+    targetCtx.strokeStyle = "rgba(225, 248, 220, 0.10)";
     for (const segment of cushionSegments.slice(0, 6)) {
-      ctx.beginPath();
-      ctx.moveTo(segment.ax, segment.ay);
-      ctx.lineTo(segment.bx, segment.by);
-      ctx.stroke();
+      targetCtx.beginPath();
+      targetCtx.moveTo(segment.ax, segment.ay);
+      targetCtx.lineTo(segment.bx, segment.by);
+      targetCtx.stroke();
     }
-    ctx.restore();
+    targetCtx.restore();
 
-    ctx.strokeStyle = "rgba(245, 255, 247, 0.16)";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([10, 14]);
-    ctx.beginPath();
-    ctx.moveTo(table.headX, feltInset + 18);
-    ctx.lineTo(table.headX, table.height - feltInset - 18);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    targetCtx.strokeStyle = "rgba(245, 255, 247, 0.16)";
+    targetCtx.lineWidth = 2;
+    targetCtx.setLineDash([10, 14]);
+    targetCtx.beginPath();
+    targetCtx.moveTo(table.headX, feltInset + 18);
+    targetCtx.lineTo(table.headX, table.height - feltInset - 18);
+    targetCtx.stroke();
+    targetCtx.setLineDash([]);
 
-    ctx.fillStyle = "rgba(241, 251, 241, 0.72)";
-    ctx.beginPath();
-    ctx.arc(table.footX, table.centerY, 4.5, 0, Math.PI * 2);
-    ctx.fill();
+    targetCtx.fillStyle = "rgba(241, 251, 241, 0.72)";
+    targetCtx.beginPath();
+    targetCtx.arc(table.footX, table.centerY, 4.5, 0, Math.PI * 2);
+    targetCtx.fill();
 
     for (const pocket of pockets) {
-      const rim = ctx.createRadialGradient(pocket.x, pocket.y, 4, pocket.x, pocket.y, pocket.radius + 10);
+      const rim = targetCtx.createRadialGradient(pocket.x, pocket.y, 4, pocket.x, pocket.y, pocket.radius + 10);
       rim.addColorStop(0, "#010202");
       rim.addColorStop(0.62, "#0b0f0c");
       rim.addColorStop(1, "rgba(196, 146, 85, 0.3)");
-      ctx.beginPath();
-      ctx.arc(pocket.x, pocket.y, pocket.radius + 8, 0, Math.PI * 2);
-      ctx.fillStyle = rim;
-      ctx.fill();
+      targetCtx.beginPath();
+      targetCtx.arc(pocket.x, pocket.y, pocket.radius + 8, 0, Math.PI * 2);
+      targetCtx.fillStyle = rim;
+      targetCtx.fill();
 
-      const throat = ctx.createRadialGradient(pocket.x, pocket.y, 0, pocket.x, pocket.y, pocket.radius + 3);
+      const throat = targetCtx.createRadialGradient(pocket.x, pocket.y, 0, pocket.x, pocket.y, pocket.radius + 3);
       throat.addColorStop(0, "rgba(0, 0, 0, 0.98)");
       throat.addColorStop(0.55, "rgba(3, 5, 4, 0.96)");
       throat.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.beginPath();
-      ctx.arc(pocket.x, pocket.y, pocket.radius + 3, 0, Math.PI * 2);
-      ctx.fillStyle = throat;
-      ctx.fill();
+      targetCtx.beginPath();
+      targetCtx.arc(pocket.x, pocket.y, pocket.radius + 3, 0, Math.PI * 2);
+      targetCtx.fillStyle = throat;
+      targetCtx.fill();
     }
 
     const diamonds = [
@@ -737,88 +792,117 @@
       [table.width - 22, table.height * 0.76]
     ];
 
-    ctx.fillStyle = "rgba(255, 238, 191, 0.86)";
+    targetCtx.fillStyle = "rgba(255, 238, 191, 0.86)";
     for (const [x, y] of diamonds) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(Math.PI / 4);
-      ctx.fillRect(-4, -4, 8, 8);
-      ctx.restore();
+      targetCtx.save();
+      targetCtx.translate(x, y);
+      targetCtx.rotate(Math.PI / 4);
+      targetCtx.fillRect(-4, -4, 8, 8);
+      targetCtx.restore();
     }
+  }
+
+  function getBackgroundCanvas(table) {
+    const key = backgroundKey(table);
+    if (backgroundCache.key === key && backgroundCache.canvas) {
+      return backgroundCache.canvas;
+    }
+    const surface = createSurface(table.width, table.height);
+    const backgroundCtx = surface.getContext("2d", { alpha: false, desynchronized: true });
+    renderTableBackground(backgroundCtx, table);
+    backgroundCache.key = key;
+    backgroundCache.canvas = surface;
+    return surface;
+  }
+
+  function drawBackground(table) {
+    ctx.drawImage(getBackgroundCanvas(table), 0, 0);
   }
 
   function drawBall(ball, table) {
     if (!ball || ball.pocketed) return;
+    const key = `${ball.number}:${table.ballRadius}`;
+    let sprite = ballSpriteCache.get(key);
+    if (!sprite) {
+      const radius = table.ballRadius;
+      const kind = groupForNumber(ball.number);
+      const style = ballStyles[ball.number] || ballStyles[0];
+      const size = Math.ceil(radius * 4.5);
+      const half = size / 2;
+      const surface = createSurface(size, size);
+      const spriteCtx = surface.getContext("2d", { alpha: true, desynchronized: true });
+      spriteCtx.imageSmoothingEnabled = true;
+      spriteCtx.translate(half, half);
 
-    const radius = table.ballRadius;
-    ctx.save();
-    ctx.translate(ball.x, ball.y);
+      const shadow = spriteCtx.createRadialGradient(-radius * 0.25, -radius * 0.35, radius * 0.2, 0, 0, radius * 1.65);
+      shadow.addColorStop(0, "rgba(255, 255, 255, 0.34)");
+      shadow.addColorStop(0.55, ball.number === 8 ? "rgba(17, 22, 18, 0.96)" : style.color);
+      shadow.addColorStop(1, "rgba(0, 0, 0, 0.92)");
+      spriteCtx.fillStyle = shadow;
+      spriteCtx.beginPath();
+      spriteCtx.arc(0, 0, radius, 0, Math.PI * 2);
+      spriteCtx.fill();
 
-    const shadow = ctx.createRadialGradient(-radius * 0.25, -radius * 0.35, radius * 0.2, 0, 0, radius * 1.65);
-    shadow.addColorStop(0, "rgba(255, 255, 255, 0.34)");
-    shadow.addColorStop(0.55, ball.number === 8 ? "rgba(17, 22, 18, 0.96)" : ball.style.color);
-    shadow.addColorStop(1, "rgba(0, 0, 0, 0.92)");
-    ctx.fillStyle = shadow;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.fill();
+      if (kind === "stripes") {
+        spriteCtx.save();
+        spriteCtx.beginPath();
+        spriteCtx.arc(0, 0, radius, 0, Math.PI * 2);
+        spriteCtx.clip();
+        spriteCtx.fillStyle = "#fbf8f3";
+        spriteCtx.fillRect(-radius, -radius, radius * 2, radius * 2);
+        spriteCtx.fillStyle = style.color;
+        spriteCtx.fillRect(-radius, -radius * 0.55, radius * 2, radius * 1.1);
+        spriteCtx.restore();
+        spriteCtx.strokeStyle = "rgba(0, 0, 0, 0.12)";
+        spriteCtx.lineWidth = 1;
+        spriteCtx.beginPath();
+        spriteCtx.arc(0, 0, radius, 0, Math.PI * 2);
+        spriteCtx.stroke();
+      }
 
-    if (ball.kind === "stripes") {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.fillStyle = "#fbf8f3";
-      ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
-      ctx.fillStyle = ball.style.color;
-      ctx.fillRect(-radius, -radius * 0.55, radius * 2, radius * 1.1);
-      ctx.restore();
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.stroke();
+      if (kind === "cue") {
+        const cueGradient = spriteCtx.createRadialGradient(-6, -8, 2, 0, 0, radius * 1.2);
+        cueGradient.addColorStop(0, "#ffffff");
+        cueGradient.addColorStop(0.62, "#f2f5f0");
+        cueGradient.addColorStop(1, "#cfd8d0");
+        spriteCtx.fillStyle = cueGradient;
+        spriteCtx.beginPath();
+        spriteCtx.arc(0, 0, radius, 0, Math.PI * 2);
+        spriteCtx.fill();
+      }
+
+      if (kind === "solids" || kind === "eight") {
+        spriteCtx.fillStyle = style.color;
+        spriteCtx.beginPath();
+        spriteCtx.arc(0, 0, radius, 0, Math.PI * 2);
+        spriteCtx.fill();
+      }
+
+      if (kind === "eight") {
+        spriteCtx.strokeStyle = "rgba(116, 239, 112, 0.4)";
+        spriteCtx.lineWidth = 1.5;
+        spriteCtx.beginPath();
+        spriteCtx.arc(0, 0, radius + 1.6, 0, Math.PI * 2);
+        spriteCtx.stroke();
+      }
+
+      if (kind !== "cue") {
+        spriteCtx.fillStyle = "#fbf8f3";
+        spriteCtx.beginPath();
+        spriteCtx.arc(0, 0, radius * 0.42, 0, Math.PI * 2);
+        spriteCtx.fill();
+        spriteCtx.fillStyle = ball.number === 8 ? "#0b0f0d" : "#15201a";
+        spriteCtx.font = `${ball.number >= 10 ? 9 : 11}px Inter, system-ui, sans-serif`;
+        spriteCtx.textAlign = "center";
+        spriteCtx.textBaseline = "middle";
+        spriteCtx.fillText(String(ball.number), 0, 0.6);
+      }
+
+      sprite = { canvas: surface, half };
+      ballSpriteCache.set(key, sprite);
     }
 
-    if (ball.kind === "cue") {
-      const cueGradient = ctx.createRadialGradient(-6, -8, 2, 0, 0, radius * 1.2);
-      cueGradient.addColorStop(0, "#ffffff");
-      cueGradient.addColorStop(0.62, "#f2f5f0");
-      cueGradient.addColorStop(1, "#cfd8d0");
-      ctx.fillStyle = cueGradient;
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    if (ball.kind === "solids" || ball.kind === "eight") {
-      ctx.fillStyle = ball.style.color;
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    if (ball.kind === "eight") {
-      ctx.strokeStyle = "rgba(116, 239, 112, 0.4)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(0, 0, radius + 1.6, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    if (ball.kind !== "cue") {
-      ctx.fillStyle = "#fbf8f3";
-      ctx.beginPath();
-      ctx.arc(0, 0, radius * 0.42, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = ball.number === 8 ? "#0b0f0d" : "#15201a";
-      ctx.font = `${ball.number >= 10 ? 9 : 11}px Inter, system-ui, sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(ball.number), 0, 0.6);
-    }
-
-    ctx.restore();
+    ctx.drawImage(sprite.canvas, ball.x - sprite.half, ball.y - sprite.half);
   }
 
   function drawCueGuides(table) {
@@ -933,7 +1017,7 @@
     cancelAnimationFrame(animationHandle);
     animating = true;
     updateButtonState();
-    const frames = Array.isArray(trace) && trace.length ? trace.map(cloneBalls) : [cloneBalls(finalBalls)];
+    const frames = Array.isArray(trace) && trace.length ? trace : [finalBalls];
     const totalFrames = frames.length;
     const duration = clamp(totalFrames * 16, 360, 1400);
     const start = performance.now();
@@ -944,16 +1028,18 @@
       const frameIndex = Math.min(totalFrames - 1, Math.floor(scaled));
       const nextIndex = Math.min(totalFrames - 1, frameIndex + 1);
       const frameProgress = scaled - frameIndex;
-      renderedBalls = frameIndex === nextIndex
-        ? cloneBalls(frames[frameIndex])
-        : interpolateFrames(frames[frameIndex], frames[nextIndex], frameProgress);
+      if (frameIndex === nextIndex) {
+        syncRenderBuffer(frames[frameIndex]);
+      } else {
+        interpolateIntoRenderBuffer(frames[frameIndex], frames[nextIndex], frameProgress);
+      }
       draw();
       if (progress < 1) {
         animationHandle = requestAnimationFrame(step);
         return;
       }
       animating = false;
-      renderedBalls = cloneBalls(finalBalls);
+      syncRenderBuffer(finalBalls);
       draw();
       updateButtonState();
     }
@@ -964,12 +1050,12 @@
   function applyState(nextState, options = {}) {
     state = nextState || null;
     if (!state) {
-      renderedBalls = createFallbackBalls();
+      syncRenderBuffer(createFallbackBalls());
       renderedShotId = -1;
       previewCuePlacement = null;
       cuePlacementValid = true;
       updatePanel();
-      draw();
+      requestDraw();
       return;
     }
 
@@ -997,8 +1083,8 @@
     } else {
       cancelAnimationFrame(animationHandle);
       animating = false;
-      renderedBalls = cloneBalls(state.balls);
-      draw();
+      syncRenderBuffer(state.balls);
+      requestDraw();
     }
 
     updatePanel();
@@ -1012,7 +1098,8 @@
     if (pendingRequest && options.silent) return;
 
     try {
-      const nextState = await request(`/${roomCode}?token=${encodeURIComponent(token)}`);
+      const sinceShotId = renderedShotId >= 0 ? `&sinceShotId=${encodeURIComponent(renderedShotId)}` : "";
+      const nextState = await request(`/${roomCode}?token=${encodeURIComponent(token)}${sinceShotId}`);
       applyState(nextState, { animate: options.animate !== false });
     } catch (error) {
       if (/does not exist/i.test(error.message || "")) {
@@ -1179,13 +1266,13 @@
       placingCue = true;
       cuePlacementValid = true;
       aiming = false;
-      draw();
+      requestDraw();
       return;
     }
 
     aiming = true;
     placingCue = false;
-    draw();
+    requestDraw();
   }
 
   function onPointerMove(event) {
@@ -1201,12 +1288,12 @@
       if (valid) {
         previewCuePlacement = valid;
       }
-      draw();
+      requestDraw();
       return;
     }
 
     if (aiming) {
-      draw();
+      requestDraw();
     }
   }
 
@@ -1230,31 +1317,31 @@
         flashNote("That spot is blocked. Keep the cue ball clear of other balls and the pocket mouths.");
       }
       resetPointerState();
-      draw();
+      requestDraw();
       return;
     }
 
     if (!aiming) {
       resetPointerState();
-      draw();
+      requestDraw();
       return;
     }
 
     const cue = cueBallForDraw();
     resetPointerState();
     if (!cue) {
-      draw();
+      requestDraw();
       return;
     }
 
     const dx = point.x - cue.x;
     const dy = point.y - cue.y;
     if (Math.hypot(dx, dy) < currentTable().ballRadius * 1.15) {
-      draw();
+      requestDraw();
       return;
     }
 
-    draw();
+    requestDraw();
     submitShot(dx, dy);
   }
 
@@ -1314,7 +1401,7 @@
 
   powerSlider.addEventListener("input", () => {
     powerValue.textContent = `${powerSlider.value}%`;
-    draw();
+    requestDraw();
   });
 
   canvas.addEventListener("pointerdown", onPointerDown);
@@ -1322,10 +1409,10 @@
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", () => {
     resetPointerState();
-    draw();
+    requestDraw();
   });
 
-  window.addEventListener("resize", draw);
+  window.addEventListener("resize", requestDraw);
   window.addEventListener("focus", () => {
     refreshState({ silent: true, animate: false });
   });

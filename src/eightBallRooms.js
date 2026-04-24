@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 
 const ROOM_TTL_MS = 1000 * 60 * 60 * 4;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const MAX_TRACE_FRAMES = 90;
-const TRACE_SAMPLE_STEPS = 3;
+const MAX_TRACE_FRAMES = 64;
+const TRACE_SAMPLE_STEPS = 4;
 const MAX_SIMULATION_STEPS = 540;
 const FRICTION = 0.992;
 const WALL_BOUNCE = 0.94;
@@ -77,6 +77,10 @@ function clamp(value, min, max) {
   return Math.min(Math.max(Number(value) || 0, min), max);
 }
 
+function compactCoord(value) {
+  return Math.round((Number(value) || 0) * 10) / 10;
+}
+
 function groupForNumber(number) {
   if (number >= 1 && number <= 7) return "solids";
   if (number >= 9 && number <= 15) return "stripes";
@@ -107,18 +111,15 @@ function createBall(number, x, y) {
 function cloneBall(ball) {
   return {
     ...ball,
-    style: { ...ball.style }
+    style: ball.style
   };
 }
 
 function publicBall(ball) {
   return {
-    id: ball.id,
     number: ball.number,
-    kind: ball.kind,
-    style: { ...ball.style },
-    x: Number(ball.x) || 0,
-    y: Number(ball.y) || 0,
+    x: compactCoord(ball.x),
+    y: compactCoord(ball.y),
     pocketed: Boolean(ball.pocketed)
   };
 }
@@ -243,8 +244,10 @@ function objectiveForPlayer(room, playerIndex) {
   return playerCanShootEight(room, playerIndex) ? "Shoot the 8 ball" : `Clear the ${group}`;
 }
 
-function stateForClient(room, token = "") {
+function stateForClient(room, token = "", options = {}) {
   const selfPlayerIndex = playerIndexFor(room, token);
+  const sinceShotId = Number(options.sinceShotId);
+  const includeTrace = !Number.isFinite(sinceShotId) || room.shotId > sinceShotId;
   const remaining = {
     solids: remainingGroupCount(room.balls, "solids"),
     stripes: remainingGroupCount(room.balls, "stripes")
@@ -281,7 +284,7 @@ function stateForClient(room, token = "") {
     },
     balls: room.balls.map(publicBall),
     shotId: room.shotId,
-    trace: room.trace.map((frame) => frame.map(publicBall)),
+    trace: includeTrace ? room.trace : [],
     updatedAt: new Date(room.updatedAt).toISOString()
   };
 }
@@ -377,18 +380,18 @@ function joinRoom(code, playerName) {
   };
 }
 
-function getRoomState(code, token) {
+function getRoomState(code, token, options = {}) {
   const room = roomByCode(code);
   if (!room) {
     throw new Error("That room code does not exist anymore.");
   }
   touchRoom(room);
-  return stateForClient(room, token);
+  return stateForClient(room, token, options);
 }
 
 function captureTraceFrame(trace, balls, force = false) {
   if (!force && trace.length >= MAX_TRACE_FRAMES) return;
-  trace.push(balls.map(cloneBall));
+  trace.push(balls.map(publicBall));
 }
 
 function normalizeVector(dx, dy) {
