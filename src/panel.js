@@ -312,7 +312,7 @@ function layout({ title, body, user, flash = "" }) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
-  <link rel="icon" type="image/svg+xml" href="/chipkittle-logo.svg">
+  <link rel="icon" type="image/png" href="/notativelogotransparent.png">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -851,7 +851,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json());
   app.use((request, response, next) => {
-    if (request.path === "/styles.css" || request.path === "/chipkittle-logo.svg") {
+    if (request.path === "/styles.css" || request.path === "/chipkittle-logo.svg" || request.path === "/notativelogotransparent.png") {
       panelStatic(request, response, next);
       return;
     }

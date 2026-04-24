@@ -355,6 +355,7 @@ a {
 }
 
 .info-band,
+.eight-ball-band,
 .about-band,
 .page-head,
 .directory,
@@ -406,6 +407,199 @@ a {
   display: block;
   margin-bottom: 8px;
   font-size: 20px;
+}
+
+.eight-ball-band {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(320px, 520px);
+  gap: clamp(34px, 6vw, 90px);
+  align-items: center;
+  padding-block: clamp(66px, 8vw, 112px);
+  background: var(--page-bg);
+  border-top: 1px solid var(--line);
+}
+
+.eight-ball-copy {
+  display: grid;
+  gap: 18px;
+}
+
+.eight-ball-copy h2 {
+  margin: 0;
+  max-width: 760px;
+  font-size: clamp(42px, 6vw, 86px);
+  line-height: 0.96;
+  font-weight: 940;
+}
+
+.eight-ball-copy p:last-child {
+  max-width: 660px;
+  margin: 0;
+  color: var(--soft-ink);
+  font-size: 21px;
+  line-height: 1.55;
+}
+
+.eight-ball-panel {
+  display: grid;
+  justify-items: center;
+  gap: 24px;
+}
+
+.eight-ball {
+  position: relative;
+  width: min(330px, 70vw);
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.44), transparent 13%),
+    radial-gradient(circle at 64% 69%, rgba(82, 215, 101, 0.42), transparent 31%),
+    linear-gradient(145deg, #101915 0%, #050706 62%, #000 100%);
+  box-shadow: inset -34px -44px 80px rgba(0, 0, 0, 0.72), inset 20px 22px 52px rgba(255, 255, 255, 0.1), 0 34px 82px rgba(16, 25, 21, 0.24);
+  cursor: pointer;
+}
+
+.eight-ball-glow {
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(82, 215, 101, 0.3), transparent 58%);
+  filter: blur(10px);
+  animation: eight-ball-pulse 3.8s ease-in-out infinite;
+}
+
+.eight-ball-logo {
+  position: absolute;
+  z-index: 1;
+  width: 58%;
+  height: 58%;
+  object-fit: contain;
+  opacity: 0.42;
+  filter: drop-shadow(0 10px 18px rgba(82, 215, 101, 0.32));
+  transform-origin: 50% 58%;
+  animation: eight-ball-logo-float 5.2s cubic-bezier(0.42, 0, 0.18, 1) infinite;
+}
+
+.eight-ball-window {
+  position: relative;
+  z-index: 2;
+  width: 48%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 9px solid rgba(238, 242, 238, 0.94);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, var(--green-dark), var(--green) 56%, #0b3a19 100%);
+  color: var(--white);
+  padding: 18px;
+  text-align: center;
+  font-size: clamp(16px, 2vw, 23px);
+  font-weight: 950;
+  line-height: 1.08;
+  box-shadow: inset 0 0 26px rgba(255, 255, 255, 0.22), 0 0 34px rgba(82, 215, 101, 0.42);
+}
+
+.eight-ball.is-shaking {
+  animation: eight-ball-shake 520ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+.eight-ball.is-shaking .eight-ball-logo {
+  animation: eight-ball-logo-spin 620ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.eight-ball-form {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+}
+
+.eight-ball-form label {
+  color: var(--soft-ink);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.eight-ball-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.eight-ball-input-row input {
+  min-width: 0;
+  min-height: 58px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 22px;
+  background: var(--card-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 750;
+  backdrop-filter: blur(18px);
+}
+
+@keyframes eight-ball-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0);
+  }
+  15% {
+    transform: translateX(-10px) rotate(-5deg);
+  }
+  30% {
+    transform: translateX(9px) rotate(4deg);
+  }
+  45% {
+    transform: translateX(-7px) rotate(-3deg);
+  }
+  60% {
+    transform: translateX(6px) rotate(3deg);
+  }
+  75% {
+    transform: translateX(-3px) rotate(-1deg);
+  }
+}
+
+@keyframes eight-ball-logo-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg) scale(1);
+  }
+  35% {
+    transform: translateY(-8px) rotate(3deg) scale(1.04);
+  }
+  70% {
+    transform: translateY(5px) rotate(-1deg) scale(0.98);
+  }
+}
+
+@keyframes eight-ball-logo-spin {
+  0% {
+    transform: rotate(-9deg) scale(0.98);
+  }
+  48% {
+    transform: rotate(14deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(-4deg) scale(1);
+  }
+}
+
+@keyframes eight-ball-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
 }
 
 .about-band {
@@ -741,7 +935,8 @@ a {
     margin-top: 20px;
   }
 
-  .info-band {
+  .info-band,
+  .eight-ball-band {
     grid-template-columns: 1fr;
   }
 
@@ -808,6 +1003,10 @@ a {
   }
 
   .game-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .eight-ball-input-row {
     grid-template-columns: 1fr;
   }
 }

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chipkittle</title>
   <meta name="description" content="The public home of Chipkittle, the Discord, the bot, the member directory, and recent project commits.">
-  <link rel="icon" type="image/svg+xml" href="/chipkittle-logo.svg">
+  <link rel="icon" type="image/png" href="/notativelogotransparent.png">
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/site.css">
 </head>
@@ -23,6 +23,7 @@
         </a>
         <nav aria-label="Site navigation">
           <a href="#features">Features</a>
+          <a href="#eight-ball">8 Ball</a>
           <a href="/members">Members</a>
           <a href="/commits">Commits</a>
           <a href="/game">Game</a>
@@ -97,6 +98,28 @@
       </div>
     </section>
 
+    <section class="eight-ball-band" id="eight-ball" aria-labelledby="eightBallTitle">
+      <div class="eight-ball-copy">
+        <p class="eyebrow">Oracle</p>
+        <h2 id="eightBallTitle">Ask the Chipkittle 8 Ball.</h2>
+        <p>Send a question into the ancient artifact and receive a deeply official, definitely trustworthy answer.</p>
+      </div>
+      <div class="eight-ball-panel">
+        <button class="eight-ball" type="button" id="eightBallButton" aria-label="Ask the Chipkittle 8 Ball">
+          <span class="eight-ball-glow" aria-hidden="true"></span>
+          <img class="eight-ball-logo" src="/notativelogotransparent.png" alt="" aria-hidden="true">
+          <span class="eight-ball-window" id="eightBallAnswer">CK</span>
+        </button>
+        <div class="eight-ball-form">
+          <label for="eightBallQuestion">Question</label>
+          <div class="eight-ball-input-row">
+            <input id="eightBallQuestion" type="text" placeholder="Will the artifact return today?" autocomplete="off">
+            <button class="button primary" type="button" id="eightBallAsk">Ask</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="about-band" id="about">
       <p class="eyebrow">What is Chipkittle?</p>
       <h2>Part Discord clan, part bot control room, part ancient artifact investigation.</h2>
@@ -107,5 +130,42 @@
       </div>
     </section>
   </main>
+  <script>
+    const eightBallAnswers = [
+      "Yes. Chipkittle approves.",
+      "Yes. The artifact agrees.",
+      "Yes. Very likely.",
+      "Yes. The bread is aligned.",
+      "No. Chipkittle refuses.",
+      "No. Not today.",
+      "No. The artifact says stop.",
+      "No. Bad omen.",
+      "Maybe. Ask again soon.",
+      "Maybe. The lore is unclear.",
+      "Maybe. Staff must decide.",
+      "Ask again. The horns are glowing."
+    ];
+
+    const eightBallButton = document.querySelector("#eightBallButton");
+    const eightBallAsk = document.querySelector("#eightBallAsk");
+    const eightBallAnswer = document.querySelector("#eightBallAnswer");
+    const eightBallQuestion = document.querySelector("#eightBallQuestion");
+
+    function askEightBall() {
+      const answer = eightBallAnswers[Math.floor(Math.random() * eightBallAnswers.length)];
+      eightBallButton.classList.remove("is-shaking");
+      void eightBallButton.offsetWidth;
+      eightBallButton.classList.add("is-shaking");
+      eightBallAnswer.textContent = answer;
+      eightBallQuestion.value = "";
+      eightBallQuestion.focus();
+    }
+
+    eightBallButton.addEventListener("click", askEightBall);
+    eightBallAsk.addEventListener("click", askEightBall);
+    eightBallQuestion.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") askEightBall();
+    });
+  </script>
 </body>
 </html>
