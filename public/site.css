@@ -104,10 +104,10 @@ a {
 
 .hero-logo-overlay {
   position: absolute;
-  left: clamp(49%, 53vw, 58%);
-  top: clamp(52%, 59vh, 62%);
+  left: clamp(57%, 62vw, 67%);
+  top: clamp(51%, 56vh, 60%);
   z-index: -1;
-  width: clamp(110px, 12vw, 180px);
+  width: clamp(170px, 15vw, 260px);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -117,7 +117,18 @@ a {
   width: 100%;
   height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 24px 40px rgba(97, 216, 66, 0.28));
+  filter: drop-shadow(0 26px 52px rgba(97, 216, 66, 0.34));
+  animation: hero-logo-hover 4.6s ease-in-out infinite;
+}
+
+@keyframes hero-logo-hover {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-10px) scale(1.018);
+  }
 }
 
 .hero::after {
@@ -154,17 +165,18 @@ a {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   font-size: clamp(22px, 2.7vw, 34px);
   font-weight: 900;
   line-height: 1;
 }
 
 .brand img {
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 58px;
   object-fit: contain;
   filter: drop-shadow(0 8px 20px rgba(26, 138, 56, 0.22));
+  transform: translateY(1px);
 }
 
 .topbar nav {
@@ -718,9 +730,9 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 57%;
+    left: 64%;
     top: 61%;
-    width: clamp(96px, 16vw, 150px);
+    width: clamp(132px, 18vw, 190px);
   }
 
   .hero-copy {
@@ -771,8 +783,8 @@ a {
   }
 
   .brand img {
-    width: 40px;
-    height: 40px;
+    width: 48px;
+    height: 48px;
   }
 
   .nav-button,
@@ -793,9 +805,9 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 58%;
-    top: 64%;
-    width: 96px;
+    left: 66%;
+    top: 63%;
+    width: 118px;
   }
 
   .trusted strong {
