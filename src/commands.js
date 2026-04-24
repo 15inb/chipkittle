@@ -942,6 +942,75 @@ const CASINO_ROBBERY_COOLDOWN_MS = 8 * 60 * 60 * 1000;
 const BANK_INTEREST_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 const BANK_INTEREST_RATE = 0.015;
 const MAX_BANK_INTEREST = 1_000;
+const ECONOMY_UPGRADES = [
+  {
+    id: "daily-oven",
+    name: "Daily Oven",
+    description: "Adds 125 bread to every daily claim.",
+    maxLevel: 5,
+    baseCost: 1_500,
+    costGrowth: 1.75,
+    stat: "dailyBonus",
+    valuePerLevel: 125
+  },
+  {
+    id: "streak-vault",
+    name: "Streak Vault",
+    description: "Raises the daily streak bonus cap by 150 bread per level.",
+    maxLevel: 4,
+    baseCost: 2_000,
+    costGrowth: 1.8,
+    stat: "streakCapBonus",
+    valuePerLevel: 150
+  },
+  {
+    id: "interest-altar",
+    name: "Interest Altar",
+    description: "Adds 0.35% bank interest and 400 max interest per level.",
+    maxLevel: 5,
+    baseCost: 3_000,
+    costGrowth: 1.9,
+    stat: "interest"
+  },
+  {
+    id: "interest-clock",
+    name: "Interest Clock",
+    description: "Shortens bank interest cooldown by 1 hour per level.",
+    maxLevel: 5,
+    baseCost: 2_800,
+    costGrowth: 1.75,
+    stat: "interestCooldown"
+  },
+  {
+    id: "work-tools",
+    name: "Work Tools",
+    description: "Adds 60 bread to work payouts per level.",
+    maxLevel: 5,
+    baseCost: 1_250,
+    costGrowth: 1.65,
+    stat: "workBonus",
+    valuePerLevel: 60
+  },
+  {
+    id: "casino-disguise",
+    name: "Casino Disguise",
+    description: "Improves casino robbery payouts and lowers losses slightly.",
+    maxLevel: 4,
+    baseCost: 4_000,
+    costGrowth: 2,
+    stat: "casino"
+  },
+  {
+    id: "bread-shield",
+    name: "Bread Shield",
+    description: "Keeps more of your wallet safe from member robberies.",
+    maxLevel: 4,
+    baseCost: 2_500,
+    costGrowth: 1.8,
+    stat: "robDefense",
+    valuePerLevel: 0.04
+  }
+];
 const ECONOMY_LOG_LIMIT = 60;
 const BLACKJACK_SESSION_MS = 120_000;
 const blackjackSessions = new Map();
@@ -951,6 +1020,7 @@ function normalizeEconomy(economy = {}) {
     ...economy,
     balances: { ...(economy.balances || {}) },
     bankBalances: { ...(economy.bankBalances || {}) },
+    upgrades: { ...(economy.upgrades || {}) },
     dailyClaims: { ...(economy.dailyClaims || {}) },
     dailyStreaks: { ...(economy.dailyStreaks || {}) },
     stats: { ...(economy.stats || {}) },
@@ -991,6 +1061,66 @@ function totalBreadWealth(economy, userId) {
 
 function formatBread(amount) {
   return `${Math.floor(amount).toLocaleString()} bread`;
+}
+
+function userUpgrades(economy, userId) {
+  return { ...(economy.upgrades?.[userId] || {}) };
+}
+
+function upgradeDefinition(upgradeId = "") {
+  return ECONOMY_UPGRADES.find((upgrade) => upgrade.id === String(upgradeId || "").toLowerCase()) || null;
+}
+
+function upgradeLevel(economy, userId, upgradeId) {
+  return Math.max(Math.floor(Number(economy.upgrades?.[userId]?.[upgradeId]) || 0), 0);
+}
+
+function upgradeCost(upgrade, currentLevel) {
+  return Math.max(Math.floor(upgrade.baseCost * (upgrade.costGrowth ** currentLevel)), 1);
+}
+
+function setUpgradeLevel(economy, userId, upgradeId, level) {
+  economy.upgrades ||= {};
+  economy.upgrades[userId] ||= {};
+  economy.upgrades[userId][upgradeId] = Math.max(Math.floor(Number(level) || 0), 0);
+}
+
+function upgradeTotal(economy, userId, stat) {
+  return ECONOMY_UPGRADES
+    .filter((upgrade) => upgrade.stat === stat)
+    .reduce((sum, upgrade) => sum + upgradeLevel(economy, userId, upgrade.id), 0);
+}
+
+function dailyBonusFor(economy, userId) {
+  return upgradeTotal(economy, userId, "dailyBonus") * 125;
+}
+
+function dailyStreakCapFor(economy, userId) {
+  return 500 + upgradeTotal(economy, userId, "streakCapBonus") * 150;
+}
+
+function workBonusFor(economy, userId) {
+  return upgradeTotal(economy, userId, "workBonus") * 60;
+}
+
+function interestRateFor(economy, userId) {
+  return BANK_INTEREST_RATE + upgradeTotal(economy, userId, "interest") * 0.0035;
+}
+
+function maxInterestFor(economy, userId) {
+  return MAX_BANK_INTEREST + upgradeTotal(economy, userId, "interest") * 400;
+}
+
+function interestCooldownFor(economy, userId) {
+  return Math.max(8 * 60 * 60 * 1000, BANK_INTEREST_COOLDOWN_MS - upgradeTotal(economy, userId, "interestCooldown") * 60 * 60 * 1000);
+}
+
+function casinoUpgradeLevel(economy, userId) {
+  return upgradeTotal(economy, userId, "casino");
+}
+
+function robDefenseFor(economy, userId) {
+  return Math.min(upgradeTotal(economy, userId, "robDefense") * 0.04, 0.2);
 }
 
 function economyStatsFor(economy, userId) {
@@ -2098,8 +2228,9 @@ define({
       const previousStreak = Math.max(Math.floor(Number(economy.dailyStreaks?.[userId]?.streak) || 0), 0);
       const streak = lastClaim && Date.now() - lastClaim <= DAILY_COOLDOWN_MS * 2.2 ? previousStreak + 1 : 1;
       const bonus = randomInt(0, 150);
-      const streakBonus = Math.min(streak * 25, 500);
-      const amount = DAILY_BREAD + bonus + streakBonus;
+      const upgradeBonus = dailyBonusFor(economy, userId);
+      const streakBonus = Math.min(streak * 25, dailyStreakCapFor(economy, userId));
+      const amount = DAILY_BREAD + bonus + streakBonus + upgradeBonus;
       const nextBalance = breadBalance(economy, userId) + amount;
       economy.dailyClaims[userId] = new Date().toISOString();
       economy.dailyStreaks[userId] = {
@@ -2116,7 +2247,7 @@ define({
       });
       return [
         `You claimed **${formatBread(amount)}**.`,
-        `Daily base: **${formatBread(DAILY_BREAD)}** | random bonus: **${formatBread(bonus)}** | streak bonus: **${formatBread(streakBonus)}**`,
+        `Daily base: **${formatBread(DAILY_BREAD)}** | random bonus: **${formatBread(bonus)}** | streak bonus: **${formatBread(streakBonus)}** | upgrade bonus: **${formatBread(upgradeBonus)}**`,
         `Streak: **${streak} day${streak === 1 ? "" : "s"}**`,
         `Wallet: **${formatBread(nextBalance)}**.`
       ].join("\n");
@@ -2176,15 +2307,18 @@ define({
     const target = mentionTargetUser(ctx.message);
     const wallet = breadBalance(economy, target.id);
     const bank = bankBalance(economy, target.id);
-    const interest = Math.min(Math.floor(bank * BANK_INTEREST_RATE), MAX_BANK_INTEREST);
-    const cooldown = persistentCooldownStatus(economy, "interest", target.id, BANK_INTEREST_COOLDOWN_MS);
+    const interest = Math.min(Math.floor(bank * interestRateFor(economy, target.id)), maxInterestFor(economy, target.id));
+    const cooldown = persistentCooldownStatus(economy, "interest", target.id, interestCooldownFor(economy, target.id));
+    const ownedUpgrades = Object.values(userUpgrades(economy, target.id)).reduce((sum, level) => sum + Math.max(Number(level) || 0, 0), 0);
     await ctx.message.reply([
       `**${target.displayName}'s Bread Bank**`,
       `Wallet: **${formatBread(wallet)}**`,
       `Bank: **${formatBread(bank)}**`,
       `Net worth: **${formatBread(wallet + bank)}**`,
+      `Interest rate: **${(interestRateFor(economy, target.id) * 100).toFixed(2)}%**`,
       `Next interest: **${formatBread(interest)}**`,
-      `Interest status: ${cooldown.limited ? `ready in **${formatCooldown(cooldown.remainingMs)}**` : "**ready now**"}`
+      `Interest status: ${cooldown.limited ? `ready in **${formatCooldown(cooldown.remainingMs)}**` : "**ready now**"}`,
+      `Upgrade levels owned: **${ownedUpgrades}**`
     ].join("\n"));
   }
 });
@@ -2261,11 +2395,11 @@ define({
   async run(ctx) {
     const output = await updateBreadEconomy(ctx, async (economy) => {
       const userId = ctx.message.author.id;
-      const cooldown = persistentCooldownStatus(economy, "interest", userId, BANK_INTEREST_COOLDOWN_MS);
+      const cooldown = persistentCooldownStatus(economy, "interest", userId, interestCooldownFor(economy, userId));
       if (cooldown.limited) return `Bank interest will be ready in ${formatCooldown(cooldown.remainingMs)}.`;
       const bank = bankBalance(economy, userId);
       if (bank < 100) return "You need at least 100 bread in the bank before it earns interest.";
-      const amount = Math.min(Math.floor(bank * BANK_INTEREST_RATE), MAX_BANK_INTEREST);
+      const amount = Math.min(Math.floor(bank * interestRateFor(economy, userId)), maxInterestFor(economy, userId));
       if (amount < 1) return "Your bank balance is too low to generate interest yet.";
       setPersistentCooldown(economy, "interest", userId);
       setBankBalance(economy, userId, bank + amount);
@@ -2282,6 +2416,73 @@ define({
         `Net worth: **${formatBread(totalBreadWealth(economy, userId))}**`
       ].join("\n");
     });
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "upgrades",
+  aliases: ["breadupgrades", "economyupgrades"],
+  category: "Gambling",
+  description: "Browse bread economy upgrades and your current levels.",
+  usage: "upgrades [@user]",
+  async run(ctx) {
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const target = mentionTargetUser(ctx.message);
+    const lines = ECONOMY_UPGRADES.map((upgrade) => {
+      const level = upgradeLevel(economy, target.id, upgrade.id);
+      const maxed = level >= upgrade.maxLevel;
+      const nextCost = maxed ? "maxed" : formatBread(upgradeCost(upgrade, level));
+      return `**${upgrade.name}** \`${upgrade.id}\` - level **${level}/${upgrade.maxLevel}** - next: **${nextCost}**\n${upgrade.description}`;
+    });
+    await ctx.message.reply([
+      `**${target.displayName}'s Bread Upgrades**`,
+      ...lines,
+      "",
+      `Buy with \`${ctx.config.prefix}buyupgrade upgrade-id\`.`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "buyupgrade",
+  aliases: ["upgradebuy", "upgrade"],
+  category: "Gambling",
+  description: "Buy a bread economy upgrade.",
+  usage: "buyupgrade upgrade-id",
+  async run(ctx) {
+    const upgradeId = cleanText(ctx.args[0], 80).toLowerCase();
+    const upgrade = upgradeDefinition(upgradeId);
+    if (!upgrade) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\`\nUse \`${ctx.config.prefix}upgrades\` to see upgrade IDs.`);
+      return;
+    }
+
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const userId = ctx.message.author.id;
+      const currentLevel = upgradeLevel(economy, userId, upgrade.id);
+      if (currentLevel >= upgrade.maxLevel) return `**${upgrade.name}** is already maxed.`;
+      const cost = upgradeCost(upgrade, currentLevel);
+      const wallet = breadBalance(economy, userId);
+      if (wallet < cost) return `You need **${formatBread(cost)}** in your wallet to buy **${upgrade.name}**.`;
+      setBreadBalance(economy, userId, wallet - cost);
+      setUpgradeLevel(economy, userId, upgrade.id, currentLevel + 1);
+      recordEconomyTransaction(economy, {
+        userId,
+        type: "upgrade",
+        upgradeId: upgrade.id,
+        upgradeName: upgrade.name,
+        amount: -cost,
+        balance: breadBalance(economy, userId),
+        bank: bankBalance(economy, userId)
+      });
+      return [
+        `Bought **${upgrade.name}** level **${currentLevel + 1}/${upgrade.maxLevel}** for **${formatBread(cost)}**.`,
+        upgrade.description,
+        `Wallet: **${formatBread(breadBalance(economy, userId))}**`
+      ].join("\n");
+    });
+
     await ctx.message.reply(output);
   }
 });
@@ -2408,6 +2609,7 @@ define({
       if (entry.type === "deposit") return `${when} - Deposit: **${formatBread(entry.amount || 0)}** into bank`;
       if (entry.type === "withdraw") return `${when} - Withdrawal: **${formatBread(entry.amount || 0)}** to wallet`;
       if (entry.type === "interest") return `${when} - Bank interest: **+${formatBread(entry.amount || 0)}**`;
+      if (entry.type === "upgrade") return `${when} - Bought upgrade **${entry.upgradeName || entry.upgradeId || "unknown"}** for **${formatBread(Math.abs(entry.amount || 0))}**`;
       if (entry.type === "casino-robbery") return `${when} - Casino robbery: **${formatNetBread(entry.net || 0)}**`;
       if (entry.type === "admin-set") return `${when} - Staff set wallet to **${formatBread(entry.amount || 0)}**`;
       if (entry.type === "admin-add") return `${when} - Staff added **${formatBread(entry.amount || 0)}**`;
@@ -4873,10 +5075,11 @@ define({
         return `Your shift is still in progress. Try again in ${formatCooldown(cooldown.remainingMs)}.`;
       }
       setPersistentCooldown(economy, "work", ctx.message.author.id);
-      const amount = randomInt(90, 260);
+      const upgradeBonus = workBonusFor(economy, ctx.message.author.id);
+      const amount = randomInt(90, 260) + upgradeBonus;
       const nextBalance = breadBalance(economy, ctx.message.author.id) + amount;
       setBreadBalance(economy, ctx.message.author.id, nextBalance);
-      return `You ${jobs[randomInt(0, jobs.length - 1)]} and earned **${formatBread(amount)}**.\nBalance: **${formatBread(nextBalance)}**.`;
+      return `You ${jobs[randomInt(0, jobs.length - 1)]} and earned **${formatBread(amount)}**${upgradeBonus ? `, including **${formatBread(upgradeBonus)}** from work tools` : ""}.\nBalance: **${formatBread(nextBalance)}**.`;
     });
 
     await ctx.message.reply(output);
@@ -4915,10 +5118,12 @@ define({
       setPersistentCooldown(economy, "robVictims", target.id);
       const success = Math.random() < 0.45;
       if (success) {
-        const stolen = Math.min(randomInt(40, Math.max(60, Math.floor(victimBalance * 0.3))), victimBalance, 1500);
+        const defense = robDefenseFor(economy, target.id);
+        const maxSteal = Math.max(40, Math.floor(victimBalance * Math.max(0.08, 0.3 - defense)));
+        const stolen = Math.min(randomInt(40, Math.max(60, maxSteal)), victimBalance, 1500);
         setBreadBalance(economy, target.id, victimBalance - stolen);
         setBreadBalance(economy, attackerId, breadBalance(economy, attackerId) + stolen);
-        return `You slipped away with **${formatBread(stolen)}** from **${target.username || target.tag}**.`;
+        return `You slipped away with **${formatBread(stolen)}** from **${target.username || target.tag}**${defense ? ", but their bread shield softened the hit" : ""}.`;
       }
 
       const attackerBalance = breadBalance(economy, attackerId);
@@ -4964,25 +5169,28 @@ define({
       let net = 0;
       let label = "";
       let detail = "";
+      const disguiseLevel = casinoUpgradeLevel(economy, userId);
+      const winMultiplier = 1 + disguiseLevel * 0.08;
+      const lossMultiplier = Math.max(0.72, 1 - disguiseLevel * 0.06);
 
       if (roll >= 96) {
-        net = Math.min(stake * randomInt(7, 10), 80_000);
+        net = Math.min(Math.floor(stake * randomInt(7, 10) * winMultiplier), 80_000);
         label = "Vault Jackpot";
         detail = "You cracked the ceremonial vault and escaped through the bread chute.";
       } else if (roll >= 76) {
-        net = Math.min(stake * randomInt(3, 5), 35_000);
+        net = Math.min(Math.floor(stake * randomInt(3, 5) * winMultiplier), 35_000);
         label = "Clean Score";
         detail = "You slipped past the dealers and walked out with a suspiciously heavy coat.";
       } else if (roll >= 51) {
-        net = Math.min(Math.floor(stake * 1.4), 12_000);
+        net = Math.min(Math.floor(stake * 1.4 * winMultiplier), 12_000);
         label = "Messy Grab";
         detail = "You grabbed what you could before the pit boss noticed.";
       } else if (roll >= 21) {
-        net = -Math.min(Math.floor(stake * 0.75), wallet);
+        net = -Math.min(Math.floor(stake * 0.75 * lossMultiplier), wallet);
         label = "Security Chase";
         detail = "Security chased you into the parking lot and you dropped bread everywhere.";
       } else {
-        net = -Math.min(Math.floor(stake * 1.6), wallet);
+        net = -Math.min(Math.floor(stake * 1.6 * lossMultiplier), wallet);
         label = "Caught";
         detail = "The casino caught you, fined you, and made you apologize to the vault.";
       }
@@ -5002,6 +5210,7 @@ define({
         `**Casino Robbery: ${label}**`,
         detail,
         `Stake: **${formatBread(stake)}**`,
+        ...(disguiseLevel ? [`Disguise bonus: **level ${disguiseLevel}**`] : []),
         `Result: **${formatNetBread(net)}**`,
         `Wallet: **${formatBread(breadBalance(economy, userId))}**`,
         `Cooldown: **${formatCooldown(CASINO_ROBBERY_COOLDOWN_MS)}**`
