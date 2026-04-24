@@ -54,6 +54,15 @@ import {
   sendEmbedPayload,
   toEmbedPayload
 } from "./embedOutput.js";
+import {
+  canGrantPanelAccess,
+  hashPanelPassword,
+  normalizePanelAccessLevel,
+  panelAccessAtLeast,
+  panelAccessLabel,
+  panelAccessUsers,
+  randomPanelPassword
+} from "./panelAccess.js";
 
 const eightBallAnswers = [
   "The artifact says yes.",
@@ -472,6 +481,15 @@ function requirePermission(ctx, permission) {
   }
 
   ctx.message.reply("You do not have permission to use that command.");
+  return false;
+}
+
+function requirePanelRoot(ctx) {
+  const user = ctx.config.panelAccess?.users?.[ctx.message.author.id];
+  if (user && !user.revokedAt && normalizePanelAccessLevel(user.level) === "root") {
+    return true;
+  }
+  ctx.message.reply("Only root panel users can use that command.");
   return false;
 }
 
@@ -1064,6 +1082,81 @@ define({
   description: "Get the web config panel link.",
   async run(ctx) {
     await ctx.message.reply(`Open the config panel: ${ctx.publicUrl}`);
+  }
+});
+
+define({
+  name: "grantaccess",
+  aliases: ["panelaccess", "grantpanel", "grantacces"],
+  category: "Config",
+  description: "Grant a Discord user access to the web panel.",
+  usage: "grantaccess @user round table|keeper|artifact contributor|root",
+  async run(ctx) {
+    const existingUsers = panelAccessUsers(ctx.config);
+    const hasAnyPanelUsers = Object.values(existingUsers).some((entry) => !entry?.revokedAt);
+    if (!canGrantPanelAccess(ctx.config, ctx.message.author.id)) {
+      if (hasAnyPanelUsers || !hasPermission(ctx.message.member, PermissionsBitField.Flags.ManageGuild)) {
+        await ctx.message.reply("Only configured panel grant roles can use this command.");
+        return;
+      }
+    }
+
+    const member = ctx.message.mentions.members.first();
+    const level = normalizePanelAccessLevel(ctx.args.slice(1).join(" "));
+    if (!member || !level) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const grantorLevel = normalizePanelAccessLevel(existingUsers[ctx.message.author.id]?.level || (hasAnyPanelUsers ? "" : "root"));
+    if (!panelAccessAtLeast(grantorLevel, level)) {
+      await ctx.message.reply("You cannot grant an access level higher than your own.");
+      return;
+    }
+
+    const password = randomPanelPassword();
+    let dmSent = true;
+    await member.send([
+      "**Chipkittle Panel Access Granted**",
+      `Username: \`${member.user.username}\``,
+      `Password: \`${password}\``,
+      `Access level: **${panelAccessLabel(level)}**`,
+      `Panel: ${ctx.publicUrl}`,
+      "",
+      "This password is only shown once. Ask root for a reset if you lose it."
+    ].join("\n")).catch(() => {
+      dmSent = false;
+    });
+
+    if (!dmSent) {
+      await ctx.message.reply("I could not DM that user, so panel access was not granted.");
+      return;
+    }
+
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      panelAccess: {
+        ...ctx.config.panelAccess,
+        users: {
+          ...existingUsers,
+          [member.id]: {
+            username: member.user.username,
+            level,
+            passwordHash: hashPanelPassword(password),
+            grantedBy: ctx.message.author.id,
+            grantedAt: new Date().toISOString(),
+            revokedAt: ""
+          }
+        }
+      }
+    });
+
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "panel-access",
+      label: "Panel access granted",
+      details: `${ctx.message.author.tag} granted ${panelAccessLabel(level)} access to ${member.user.tag}.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+
+    await ctx.message.reply(`Granted ${panelAccessLabel(level)} panel access to ${member.user.tag} and sent their login by DM.`);
   }
 });
 
@@ -3026,7 +3119,7 @@ define({
   description: "Set the per-user AI API cooldown in seconds.",
   usage: "airatelimit 30",
   async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePanelRoot(ctx)) return;
     const seconds = Math.min(Math.max(Number(ctx.args[0]), 0), 3600);
     if (Number.isNaN(seconds)) {
       await ctx.message.reply(`Current AI API cooldown: ${ctx.config.ai.apiCooldownSeconds}s.`);

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { PermissionsBitField } from "discord.js";
 import express from "express";
 import session from "express-session";
 import { serializeGuild } from "./bot.js";
@@ -11,6 +12,7 @@ import {
   artifactOfTheDay,
   artifactDirectoryText,
   communitySnapshot,
+  createCase,
   parseArtifactDirectory,
   publicMemberCards,
   topCommands,
@@ -19,6 +21,16 @@ import {
 import { CHIPKITTLE_LORE } from "./chipkittleLore.js";
 import { createDashClaim } from "./dashClaims.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
+import {
+  PANEL_ACCESS_LEVELS,
+  hashPanelPassword,
+  normalizePanelAccessLevel,
+  panelAccessAtLeast,
+  panelAccessLabel,
+  panelAccessUser,
+  panelAccessUsers,
+  verifyPanelPassword
+} from "./panelAccess.js";
 import {
   createEightBallRoom,
   getEightBallRoomState,
@@ -30,6 +42,22 @@ import {
 const execFileAsync = promisify(execFile);
 const UPDATE_STALE_MS = 10 * 60 * 1000;
 const ACTIVE_UPDATE_STATUSES = new Set(["running", "updating", "restarting"]);
+const MOD_MEMBER_PAGE_SIZE = 20;
+const PANEL_SECTION_MIN_LEVEL = {
+  dashboard: "round_table",
+  commands: "round_table",
+  moderation: "round_table",
+  applications: "keeper",
+  permissions: "artifact_contributor",
+  access: "artifact_contributor",
+  general: "root",
+  members: "root",
+  public: "root",
+  ai: "root",
+  games: "root",
+  community: "root",
+  server: "root"
+};
 const SETTINGS_SECTIONS = [
   { id: "dashboard", label: "Dashboard", description: "At-a-glance stats, audit activity, and quick links." },
   { id: "general", label: "General", description: "Slash commands, legacy prefix, welcome, and autorole." },
@@ -41,13 +69,14 @@ const SETTINGS_SECTIONS = [
   { id: "games", label: "Games", description: "Leaderboard moderation, claim limits, and public game tools." },
   { id: "community", label: "Community", description: "Artifacts, rituals, public directory extras, and archive data." },
   { id: "permissions", label: "Permissions", description: "Command role access overrides." },
+  { id: "access", label: "Panel Access", description: "Revoke panel users and review access tiers." },
   { id: "commands", label: "Commands", description: "Browse the command catalog." },
   { id: "server", label: "Server", description: "Pull GitHub changes and restart the VPS bot." }
 ];
 
 const SETTINGS_NAV_GROUPS = [
   { label: "Overview", sections: ["dashboard", "public", "commands", "server"] },
-  { label: "Configuration", sections: ["general", "ai", "games", "permissions"] },
+  { label: "Configuration", sections: ["general", "ai", "games", "permissions", "access"] },
   { label: "Community", sections: ["members", "applications", "community", "moderation"] }
 ];
 
@@ -120,6 +149,12 @@ function safeEquals(a, b) {
 
 function flashFromQuery(query = {}) {
   if (query.saved) return "Configuration saved.";
+  if (query.modAction === "success") return "Moderation action completed.";
+  if (query.modAction === "missing-target") return "That member could not be found.";
+  if (query.modAction === "bad-duration") return "Timeout duration must look like 10m, 2h, or 1d.";
+  if (query.modAction === "missing-permission") return "The bot is missing the required Discord permission for that action.";
+  if (query.modAction === "hierarchy") return "Discord blocked that action because of role hierarchy.";
+  if (query.modAction === "failed") return "Moderation action failed. Check the bot logs for details.";
   if (query.update === "started") return "GitHub pull started.";
   if (query.update === "restart-started") return "Bot restart started.";
   if (query.update === "busy") return "An update is already running.";
@@ -235,6 +270,140 @@ function normalizeCaseStatusFilter(value = "") {
   return ["open", "closed", "all"].includes(normalized) ? normalized : "open";
 }
 
+function parsePanelDuration(input = "") {
+  const match = String(input || "").trim().match(/^(\d+)(s|m|h|d|w)$/i);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const day = 86_400_000;
+  const multipliers = {
+    s: 1000,
+    m: 60_000,
+    h: 3_600_000,
+    d: day,
+    w: 7 * day
+  };
+  return amount > 0 ? amount * multipliers[unit] : null;
+}
+
+function formatPanelDuration(ms = 0) {
+  const seconds = Math.floor(Number(ms) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return `${Math.floor(days / 7)}w`;
+}
+
+function serializeModerationMember(member, config = {}) {
+  const cases = Array.isArray(config.community?.cases) ? config.community.cases : [];
+  return {
+    id: member.id,
+    tag: member.user?.tag || member.user?.username || member.id,
+    username: member.user?.username || member.id,
+    displayName: member.displayName || member.user?.username || member.id,
+    avatarUrl: member.user?.displayAvatarURL?.({ size: 64 }) || "",
+    bot: Boolean(member.user?.bot),
+    joinedAt: member.joinedAt?.toISOString?.() || "",
+    highestRole: member.roles?.highest?.name || "",
+    warningCount: (config.moderation?.warnings?.[member.id] || []).length,
+    caseCount: cases.filter((entry) => String(entry.targetId || "") === member.id).length,
+    timedOutUntil: member.communicationDisabledUntil?.toISOString?.() || ""
+  };
+}
+
+async function moderationMemberPage(discordGuild, config = {}, query = {}) {
+  const search = String(query.search || "").trim().slice(0, 80);
+  const after = String(query.after || "").trim();
+  let members = [];
+  let fetchError = "";
+  let nextAfter = "";
+
+  try {
+    if (search) {
+      if (/^\d{16,22}$/.test(search)) {
+        const member = await discordGuild.members.fetch(search).catch(() => null);
+        members = member ? [member] : [];
+      } else {
+        const results = await discordGuild.members.fetch({ query: search, limit: MOD_MEMBER_PAGE_SIZE }).catch(() => null);
+        members = results ? [...results.values()] : [];
+      }
+    } else {
+      const results = await discordGuild.members.list({
+        after: after || undefined,
+        limit: MOD_MEMBER_PAGE_SIZE,
+        cache: true
+      });
+      members = [...results.values()];
+      nextAfter = members.length === MOD_MEMBER_PAGE_SIZE ? members[members.length - 1].id : "";
+    }
+  } catch (error) {
+    fetchError = "Could not load members from Discord. Make sure the bot has access to member data.";
+    members = [...discordGuild.members.cache.values()].slice(0, MOD_MEMBER_PAGE_SIZE);
+    console.error("Could not load moderation member page:", error);
+  }
+
+  members.sort((a, b) => String(a.user?.username || "").localeCompare(String(b.user?.username || "")));
+
+  return {
+    search,
+    after,
+    error: fetchError,
+    nextAfter: !search ? nextAfter : "",
+    members: members.map((member) => serializeModerationMember(member, config))
+  };
+}
+
+async function sendPanelModerationLog(discordGuild, config = {}, content = "") {
+  const channelId = config.moderation?.logChannelId;
+  if (!channelId) return;
+
+  const channel =
+    discordGuild.channels.cache.get(channelId) ||
+    (await discordGuild.channels.fetch(channelId).catch(() => null));
+  if (!channel?.isTextBased?.()) return;
+
+  await channel.send({
+    embeds: [
+      buildPrettyEmbed({
+        title: "Moderation Log: Panel",
+        description: String(content || "").slice(0, 3900),
+        color: 0xef4444,
+        footer: `Panel action in ${discordGuild.name}`
+      })
+    ]
+  }).catch(() => {});
+}
+
+function moderationRedirect(discordGuild, request, status = "success") {
+  const params = new URLSearchParams({ section: "moderation", modAction: status });
+  const search = String(request.body?.modSearch || request.query?.modSearch || "").trim();
+  const after = String(request.body?.modAfter || request.query?.modAfter || "").trim();
+  if (search) params.set("modSearch", search);
+  if (after && !search) params.set("modAfter", after);
+  return `/guilds/${discordGuild.id}?${params.toString()}`;
+}
+
+function requireBotPermission(discordGuild, permission, status) {
+  const botMember = discordGuild.members.me;
+  if (!botMember?.permissions?.has(permission)) {
+    const error = new Error("Missing bot permission");
+    error.panelStatus = status || "missing-permission";
+    throw error;
+  }
+}
+
+function assertModerationHierarchy(member, capability) {
+  if (!member?.[capability]) {
+    const error = new Error("Blocked by Discord role hierarchy");
+    error.panelStatus = "hierarchy";
+    throw error;
+  }
+}
+
 function displayRoleName(guild, roleId) {
   if (!roleId) return "Not set";
   return guild.roles.find((role) => role.id === roleId)?.name || roleId;
@@ -300,6 +469,97 @@ function moderationCenter(config = {}) {
         </div>
       </div>
     </section>
+  `;
+}
+
+function moderationMemberBrowser(guildId, memberPage = { members: [] }, panelUser = null) {
+  memberPage = memberPage || { members: [] };
+  const members = Array.isArray(memberPage.members) ? memberPage.members : [];
+  const search = memberPage.search || "";
+  const after = memberPage.after || "";
+  const nextAfter = memberPage.nextAfter || "";
+  const preserveSearch = escapeHtml(search);
+  return `
+    <section class="panel-section moderation-browser">
+      <div class="section-heading">
+        <h2>Member Actions</h2>
+        <p>Search or browse members, then run moderation actions directly from the panel.</p>
+      </div>
+      <form method="get" action="/guilds/${guildId}" class="moderation-search">
+        <input type="hidden" name="section" value="moderation">
+        <label>
+          Search members
+          <input name="modSearch" value="${preserveSearch}" placeholder="username, display name, or user ID">
+        </label>
+        <button type="submit">Search</button>
+        <a class="primary-link secondary-link" href="/guilds/${guildId}?section=moderation">Reset</a>
+      </form>
+      ${memberPage.error ? `<p class="form-error">${escapeHtml(memberPage.error)}</p>` : ""}
+      <div class="member-action-list">
+        ${
+          members.length
+            ? members.map((member) => moderationMemberRow(guildId, member, search, after, panelUser)).join("")
+            : '<p class="muted">No members matched that search.</p>'
+        }
+      </div>
+      <div class="pagination-actions">
+        <a class="primary-link secondary-link" href="/guilds/${guildId}?section=moderation">First page</a>
+        ${
+          nextAfter
+            ? `<a class="primary-link secondary-link" href="/guilds/${guildId}?section=moderation&modAfter=${encodeURIComponent(nextAfter)}">Next page</a>`
+            : ""
+        }
+      </div>
+    </section>
+  `;
+}
+
+function moderationMemberRow(guildId, member, search = "", after = "", panelUser = null) {
+  const userLabel = `${member.displayName} (${member.tag})`;
+  const timeoutLabel = member.timedOutUntil ? `<span class="case-status is-open">Timed out</span>` : "";
+  const canAdvanced = panelAccessAtLeast(panelUser?.level || "root", "keeper");
+  return `
+    <article class="member-action-row">
+      <div class="member-action-main">
+        <span class="member-action-avatar">${member.avatarUrl ? `<img src="${escapeHtml(member.avatarUrl)}" alt="">` : escapeHtml(member.displayName[0] || "?")}</span>
+        <div>
+          <strong>${escapeHtml(member.displayName)} ${member.bot ? '<small class="member-bot-label">Bot</small>' : ""}</strong>
+          <small>${escapeHtml(member.tag)} &middot; ${escapeHtml(member.id)}</small>
+          <div class="mini-stats">
+            <span>${escapeHtml(member.warningCount)} warnings</span>
+            <span>${escapeHtml(member.caseCount)} cases</span>
+            ${member.highestRole ? `<span>${escapeHtml(member.highestRole)}</span>` : ""}
+            ${timeoutLabel}
+          </div>
+        </div>
+      </div>
+      <details class="member-action-details">
+        <summary>Moderate</summary>
+        <form method="post" action="/guilds/${guildId}/moderation/action" class="member-action-form" onsubmit="return confirm('Run this moderation action?');">
+          <input type="hidden" name="targetUserId" value="${escapeHtml(member.id)}">
+          <input type="hidden" name="modSearch" value="${escapeHtml(search)}">
+          <input type="hidden" name="modAfter" value="${escapeHtml(after)}">
+          <label>
+            Action
+            <select name="action">
+              <option value="warn">Warn</option>
+              <option value="timeout">Timeout</option>
+              <option value="untimeout">Remove timeout</option>
+              ${canAdvanced ? '<option value="kick">Kick</option><option value="ban">Ban</option>' : ""}
+            </select>
+          </label>
+          <label>
+            Duration
+            <input name="duration" placeholder="10m, 2h, 1d">
+          </label>
+          <label class="member-action-reason">
+            Reason
+            <textarea name="reason" rows="3" maxlength="500" placeholder="Reason for ${escapeHtml(userLabel)}"></textarea>
+          </label>
+          <button type="submit" class="danger-button">Run action</button>
+        </form>
+      </details>
+    </article>
   `;
 }
 
@@ -1266,6 +1526,10 @@ function loginPage(error = "") {
         <form method="post" action="/login" class="stack">
           ${error ? `<p class="form-error">${escapeHtml(error)}</p>` : ""}
           <label>
+            Username
+            <input name="username" autocomplete="username" placeholder="Discord username">
+          </label>
+          <label>
             Password
             <input type="password" name="password" autocomplete="current-password" required autofocus>
           </label>
@@ -1463,12 +1727,101 @@ function commandRoleAccess(commandList, roles, overrides = {}) {
     .join("");
 }
 
+function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
+  const users = Object.entries(panelAccessUsers(config))
+    .filter(([, entry]) => !entry?.revokedAt)
+    .sort((a, b) => String(a[1]?.username || "").localeCompare(String(b[1]?.username || "")));
+  const canRevoke = panelAccessAtLeast(panelUser?.level || "root", "artifact_contributor");
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Panel Users</h2>
+        <p>Panel access is granted from Discord with <code>!grantaccess @user accesslevel</code>. Passwords are only shown once in DMs.</p>
+      </div>
+      <div class="access-tier-grid">
+        ${PANEL_ACCESS_LEVELS.map((level) => `
+          <article class="access-tier-card">
+            <strong>${escapeHtml(panelAccessLabel(level))}</strong>
+            <p>${escapeHtml(panelTierDescription(level))}</p>
+          </article>
+        `).join("")}
+      </div>
+      ${panelAccessAtLeast(panelUser?.level || "root", "root") ? `
+        <form method="post" action="/guilds/${guildId}/panel-access/grant-levels" class="sub-panel">
+          <div class="section-heading">
+            <h2>Grant Command Access</h2>
+            <p>Only root can decide which panel ranks may use <code>!grantaccess</code>.</p>
+          </div>
+          <div class="checkbox-grid compact">
+            ${PANEL_ACCESS_LEVELS.map((level) => `
+              <label class="toggle">
+                <input type="checkbox" name="grantAccessLevels" value="${level}" ${isChecked((config.panelAccess?.grantAccessLevels || ["root"]).includes(level))}>
+                <span>${escapeHtml(panelAccessLabel(level))}</span>
+              </label>
+            `).join("")}
+          </div>
+          <button type="submit">Save Grant Access</button>
+        </form>
+      ` : ""}
+      <div class="member-action-list">
+        ${
+          users.length
+            ? users.map(([userId, entry]) => `
+              <article class="access-user-row">
+                <div>
+                  <strong>${escapeHtml(entry.username || userId)}</strong>
+                  <small>${escapeHtml(userId)} &middot; ${escapeHtml(panelAccessLabel(entry.level))}</small>
+                  <small>Granted ${escapeHtml(entry.grantedAt || "unknown")} by ${escapeHtml(entry.grantedBy || "unknown")}</small>
+                </div>
+                ${canRevoke && normalizePanelAccessLevel(entry.level) !== "root"
+                  ? `<form method="post" action="/guilds/${guildId}/panel-access/${userId}/revoke" onsubmit="return confirm('Revoke this panel user?');"><button type="submit" class="danger-button">Revoke</button></form>`
+                  : '<span class="muted">Protected</span>'}
+              </article>
+            `).join("")
+            : '<p class="muted">No panel users have been granted yet. The legacy password can still sign in as root.</p>'
+        }
+      </div>
+    </section>
+  `;
+}
+
+function panelTierDescription(level = "") {
+  switch (normalizePanelAccessLevel(level)) {
+    case "round_table":
+      return "Basic moderation access: dashboard, commands, warnings, timeouts, cases, and routine member actions.";
+    case "keeper":
+      return "Advanced moderation access: includes kick, ban, applications, and higher-risk moderation actions.";
+    case "artifact_contributor":
+      return "Can manage command role permissions and revoke non-root panel users.";
+    case "root":
+      return "Full panel control, including AI rate limits, site config, games, exports, restore, updates, and restart.";
+    default:
+      return "";
+  }
+}
+
 function sectionStatusLabel(sectionId) {
   return NON_FORM_SECTIONS.has(sectionId) ? "Live view" : "Saved config";
 }
 
-function settingsNav(guild, config, activeSection, currentMeta) {
+function canAccessPanelSection(accessLevel = "root", sectionId = "dashboard") {
+  return panelAccessAtLeast(accessLevel, PANEL_SECTION_MIN_LEVEL[sectionId] || "root");
+}
+
+function allowedPanelSection(sectionId = "dashboard", accessLevel = "root") {
+  const normalized = normalizeSettingsSection(sectionId);
+  if (canAccessPanelSection(accessLevel, normalized)) return normalized;
+  return SETTINGS_SECTIONS.find((section) => canAccessPanelSection(accessLevel, section.id))?.id || "dashboard";
+}
+
+function panelUserLabel(panelUser = null) {
+  if (!panelUser) return "Legacy Root";
+  return `${panelUser.username || panelUser.userId} (${panelAccessLabel(panelUser.level)})`;
+}
+
+function settingsNav(guild, config, activeSection, currentMeta, panelUser = null) {
   const community = communitySnapshot(config);
+  const accessLevel = panelUser?.level || "root";
   return `
     <aside class="settings-rail" aria-label="Settings categories">
       <section class="settings-rail-card settings-rail-card--guild">
@@ -1489,10 +1842,11 @@ function settingsNav(guild, config, activeSection, currentMeta) {
       </section>
       <section class="settings-rail-card settings-rail-card--focus">
         <p class="settings-nav-label">Current workspace</p>
-        <div class="rail-focus">
+          <div class="rail-focus">
           <strong>${escapeHtml(currentMeta.label)}</strong>
           <p>${escapeHtml(currentMeta.description)}</p>
           <span>${sectionStatusLabel(activeSection)}</span>
+          <span>${escapeHtml(panelUserLabel(panelUser))}</span>
         </div>
       </section>
       <nav class="settings-nav settings-nav-rail" aria-label="Settings categories">
@@ -1503,6 +1857,7 @@ function settingsNav(guild, config, activeSection, currentMeta) {
           ${group.sections.map((sectionId) => {
             const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
             if (!section) return "";
+            if (!canAccessPanelSection(accessLevel, section.id)) return "";
             return `
               <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}">
                 <span>${escapeHtml(section.label)}</span>
@@ -1545,7 +1900,7 @@ function guildSummaryStrip(guild, config = {}) {
   `;
 }
 
-function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, currentSection, currentMeta, gameSettings, moderationCaseStatus }) {
+function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, currentSection, currentMeta, gameSettings, moderationCaseStatus, moderationMembers, panelUser }) {
   switch (currentSection) {
     case "dashboard":
       return dashboardCards(guild, config);
@@ -1606,51 +1961,56 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
     case "public":
       return publicSiteWorkspace(config, commandList);
     case "moderation":
-      return sectionForm(
-        guild.id,
-        currentSection,
-        currentMeta,
-        `
-          ${moderationCenter(config)}
-          ${moderationWorkspace(guild.id, config, moderationCaseStatus)}
-          <section class="panel-section">
-            <div class="section-heading">
-              <h2>Automod</h2>
-              <p>Remove messages that match simple server rules.</p>
-            </div>
-            <label class="toggle">
-              <input type="checkbox" name="automodEnabled" ${isChecked(config.automod.enabled)}>
-              <span>Enable automod</span>
-            </label>
-            <label>
-              Blocked words
-              <textarea name="blockedWords" rows="4">${escapeHtml(config.automod.blockedWords.join(", "))}</textarea>
-            </label>
-            <div class="inline-controls">
-              <label class="toggle">
-                <input type="checkbox" name="deleteInvites" ${isChecked(config.automod.deleteInvites)}>
-                <span>Delete invite links</span>
-              </label>
-              <label class="toggle">
-                <input type="checkbox" name="deleteLinks" ${isChecked(config.automod.deleteLinks)}>
-                <span>Delete web links</span>
-              </label>
-            </div>
-          </section>
-          <section class="panel-section">
-            <div class="section-heading">
-              <h2>Moderation Logs</h2>
-              <p>Choose where automod and moderation output should be posted.</p>
-            </div>
-            <label>
-              Log channel
-              <select name="logChannelId">
-                ${optionList(guild.channels, config.moderation.logChannelId, "No channel selected")}
-              </select>
-            </label>
-          </section>
-        `
-      );
+      return `
+        ${moderationCenter(config)}
+        ${moderationMemberBrowser(guild.id, moderationMembers, panelUser)}
+        ${moderationWorkspace(guild.id, config, moderationCaseStatus)}
+        ${panelAccessAtLeast(panelUser?.level || "root", "keeper")
+          ? sectionForm(
+              guild.id,
+              currentSection,
+              currentMeta,
+              `
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Automod</h2>
+                    <p>Remove messages that match simple server rules.</p>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" name="automodEnabled" ${isChecked(config.automod.enabled)}>
+                    <span>Enable automod</span>
+                  </label>
+                  <label>
+                    Blocked words
+                    <textarea name="blockedWords" rows="4">${escapeHtml(config.automod.blockedWords.join(", "))}</textarea>
+                  </label>
+                  <div class="inline-controls">
+                    <label class="toggle">
+                      <input type="checkbox" name="deleteInvites" ${isChecked(config.automod.deleteInvites)}>
+                      <span>Delete invite links</span>
+                    </label>
+                    <label class="toggle">
+                      <input type="checkbox" name="deleteLinks" ${isChecked(config.automod.deleteLinks)}>
+                      <span>Delete web links</span>
+                    </label>
+                  </div>
+                </section>
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Moderation Logs</h2>
+                    <p>Choose where automod and moderation output should be posted.</p>
+                  </div>
+                  <label>
+                    Log channel
+                    <select name="logChannelId">
+                      ${optionList(guild.channels, config.moderation.logChannelId, "No channel selected")}
+                    </select>
+                  </label>
+                </section>
+              `
+            )
+          : ""}
+      `;
     case "ai":
       return sectionForm(
         guild.id,
@@ -1879,6 +2239,8 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
           </section>
         `
       );
+    case "access":
+      return panelAccessWorkspace(guild.id, config, panelUser);
     case "commands":
       return `
         <section class="panel-section command-catalog">
@@ -1896,8 +2258,8 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
   }
 }
 
-function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general", caseStatus = "open" }) {
-  const currentSection = normalizeSettingsSection(activeSection);
+function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general", caseStatus = "open", moderationMembers = null, panelUser = null }) {
+  const currentSection = allowedPanelSection(activeSection, panelUser?.level || "root");
   const currentMeta = activeSectionMeta(currentSection);
   const gameSettings = publicGameSettings(config);
   const moderationCaseStatus = normalizeCaseStatusFilter(caseStatus);
@@ -2015,7 +2377,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
         </div>
       </section>
       <section class="control-layout">
-        ${settingsNav(guild, config, currentSection, currentMeta)}
+        ${settingsNav(guild, config, currentSection, currentMeta, panelUser)}
         <div class="workspace-stage">
           <section class="section-spotlight">
             <div class="section-spotlight-copy">
@@ -2048,7 +2410,9 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               currentSection,
               currentMeta,
               gameSettings,
-              moderationCaseStatus
+              moderationCaseStatus,
+              moderationMembers,
+              panelUser
             })}
           </div>
         </div>
@@ -2093,6 +2457,54 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
 
     response.redirect("/login");
+  }
+
+  function currentPanelGuildId() {
+    return guildId || client.guilds.cache.first()?.id || Object.keys(store.data?.guilds || {})[0] || "";
+  }
+
+  function currentPanelUser(request, targetGuildId = currentPanelGuildId()) {
+    if (request.session.panelLegacyRoot) {
+      return {
+        userId: "legacy-root",
+        username: "Legacy Root",
+        level: "root",
+        legacy: true
+      };
+    }
+    const sessionUserId = String(request.session.panelUserId || "");
+    if (!sessionUserId || !targetGuildId) return null;
+    return panelAccessUser(store.getGuild(targetGuildId), sessionUserId);
+  }
+
+  function requirePanelLevel(requiredLevel) {
+    return (request, response, next) => {
+      const user = currentPanelUser(request, request.params.guildId || request.body?.guildId || currentPanelGuildId());
+      if (user && panelAccessAtLeast(user.level, requiredLevel)) {
+        next();
+        return;
+      }
+      response.status(403).send(layout({ title: "Forbidden", user: true, body: '<p class="empty">You do not have access to this panel area.</p>' }));
+    };
+  }
+
+  function authenticatePanelUser(username = "", password = "") {
+    const normalizedUsername = String(username || "").trim().toLowerCase();
+    if (!normalizedUsername) return null;
+    for (const [storedGuildId, config] of Object.entries(store.data?.guilds || {})) {
+      for (const [userId, entry] of Object.entries(config.panelAccess?.users || {})) {
+        if (entry?.revokedAt) continue;
+        if (String(entry.username || "").toLowerCase() !== normalizedUsername) continue;
+        if (!verifyPanelPassword(password, entry.passwordHash)) continue;
+        return {
+          guildId: storedGuildId,
+          userId,
+          username: entry.username,
+          level: normalizePanelAccessLevel(entry.level)
+        };
+      }
+    }
+    return null;
   }
 
   function updateRedirectTarget(request) {
@@ -2366,13 +2778,27 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   });
 
   app.post("/login", (request, response) => {
-    if (safeEquals(String(request.body.password || ""), panelPassword)) {
+    const username = String(request.body.username || "").trim();
+    const password = String(request.body.password || "");
+    const panelUser = authenticatePanelUser(username, password);
+    if (panelUser) {
       request.session.authenticated = true;
+      request.session.panelUserId = panelUser.userId;
+      request.session.panelGuildId = panelUser.guildId;
+      request.session.panelLegacyRoot = false;
       response.redirect("/");
       return;
     }
 
-    response.status(401).send(loginPage("That password did not match."));
+    if (!username && panelPassword && safeEquals(password, panelPassword)) {
+      request.session.authenticated = true;
+      request.session.panelUserId = "";
+      request.session.panelLegacyRoot = true;
+      response.redirect("/");
+      return;
+    }
+
+    response.status(401).send(loginPage("That username or password did not match."));
   });
 
   app.get("/logout", (request, response) => {
@@ -2409,28 +2835,43 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   });
 
-  app.get("/guilds/:guildId", requireAuth, (request, response) => {
+  app.get("/guilds/:guildId", requireAuth, async (request, response, next) => {
     const discordGuild = client.guilds.cache.get(request.params.guildId);
     if (!discordGuild) {
       response.status(404).send(layout({ title: "Not found", user: true, body: '<p class="empty">Server not found.</p>' }));
       return;
     }
 
-    const guild = serializeGuild(discordGuild);
-    const config = store.getGuild(guild.id);
-    response.send(guildPage({
-      guild,
-      config,
-      commandList,
-      defaultAiModel,
-      ai,
-      flash: flashFromQuery(request.query),
-      activeSection: normalizeSettingsSection(String(request.query.section || "")),
-      caseStatus: normalizeCaseStatusFilter(String(request.query.caseStatus || ""))
-    }));
+    try {
+      const guild = serializeGuild(discordGuild);
+      const config = store.getGuild(guild.id);
+      const panelUser = currentPanelUser(request, guild.id);
+      const activeSection = allowedPanelSection(String(request.query.section || ""), panelUser?.level || "root");
+      const moderationMembers =
+        activeSection === "moderation"
+          ? await moderationMemberPage(discordGuild, config, {
+              search: String(request.query.modSearch || ""),
+              after: String(request.query.modAfter || "")
+            })
+          : null;
+      response.send(guildPage({
+        guild,
+        config,
+        commandList,
+        defaultAiModel,
+        ai,
+        flash: flashFromQuery(request.query),
+        activeSection,
+        caseStatus: normalizeCaseStatusFilter(String(request.query.caseStatus || "")),
+        moderationMembers,
+        panelUser
+      }));
+    } catch (error) {
+      next(error);
+    }
   });
 
-  app.post("/admin/update", requireAuth, (request, response) => {
+  app.post("/admin/update", requireAuth, requirePanelLevel("root"), (request, response) => {
     const status = readUpdateStatus();
     if (ACTIVE_UPDATE_STATUSES.has(status?.status) && !status.stale) {
       response.redirect(`${updateRedirectTarget(request)}busy`);
@@ -2453,7 +2894,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   });
 
-  app.post("/admin/restart", requireAuth, (request, response) => {
+  app.post("/admin/restart", requireAuth, requirePanelLevel("root"), (request, response) => {
     const status = readUpdateStatus();
     if (ACTIVE_UPDATE_STATUSES.has(status?.status) && !status.stale) {
       response.redirect(`${updateRedirectTarget(request)}busy`);
@@ -2476,11 +2917,11 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   });
 
-  app.get("/admin/export/config", requireAuth, (_request, response) => {
+  app.get("/admin/export/config", requireAuth, requirePanelLevel("root"), (_request, response) => {
     downloadJson(response, "chipkittle-config.json", store.data || { guilds: {} });
   });
 
-  app.get("/admin/export/community", requireAuth, (_request, response) => {
+  app.get("/admin/export/community", requireAuth, requirePanelLevel("root"), (_request, response) => {
     const payload = Object.fromEntries(
       Object.entries(store.data?.guilds || {}).map(([guildEntryId, config]) => [
         guildEntryId,
@@ -2501,7 +2942,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     downloadJson(response, "chipkittle-community-export.json", payload);
   });
 
-  app.get("/admin/export/moderation", requireAuth, (_request, response) => {
+  app.get("/admin/export/moderation", requireAuth, requirePanelLevel("root"), (_request, response) => {
     const payload = Object.fromEntries(
       Object.entries(store.data?.guilds || {}).map(([guildEntryId, config]) => [
         guildEntryId,
@@ -2516,7 +2957,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     downloadJson(response, "chipkittle-moderation-export.json", payload);
   });
 
-  app.get("/admin/export/applications", requireAuth, (_request, response) => {
+  app.get("/admin/export/applications", requireAuth, requirePanelLevel("root"), (_request, response) => {
     const payload = Object.fromEntries(
       Object.entries(store.data?.guilds || {}).map(([guildEntryId, config]) => [
         guildEntryId,
@@ -2538,7 +2979,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     downloadJson(response, "chipkittle-applications-export.json", payload);
   });
 
-  app.get("/admin/export/public", requireAuth, (_request, response) => {
+  app.get("/admin/export/public", requireAuth, requirePanelLevel("root"), (_request, response) => {
     const payload = Object.fromEntries(
       Object.entries(store.data?.guilds || {}).map(([guildEntryId, config]) => [
         guildEntryId,
@@ -2554,14 +2995,14 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     downloadJson(response, "chipkittle-public-site-export.json", payload);
   });
 
-  app.get("/admin/export/full", requireAuth, (_request, response) => {
+  app.get("/admin/export/full", requireAuth, requirePanelLevel("root"), (_request, response) => {
     downloadJson(response, "chipkittle-backup-snapshot.json", {
       generatedAt: new Date().toISOString(),
       guilds: store.data?.guilds || {}
     });
   });
 
-  app.post("/admin/restore", requireAuth, async (request, response, next) => {
+  app.post("/admin/restore", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
     try {
       const targetGuildId = String(request.body?.guildId || guildId || client.guilds.cache.first()?.id || "");
       const discordGuild = client.guilds.cache.get(targetGuildId);
@@ -2605,7 +3046,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   });
 
-  app.post("/guilds/:guildId/cases/:caseId/close", requireAuth, async (request, response, next) => {
+  app.post("/guilds/:guildId/cases/:caseId/close", requireAuth, requirePanelLevel("round_table"), async (request, response, next) => {
     try {
       const discordGuild = client.guilds.cache.get(request.params.guildId);
       if (!discordGuild) {
@@ -2636,7 +3077,106 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   });
 
-  app.post("/guilds/:guildId/warnings/:userId/clear", requireAuth, async (request, response, next) => {
+  app.post("/guilds/:guildId/moderation/action", requireAuth, async (request, response, next) => {
+    const discordGuild = client.guilds.cache.get(request.params.guildId);
+    if (!discordGuild) {
+      response.status(404).send("Server not found.");
+      return;
+    }
+
+    try {
+      const action = String(request.body?.action || "").toLowerCase();
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      const requiredLevel = ["kick", "ban"].includes(action) ? "keeper" : "round_table";
+      if (!panelUser || !panelAccessAtLeast(panelUser.level, requiredLevel)) {
+        response.status(403).send(layout({ title: "Forbidden", user: true, body: '<p class="empty">You do not have permission to run that moderation action.</p>' }));
+        return;
+      }
+      const targetUserId = String(request.body?.targetUserId || "").trim();
+      const reason = String(request.body?.reason || "No reason provided.").trim().slice(0, 500) || "No reason provided.";
+      const config = store.getGuild(discordGuild.id);
+      await discordGuild.members.fetchMe().catch(() => null);
+      const member = await discordGuild.members.fetch(targetUserId).catch(() => null);
+      if (!member) {
+        response.redirect(moderationRedirect(discordGuild, request, "missing-target"));
+        return;
+      }
+
+      let output = "";
+      let durationMs = 0;
+
+      if (action === "warn") {
+        requireBotPermission(discordGuild, PermissionsBitField.Flags.ModerateMembers);
+        await store.addWarning(discordGuild.id, member.id, {
+          reason,
+          moderatorId: panelUser.userId || "panel",
+          createdAt: new Date().toISOString()
+        });
+        output = `${member.user.tag} was warned from the panel. Reason: ${reason}`;
+      } else if (action === "timeout") {
+        requireBotPermission(discordGuild, PermissionsBitField.Flags.ModerateMembers);
+        durationMs = parsePanelDuration(request.body?.duration);
+        if (!durationMs) {
+          response.redirect(moderationRedirect(discordGuild, request, "bad-duration"));
+          return;
+        }
+        durationMs = Math.min(durationMs, 28 * 86_400_000);
+        assertModerationHierarchy(member, "moderatable");
+        await member.timeout(durationMs, reason);
+        output = `${member.user.tag} was timed out from the panel for ${formatPanelDuration(durationMs)}. Reason: ${reason}`;
+      } else if (action === "untimeout") {
+        requireBotPermission(discordGuild, PermissionsBitField.Flags.ModerateMembers);
+        assertModerationHierarchy(member, "moderatable");
+        await member.timeout(null, reason);
+        output = `${member.user.tag}'s timeout was removed from the panel. Reason: ${reason}`;
+      } else if (action === "kick") {
+        requireBotPermission(discordGuild, PermissionsBitField.Flags.KickMembers);
+        assertModerationHierarchy(member, "kickable");
+        await member.kick(reason);
+        output = `${member.user.tag} was kicked from the panel. Reason: ${reason}`;
+      } else if (action === "ban") {
+        requireBotPermission(discordGuild, PermissionsBitField.Flags.BanMembers);
+        assertModerationHierarchy(member, "bannable");
+        await member.ban({ reason });
+        output = `${member.user.tag} was banned from the panel. Reason: ${reason}`;
+      } else {
+        response.redirect(moderationRedirect(discordGuild, request, "failed"));
+        return;
+      }
+
+      const createdCase = await createCase(store, discordGuild.id, {
+        action,
+        targetId: member.id,
+        targetTag: member.user.tag,
+        moderatorId: "panel",
+        moderatorTag: panelUserLabel(panelUser),
+        reason,
+        durationMs
+      }).catch(() => null);
+      const logOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+      await addAuditLog(store, discordGuild.id, {
+        type: "moderation",
+        label: `Panel ${action}`,
+        details: logOutput,
+        actor: "Panel"
+      }).catch(() => {});
+      await sendPanelModerationLog(discordGuild, store.getGuild(discordGuild.id), logOutput);
+      response.redirect(moderationRedirect(discordGuild, request, "success"));
+    } catch (error) {
+      if (error?.panelStatus) {
+        response.redirect(moderationRedirect(discordGuild, request, error.panelStatus));
+        return;
+      }
+      if (error?.code === 50013) {
+        response.redirect(moderationRedirect(discordGuild, request, "missing-permission"));
+        return;
+      }
+      console.error("Panel moderation action failed:", error);
+      response.redirect(moderationRedirect(discordGuild, request, "failed"));
+    }
+  });
+
+  app.post("/guilds/:guildId/warnings/:userId/clear", requireAuth, requirePanelLevel("round_table"), async (request, response, next) => {
     try {
       const discordGuild = client.guilds.cache.get(request.params.guildId);
       if (!discordGuild) {
@@ -2656,7 +3196,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   });
 
-  app.post("/guilds/:guildId/applications/:userId/clear-ticket", requireAuth, async (request, response, next) => {
+  app.post("/guilds/:guildId/applications/:userId/clear-ticket", requireAuth, requirePanelLevel("keeper"), async (request, response, next) => {
     try {
       const discordGuild = client.guilds.cache.get(request.params.guildId);
       if (!discordGuild) {
@@ -2684,7 +3224,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   });
 
-  app.post("/guilds/:guildId/applications/:userId/clear-cooldown", requireAuth, async (request, response, next) => {
+  app.post("/guilds/:guildId/applications/:userId/clear-cooldown", requireAuth, requirePanelLevel("keeper"), async (request, response, next) => {
     try {
       const discordGuild = client.guilds.cache.get(request.params.guildId);
       if (!discordGuild) {
@@ -2712,7 +3252,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   });
 
-  app.post("/guilds/:guildId/community/staff-notes/:userId/clear", requireAuth, async (request, response, next) => {
+  app.post("/guilds/:guildId/community/staff-notes/:userId/clear", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
     try {
       const discordGuild = client.guilds.cache.get(request.params.guildId);
       if (!discordGuild) {
@@ -2740,7 +3280,81 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     }
   });
 
-  app.post("/admin/game-leaderboard/delete", requireAuth, (request, response) => {
+  app.post("/guilds/:guildId/panel-access/:userId/revoke", requireAuth, async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      if (!panelAccessAtLeast(panelUser?.level || "", "artifact_contributor")) {
+        response.status(403).send(layout({ title: "Forbidden", user: true, body: '<p class="empty">You do not have permission to revoke panel users.</p>' }));
+        return;
+      }
+      const targetUserId = String(request.params.userId || "");
+      const config = store.getGuild(discordGuild.id);
+      const target = config.panelAccess?.users?.[targetUserId];
+      if (!target || normalizePanelAccessLevel(target.level) === "root") {
+        response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+        return;
+      }
+      await store.updateGuild(discordGuild.id, {
+        panelAccess: {
+          ...config.panelAccess,
+          users: {
+            ...config.panelAccess.users,
+            [targetUserId]: {
+              ...target,
+              revokedAt: new Date().toISOString(),
+              revokedBy: panelUser?.userId || "panel"
+            }
+          }
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel-access",
+        label: "Panel access revoked",
+        details: `Revoked panel access for ${target.username || targetUserId}.`,
+        actor: panelUserLabel(panelUser)
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/panel-access/grant-levels", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const config = store.getGuild(discordGuild.id);
+      const levels = arrayFromFormValue(request.body?.grantAccessLevels)
+        .map(normalizePanelAccessLevel)
+        .filter(Boolean);
+      const grantAccessLevels = levels.length ? [...new Set(levels)] : ["root"];
+      await store.updateGuild(discordGuild.id, {
+        panelAccess: {
+          ...config.panelAccess,
+          grantAccessLevels
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel-access",
+        label: "Grant access levels changed",
+        details: `Grant command access set to: ${grantAccessLevels.map(panelAccessLabel).join(", ")}.`,
+        actor: panelUserLabel(currentPanelUser(request, discordGuild.id))
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/admin/game-leaderboard/delete", requireAuth, requirePanelLevel("root"), (request, response) => {
     const index = Math.floor(Number(request.body?.index));
     const gameId = cleanGameId(request.query.game);
     const targetGuildId = String(request.query.guildId || "");
@@ -2760,6 +3374,12 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       }
 
       const section = normalizeSettingsSection(String(request.query.section || ""));
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      const saveRequiredLevel = section === "moderation" ? "keeper" : PANEL_SECTION_MIN_LEVEL[section] || "root";
+      if (!panelAccessAtLeast(panelUser?.level || "root", saveRequiredLevel) || NON_FORM_SECTIONS.has(section)) {
+        response.status(403).send(layout({ title: "Forbidden", user: true, body: '<p class="empty">You do not have permission to save this section.</p>' }));
+        return;
+      }
       const nextConfig = parseConfigForm(request.body, section);
       const mergedConfig = await store.updateGuild(discordGuild.id, nextConfig);
       writePublicMembersFile(mergedConfig.publicSite?.members || []);

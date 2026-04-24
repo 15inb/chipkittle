@@ -22,6 +22,10 @@ const DEFAULT_CONFIG = {
   commandRoles: {
     overrides: {}
   },
+  panelAccess: {
+    users: {},
+    grantAccessLevels: ["root"]
+  },
   economy: {
     balances: {},
     dailyClaims: {}
@@ -119,6 +123,16 @@ function mergeConfig(config = {}) {
     commandRoles: {
       ...clone(DEFAULT_CONFIG.commandRoles),
       ...(config.commandRoles || {})
+    },
+    panelAccess: {
+      ...clone(DEFAULT_CONFIG.panelAccess),
+      ...(config.panelAccess || {}),
+      users: {
+        ...(config.panelAccess?.users || {})
+      },
+      grantAccessLevels: Array.isArray(config.panelAccess?.grantAccessLevels)
+        ? config.panelAccess.grantAccessLevels
+        : clone(DEFAULT_CONFIG.panelAccess.grantAccessLevels)
     },
     economy: {
       ...clone(DEFAULT_CONFIG.economy),
@@ -222,6 +236,17 @@ export class ConfigStore {
       commandRoles: {
         ...this.getGuild(guildId).commandRoles,
         ...(partialConfig.commandRoles || {})
+      },
+      panelAccess: {
+        ...this.getGuild(guildId).panelAccess,
+        ...(partialConfig.panelAccess || {}),
+        users: {
+          ...this.getGuild(guildId).panelAccess.users,
+          ...(partialConfig.panelAccess?.users || {})
+        },
+        grantAccessLevels: Array.isArray(partialConfig.panelAccess?.grantAccessLevels)
+          ? partialConfig.panelAccess.grantAccessLevels
+          : this.getGuild(guildId).panelAccess.grantAccessLevels
       },
       economy: {
         ...this.getGuild(guildId).economy,
