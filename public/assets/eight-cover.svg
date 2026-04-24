@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-label="Chipkittle 8 ball cover art">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06140f"/>
+      <stop offset="100%" stop-color="#0d2319"/>
+    </linearGradient>
+    <radialGradient id="felt" cx="55%" cy="48%" r="48%">
+      <stop offset="0%" stop-color="#147b44"/>
+      <stop offset="100%" stop-color="#0b4e2b"/>
+    </radialGradient>
+    <linearGradient id="rail" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5b3920"/>
+      <stop offset="100%" stop-color="#3c2515"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <g transform="translate(122 94)">
+    <rect width="956" height="572" rx="46" fill="url(#rail)"/>
+    <rect x="44" y="44" width="868" height="484" rx="38" fill="url(#felt)"/>
+    <g fill="#05100c">
+      <circle cx="44" cy="44" r="34"/>
+      <circle cx="478" cy="32" r="30"/>
+      <circle cx="912" cy="44" r="34"/>
+      <circle cx="44" cy="528" r="34"/>
+      <circle cx="478" cy="540" r="30"/>
+      <circle cx="912" cy="528" r="34"/>
+    </g>
+    <g transform="translate(280 286)">
+      <circle r="24" fill="#f8fbf7"/>
+      <circle cx="0" cy="0" r="10" fill="#e8ece4"/>
+    </g>
+    <g transform="translate(622 286)">
+      <circle r="24" fill="#0b0f0d"/>
+      <circle r="11" fill="#fbf8f3"/>
+      <text y="7" text-anchor="middle" font-size="18" font-weight="900" fill="#111917">8</text>
+    </g>
+    <g transform="translate(676 314)">
+      <circle r="24" fill="#f4d241"/>
+      <circle r="11" fill="#fbf8f3"/>
+      <text y="7" text-anchor="middle" font-size="18" font-weight="900" fill="#111917">1</text>
+    </g>
+    <g transform="translate(676 258)">
+      <circle r="24" fill="#4769d8"/>
+      <circle r="11" fill="#fbf8f3"/>
+      <text y="7" text-anchor="middle" font-size="18" font-weight="900" fill="#111917">2</text>
+    </g>
+    <g transform="translate(730 286)">
+      <circle r="24" fill="#d24e3f"/>
+      <circle r="11" fill="#fbf8f3"/>
+      <text y="7" text-anchor="middle" font-size="18" font-weight="900" fill="#111917">3</text>
+    </g>
+    <g stroke="#d8be88" stroke-width="10" stroke-linecap="round">
+      <path d="M150 356 360 300"/>
+    </g>
+    <g transform="translate(836 118)">
+      <circle cx="0" cy="0" r="132" fill="rgba(103,220,98,.13)"/>
+      <path d="M0-42c10 24 18 32 42 42-24 8-32 16-42 42-10-26-18-34-42-42 24-10 32-18 42-42Z" fill="#67dc62"/>
+      <path d="M0-24c5 12 10 17 24 24-14 5-19 10-24 24-5-14-10-19-24-24 14-7 19-12 24-24Z" fill="#083d1f"/>
+    </g>
+  </g>
+</svg>

@@ -796,24 +796,41 @@ a {
   background: linear-gradient(180deg, rgba(5, 12, 10, 0.04), var(--card-bg) 78%);
 }
 
+.game-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.game-card .eyebrow {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 10px;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 250, 246, 0.92);
+  backdrop-filter: blur(10px);
+}
+
 .dash-card {
-  --game-card-art: url("/assets/chipkittle-hero.png");
+  --game-card-art: url("/assets/dash-cover.svg");
 }
 
 .eight-card {
-  --game-card-art: url("/notativelogotransparent.png");
+  --game-card-art: url("/assets/eight-cover.svg");
 }
 
 .runner-card {
-  --game-card-art: url("/assets/runner-funny.svg");
+  --game-card-art: url("/assets/runner-cover.svg");
 }
 
 .mines-card {
-  --game-card-art: url("/assets/mines-funny.svg");
+  --game-card-art: url("/assets/mines-cover.svg");
 }
 
 .catch-card {
-  --game-card-art: url("/assets/catch-funny.svg");
+  --game-card-art: url("/assets/catch-cover.svg");
 }
 
 .game-card h2 {
@@ -1336,6 +1353,35 @@ a {
   text-align: center;
   backdrop-filter: blur(16px);
   pointer-events: none;
+}
+
+.pool-shot-preview {
+  position: absolute;
+  left: 28px;
+  top: 24px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(7, 16, 13, 0.7);
+  color: rgba(237, 247, 239, 0.94);
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(16px);
+  pointer-events: none;
+}
+
+.pool-shot-preview::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #9df88a, #39b664);
+  box-shadow: 0 0 18px rgba(116, 239, 112, 0.62);
 }
 
 .pool-bottom-grid {

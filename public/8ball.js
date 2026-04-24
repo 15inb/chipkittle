@@ -74,6 +74,7 @@
   const powerValue = document.querySelector("#powerValue");
   const powerFill = document.querySelector("#powerFill");
   const powerHint = document.querySelector("#powerHint");
+  const shotPreview = document.querySelector("#shotPreview");
 
   let state = null;
   let renderedBalls = createFallbackBalls();
@@ -100,6 +101,11 @@
   let lastPowerHint = "";
   let lastPointerDrawX = NaN;
   let lastPointerDrawY = NaN;
+  let lastPlayersMarkup = "";
+  let lastRackMarkup = "";
+  let lastStatusClass = "";
+  let lastShotPreview = "";
+  const textCache = new WeakMap();
 
   playerNameInput.value = localStorage.getItem(storageKeys.name) || "";
   ctx.imageSmoothingEnabled = true;
@@ -108,6 +114,20 @@
     const number = Number(value);
     if (!Number.isFinite(number)) return min;
     return Math.min(Math.max(number, min), max);
+  }
+
+  function setNodeText(node, value) {
+    const next = String(value ?? "");
+    if (textCache.get(node) === next) return;
+    textCache.set(node, next);
+    node.textContent = next;
+  }
+
+  function setNodeHtml(node, value) {
+    const next = String(value ?? "");
+    if (textCache.get(node) === next) return;
+    textCache.set(node, next);
+    node.innerHTML = next;
   }
 
   function safeName(value) {
@@ -589,32 +609,83 @@
   }
 
   function updateStatusPill() {
-    matchState.textContent = statusText();
-    matchState.classList.remove("is-live", "is-waiting", "is-finished", "is-alert");
+    setNodeText(matchState, statusText());
     if (!state) {
-      matchState.classList.add("is-waiting");
+      if (lastStatusClass !== "is-waiting") {
+        matchState.classList.remove("is-live", "is-waiting", "is-finished", "is-alert");
+        matchState.classList.add("is-waiting");
+        lastStatusClass = "is-waiting";
+      }
       return;
     }
     if (state.status === "finished") {
-      matchState.classList.add("is-finished");
+      if (lastStatusClass !== "is-finished") {
+        matchState.classList.remove("is-live", "is-waiting", "is-finished", "is-alert");
+        matchState.classList.add("is-finished");
+        lastStatusClass = "is-finished";
+      }
     } else if (hasBallInHand()) {
-      matchState.classList.add("is-alert");
+      if (lastStatusClass !== "is-alert") {
+        matchState.classList.remove("is-live", "is-waiting", "is-finished", "is-alert");
+        matchState.classList.add("is-alert");
+        lastStatusClass = "is-alert";
+      }
     } else if (state.status === "active") {
-      matchState.classList.add("is-live");
+      if (lastStatusClass !== "is-live") {
+        matchState.classList.remove("is-live", "is-waiting", "is-finished", "is-alert");
+        matchState.classList.add("is-live");
+        lastStatusClass = "is-live";
+      }
     } else {
-      matchState.classList.add("is-waiting");
+      if (lastStatusClass !== "is-waiting") {
+        matchState.classList.remove("is-live", "is-waiting", "is-finished", "is-alert");
+        matchState.classList.add("is-waiting");
+        lastStatusClass = "is-waiting";
+      }
+    }
+  }
+
+  function updateShotPreviewLabel() {
+    if (!shotPreview) return;
+    let next = "Aim preview offline";
+    if (state?.status === "waiting") {
+      next = "Waiting for the second player";
+    } else if (state?.status === "finished") {
+      next = "Rack complete";
+    } else if (hasBallInHand()) {
+      next = "Place the cue ball first";
+    } else if (myTurn() && aiming) {
+      const cue = cueBallForDraw();
+      const metrics = cueMetrics(pointer, cue, currentTable());
+      const prediction = cue ? firstAimCollision(cue, metrics, currentTable()) : null;
+      next = prediction
+        ? `Likely first contact: ${ballLabel(prediction.ball.number)}`
+        : "Open lane ahead";
+    } else if (myTurn()) {
+      next = "Aim preview ready";
+    } else if (state?.status === "active") {
+      next = "Watching the other player";
+    }
+
+    if (next !== lastShotPreview) {
+      lastShotPreview = next;
+      setNodeText(shotPreview, next);
     }
   }
 
   function renderPlayers() {
     if (!state?.players?.length) {
-      playersList.innerHTML = '<li class="player-card"><strong>Waiting for room</strong><span>Create or join a table to start.</span></li>';
-      playerSummary.textContent = "Waiting for challengers";
+      const fallback = '<li class="player-card"><strong>Waiting for room</strong><span>Create or join a table to start.</span></li>';
+      if (lastPlayersMarkup !== fallback) {
+        setNodeHtml(playersList, fallback);
+        lastPlayersMarkup = fallback;
+      }
+      setNodeText(playerSummary, "Waiting for challengers");
       return;
     }
 
-    playerSummary.textContent = `${state.players.length}/2 seated`;
-    playersList.innerHTML = state.players
+    setNodeText(playerSummary, `${state.players.length}/2 seated`);
+    const markup = state.players
       .map((player, index) => {
         const classes = ["player-card"];
         if (state.currentTurn === index && state.status === "active") classes.push("is-turn");
@@ -636,12 +707,16 @@
         `;
       })
       .join("");
+    if (lastPlayersMarkup !== markup) {
+      setNodeHtml(playersList, markup);
+      lastPlayersMarkup = markup;
+    }
   }
 
   function renderRack() {
     const activeNumbers = activeBallNumbers();
     const highlightedGroup = myPlayer()?.canShootEight ? "eight" : myPlayer()?.group || "";
-    rackGrid.innerHTML = Array.from({ length: 15 }, (_unused, index) => index + 1)
+    const markup = Array.from({ length: 15 }, (_unused, index) => index + 1)
       .map((number) => {
         const kind = groupForNumber(number);
         const classes = ["rack-pill", `is-${kind}`];
@@ -650,13 +725,17 @@
         return `<div class="${classes.join(" ")}">${number}</div>`;
       })
       .join("");
+    if (lastRackMarkup !== markup) {
+      setNodeHtml(rackGrid, markup);
+      lastRackMarkup = markup;
+    }
 
     if (!state) {
-      rackStatus.textContent = "15 balls waiting";
+      setNodeText(rackStatus, "15 balls waiting");
       return;
     }
 
-    rackStatus.textContent = `${state.remaining.solids} solids left, ${state.remaining.stripes} stripes left`;
+    setNodeText(rackStatus, `${state.remaining.solids} solids left, ${state.remaining.stripes} stripes left`);
   }
 
   function updateButtonState() {
@@ -672,19 +751,20 @@
   }
 
   function updatePanel() {
-    roomValue.textContent = state?.roomCode || "-----";
-    seatValue.textContent = state?.selfPlayerIndex >= 0 ? `Seat ${state.selfPlayerIndex + 1}` : "-";
-    turnValue.textContent = turnText();
-    turnBanner.textContent = turnBannerText();
-    shotMeta.textContent = state?.message || "Waiting for a room";
-    lastShotSummary.textContent = describeLastShot();
-    objectiveBadge.textContent = myPlayer()?.group ? `You are ${myPlayer().group}` : "Open table";
-    objectiveValue.textContent = myObjective();
-    ballInHandValue.textContent = hasBallInHand() ? "Yes" : "No";
-    tableNote.textContent = noteText();
+    setNodeText(roomValue, state?.roomCode || "-----");
+    setNodeText(seatValue, state?.selfPlayerIndex >= 0 ? `Seat ${state.selfPlayerIndex + 1}` : "-");
+    setNodeText(turnValue, turnText());
+    setNodeText(turnBanner, turnBannerText());
+    setNodeText(shotMeta, state?.message || "Waiting for a room");
+    setNodeText(lastShotSummary, describeLastShot());
+    setNodeText(objectiveBadge, myPlayer()?.group ? `You are ${myPlayer().group}` : "Open table");
+    setNodeText(objectiveValue, myObjective());
+    setNodeText(ballInHandValue, hasBallInHand() ? "Yes" : "No");
+    setNodeText(tableNote, noteText());
     tableNote.classList.toggle("is-alert", Boolean(transientNote));
     updateStatusPill();
     updatePowerIndicator();
+    updateShotPreviewLabel();
     renderPlayers();
     renderRack();
     updateButtonState();
@@ -700,6 +780,7 @@
     requestAnimationFrame(() => {
       drawQueued = false;
       updatePowerIndicator();
+      if (document.hidden) return;
       if (!animating) {
         draw();
       }
@@ -1004,6 +1085,7 @@
 
     const { nx, ny } = metrics;
     const cueStickDistance = 18 + metrics.normalized * 116;
+    const prediction = firstAimCollision(cue, metrics, table);
 
     ctx.save();
     ctx.lineCap = "round";
@@ -1012,9 +1094,32 @@
     ctx.setLineDash([7, 9]);
     ctx.beginPath();
     ctx.moveTo(cue.x, cue.y);
-    ctx.lineTo(cue.x + nx * 280, cue.y + ny * 280);
+    ctx.lineTo(
+      prediction?.contactX ?? cue.x + nx * 280,
+      prediction?.contactY ?? cue.y + ny * 280
+    );
     ctx.stroke();
     ctx.setLineDash([]);
+
+    if (prediction) {
+      ctx.strokeStyle = `rgba(160, 240, 204, ${0.22 + metrics.normalized * 0.18})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(prediction.ball.x, prediction.ball.y);
+      ctx.lineTo(
+        prediction.ball.x + nx * 90,
+        prediction.ball.y + ny * 90
+      );
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(241, 248, 244, 0.16)";
+      ctx.strokeStyle = "rgba(241, 248, 244, 0.46)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(prediction.contactX, prediction.contactY, table.ballRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
 
     const cueStick = ctx.createLinearGradient(cue.x - nx * 190, cue.y - ny * 190, cue.x - nx * 20, cue.y - ny * 20);
     cueStick.addColorStop(0, "#d8be88");
@@ -1031,6 +1136,32 @@
     ctx.arc(cue.x + nx * 46, cue.y + ny * 46, table.ballRadius * (0.82 + metrics.normalized * 0.26), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  }
+
+  function firstAimCollision(cue, metrics, table) {
+    const travelRadius = table.ballRadius * 2;
+    let nearest = null;
+    for (const ball of state?.balls || []) {
+      if (!ball || ball.number === 0 || ball.pocketed) continue;
+      const dx = ball.x - cue.x;
+      const dy = ball.y - cue.y;
+      const forward = dx * metrics.nx + dy * metrics.ny;
+      if (forward <= 0) continue;
+      const lateralSq = dx * dx + dy * dy - forward * forward;
+      if (lateralSq > travelRadius * travelRadius) continue;
+      const reach = Math.sqrt(Math.max(travelRadius * travelRadius - lateralSq, 0));
+      const hitDistance = forward - reach;
+      if (hitDistance <= 0) continue;
+      if (!nearest || hitDistance < nearest.hitDistance) {
+        nearest = {
+          ball,
+          hitDistance,
+          contactX: cue.x + metrics.nx * hitDistance,
+          contactY: cue.y + metrics.ny * hitDistance
+        };
+      }
+    }
+    return nearest;
   }
 
   function drawCuePlacementHighlight(table) {
@@ -1201,10 +1332,11 @@
     const roomCode = currentRoomCode();
     const token = tokenFor(roomCode);
     if (!roomCode || !token) return;
+    const nextDelay = document.hidden ? Math.max(delay, 4200) : delay;
     pollTimer = setTimeout(async () => {
       await refreshState({ silent: true, animate: true });
       schedulePoll(1600);
-    }, delay);
+    }, nextDelay);
   }
 
   async function createRoom() {
@@ -1379,6 +1511,7 @@
       if (valid) {
         previewCuePlacement = valid;
       }
+      updateShotPreviewLabel();
       requestDraw();
       return;
     }
@@ -1390,6 +1523,7 @@
       }
       lastPointerDrawX = point.x;
       lastPointerDrawY = point.y;
+      updateShotPreviewLabel();
       requestDraw();
     }
   }
@@ -1417,6 +1551,7 @@
         flashNote("That spot is blocked. Keep the cue ball clear of other balls and the pocket mouths.");
       }
       resetPointerState();
+      updateShotPreviewLabel();
       requestDraw();
       return;
     }
@@ -1431,15 +1566,18 @@
     const metrics = cueMetrics(point, cue, currentTable());
     resetPointerState();
     if (!cue) {
+      updateShotPreviewLabel();
       requestDraw();
       return;
     }
 
     if (metrics.length < cueDeadzone(currentTable())) {
+      updateShotPreviewLabel();
       requestDraw();
       return;
     }
 
+    updateShotPreviewLabel();
     requestDraw();
     submitShot(metrics.dx, metrics.dy, metrics.power);
   }

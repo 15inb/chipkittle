@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-label="Bread Catch cover art">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#edf8ec"/>
+      <stop offset="100%" stop-color="#99b6a0"/>
+    </linearGradient>
+    <linearGradient id="basket" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2ac058"/>
+      <stop offset="100%" stop-color="#117230"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <g fill="rgba(255,255,255,.2)">
+    <circle cx="108" cy="96" r="54"/>
+    <circle cx="288" cy="126" r="44"/>
+    <circle cx="476" cy="92" r="68"/>
+    <circle cx="708" cy="138" r="52"/>
+    <circle cx="934" cy="102" r="72"/>
+  </g>
+  <g transform="translate(598 616)">
+    <rect x="-176" y="-24" width="352" height="74" rx="26" fill="url(#basket)"/>
+    <rect x="-114" y="-2" width="228" height="14" rx="7" fill="rgba(255,255,255,.58)"/>
+  </g>
+  <g transform="translate(290 210)">
+    <rect x="-24" y="-16" width="48" height="32" rx="12" fill="#d99a3b" stroke="#875719" stroke-width="6"/>
+    <rect x="-8" y="-2" width="16" height="5" rx="3" fill="rgba(255,255,255,.42)"/>
+  </g>
+  <g transform="translate(566 116)">
+    <rect x="-24" y="-16" width="48" height="32" rx="12" fill="#f3d463" stroke="#9b7710" stroke-width="6"/>
+    <rect x="-8" y="-2" width="16" height="5" rx="3" fill="rgba(255,255,255,.42)"/>
+  </g>
+  <g transform="translate(830 252)">
+    <circle r="28" fill="#111917"/>
+  </g>
+  <g transform="translate(946 168)">
+    <path d="M-14-14h28v28h-28Z" fill="#69d58b"/>
+    <path d="M-6-6h12v12h-12Z" fill="#edfef0"/>
+  </g>
+  <g transform="translate(1060 300)">
+    <path d="M0-18A18 18 0 0 1 0 18" fill="none" stroke="#ef667b" stroke-width="8" stroke-linecap="round"/>
+    <path d="M0-18A18 18 0 0 0 0 18" fill="none" stroke="#6dc3ff" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>

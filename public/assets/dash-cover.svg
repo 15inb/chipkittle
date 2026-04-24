@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-label="Chipkittle Dash cover art">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#eef6ed"/>
+      <stop offset="54%" stop-color="#d7ddd7"/>
+      <stop offset="100%" stop-color="#919a99"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="58%" cy="40%" r="36%">
+      <stop offset="0%" stop-color="#89ff7d" stop-opacity=".95"/>
+      <stop offset="100%" stop-color="#89ff7d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#d8ddd5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <rect width="1200" height="760" fill="url(#glow)"/>
+  <g stroke="rgba(26,138,56,.15)" stroke-width="3" fill="none">
+    <path d="M-80 760 190 0"/>
+    <path d="M80 760 350 0"/>
+    <path d="M240 760 510 0"/>
+    <path d="M400 760 670 0"/>
+    <path d="M560 760 830 0"/>
+    <path d="M720 760 990 0"/>
+    <path d="M880 760 1150 0"/>
+  </g>
+  <g transform="translate(720 92)">
+    <circle cx="80" cy="120" r="170" fill="rgba(96,255,126,.18)"/>
+    <path d="M80 10c23 52 40 69 96 90-57 18-74 36-96 96-22-60-39-78-96-96 56-21 73-38 96-90Z" fill="#67dc62"/>
+    <path d="M80 44c14 32 24 42 56 56-32 12-42 22-56 56-14-34-24-44-56-56 32-14 42-24 56-56Z" fill="#083d1f"/>
+  </g>
+  <g transform="translate(820 400)">
+    <ellipse cx="0" cy="0" rx="132" ry="150" fill="url(#fur)"/>
+    <ellipse cx="0" cy="-20" rx="96" ry="86" fill="url(#fur)"/>
+    <path d="M-102-48c-44 10-80 58-86 118 36-24 53-47 62-91l24-27Z" fill="#434846"/>
+    <path d="M102-48c44 10 80 58 86 118-36-24-53-47-62-91l-24-27Z" fill="#434846"/>
+    <circle cx="-36" cy="-44" r="16" fill="#141917"/>
+    <circle cx="36" cy="-44" r="16" fill="#141917"/>
+    <circle cx="-36" cy="-44" r="5" fill="#eaf4e7"/>
+    <circle cx="36" cy="-44" r="5" fill="#eaf4e7"/>
+    <ellipse cx="0" cy="34" rx="48" ry="28" fill="#f1d0bd"/>
+    <path d="M-160 96c-76 12-146 84-170 168 70-6 129-26 176-70l39-79Z" fill="url(#fur)"/>
+    <g fill="#64635d">
+      <path d="M-288 238c6-20 18-29 34-24 11 18 6 32-16 44Z"/>
+      <path d="M-242 226c7-20 21-29 39-21 10 18 2 32-22 43Z"/>
+      <path d="M-196 214c7-19 22-26 39-17 8 18 0 30-24 40Z"/>
+    </g>
+  </g>
+</svg>
