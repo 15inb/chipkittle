@@ -283,7 +283,7 @@ function moderationCenter(config = {}) {
           </div>
           ${
             openCases.length
-              ? `<div class="stack-list">${openCases.slice(0, 8).map((entry) => `<div class="audit-row"><strong>Case #${escapeHtml(entry.id)} • ${escapeHtml(entry.action)}</strong><small>${escapeHtml(entry.targetTag || entry.targetId || "Unknown target")} • ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.reason || "No reason recorded.")}</p>${entry.updates?.length ? `<small>${escapeHtml(entry.updates.length)} note${entry.updates.length === 1 ? "" : "s"}</small>` : ""}</div>`).join("")}</div>`
+              ? `<div class="stack-list">${openCases.slice(0, 8).map((entry) => `<div class="audit-row"><strong>Case #${escapeHtml(entry.id)} &middot; ${escapeHtml(entry.action)}</strong><small>${escapeHtml(entry.targetTag || entry.targetId || "Unknown target")} &middot; ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.reason || "No reason recorded.")}</p>${entry.updates?.length ? `<small>${escapeHtml(entry.updates.length)} note${entry.updates.length === 1 ? "" : "s"}</small>` : ""}</div>`).join("")}</div>`
               : '<p class="muted">No open moderation cases right now.</p>'
           }
         </div>
@@ -334,7 +334,7 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
               <article class="case-row">
                 <div class="case-row-main">
                   <div class="case-row-head">
-                    <strong>Case #${escapeHtml(entry.id)} • ${escapeHtml(entry.action || "action")}</strong>
+                    <strong>Case #${escapeHtml(entry.id)} &middot; ${escapeHtml(entry.action || "action")}</strong>
                     <span class="case-status ${entry.isClosed ? "is-closed" : "is-open"}">${escapeHtml(entry.status || (entry.isClosed ? "closed" : "open"))}</span>
                   </div>
                   <div class="case-meta">
@@ -467,7 +467,7 @@ function applicationsWorkspace(guildId, guild, config = {}) {
       </div>
       ${
         tickets.length
-          ? `<div class="warning-ledger">${tickets.map((ticket) => `<article class="warning-row"><div class="warning-row-main"><strong>${escapeHtml(ticket.userId)}</strong><small>${escapeHtml(ticket.completed ? "Completed" : "In progress")} • Question ${escapeHtml(Math.min(ticket.questionIndex + 1, Math.max(questions.length, 1)))}</small><ul><li>Thread: ${escapeHtml(ticket.channelId || "Missing")}</li><li>Parent: ${escapeHtml(displayChannelName(guild, ticket.parentChannelId))}</li><li>Updated: ${escapeHtml(ticket.updatedAt || "Unknown")}</li></ul></div><button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/applications/${ticket.userId}/clear-ticket?section=applications">Clear ticket</button></article>`).join("")}</div>`
+          ? `<div class="warning-ledger">${tickets.map((ticket) => `<article class="warning-row"><div class="warning-row-main"><strong>${escapeHtml(ticket.userId)}</strong><small>${escapeHtml(ticket.completed ? "Completed" : "In progress")} &middot; Question ${escapeHtml(Math.min(ticket.questionIndex + 1, Math.max(questions.length, 1)))}</small><ul><li>Thread: ${escapeHtml(ticket.channelId || "Missing")}</li><li>Parent: ${escapeHtml(displayChannelName(guild, ticket.parentChannelId))}</li><li>Updated: ${escapeHtml(ticket.updatedAt || "Unknown")}</li></ul></div><button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/applications/${ticket.userId}/clear-ticket?section=applications">Clear ticket</button></article>`).join("")}</div>`
           : '<p class="muted">No stored application tickets right now.</p>'
       }
     </section>
@@ -584,7 +584,7 @@ function communityWorkspace(guildId, config = {}) {
           </div>
           ${
             artifact
-              ? `<div class="audit-row"><strong>${escapeHtml(artifact.name)}</strong><small>${escapeHtml(artifact.rarity)} • ${escapeHtml(artifact.keeper)}</small><p>${escapeHtml(artifact.summary)}</p></div>`
+              ? `<div class="audit-row"><strong>${escapeHtml(artifact.name)}</strong><small>${escapeHtml(artifact.rarity)} &middot; ${escapeHtml(artifact.keeper)}</small><p>${escapeHtml(artifact.summary)}</p></div>`
               : '<p class="muted">No artifact is available right now.</p>'
           }
         </div>
@@ -608,7 +608,7 @@ function communityWorkspace(guildId, config = {}) {
       </div>
       ${
         artifacts.length
-          ? `<div class="stack-list">${artifacts.map((item) => `<div class="audit-row"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.rarity)} • ${escapeHtml(item.keeper)}</small><p>${escapeHtml(item.summary)}</p></div>`).join("")}</div>`
+          ? `<div class="stack-list">${artifacts.map((item) => `<div class="audit-row"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.rarity)} &middot; ${escapeHtml(item.keeper)}</small><p>${escapeHtml(item.summary)}</p></div>`).join("")}</div>`
           : '<p class="muted">No artifacts are registered yet.</p>'
       }
     </section>
@@ -663,7 +663,7 @@ function dashboardCards(guild, config = {}) {
           <p>Newest moderation cases recorded by the bot.</p>
         </div>
         ${recentCases.length
-          ? `<div class="stack-list">${recentCases.map((entry) => `<div class="audit-row"><strong>Case #${escapeHtml(entry.id)} • ${escapeHtml(entry.action)}</strong><small>${escapeHtml(entry.targetTag || entry.targetId)} • ${escapeHtml(entry.status)}</small><p>${escapeHtml(entry.reason || "No reason recorded.")}</p></div>`).join("")}</div>`
+          ? `<div class="stack-list">${recentCases.map((entry) => `<div class="audit-row"><strong>Case #${escapeHtml(entry.id)} &middot; ${escapeHtml(entry.action)}</strong><small>${escapeHtml(entry.targetTag || entry.targetId)} &middot; ${escapeHtml(entry.status)}</small><p>${escapeHtml(entry.reason || "No reason recorded.")}</p></div>`).join("")}</div>`
           : '<p class="muted">No moderation cases yet.</p>'}
       </section>
       <section class="panel-section">
@@ -672,7 +672,7 @@ function dashboardCards(guild, config = {}) {
           <p>Recent application, moderation, shop, and profile events.</p>
         </div>
         ${auditLog.length
-          ? `<div class="stack-list">${auditLog.map((entry) => `<div class="audit-row"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.actor || "System")} • ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.details || "")}</p></div>`).join("")}</div>`
+          ? `<div class="stack-list">${auditLog.map((entry) => `<div class="audit-row"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.actor || "System")} &middot; ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.details || "")}</p></div>`).join("")}</div>`
           : '<p class="muted">No audit activity yet.</p>'}
       </section>
     </div>
@@ -1448,7 +1448,7 @@ function settingsNav(guild, config, activeSection, currentMeta) {
           <div>
             <p class="eyebrow">Server focus</p>
             <strong>${escapeHtml(guild.name)}</strong>
-            <small>Prefix ${escapeHtml(config.prefix)} • ${guild.memberCount ?? 0} members</small>
+            <small>Prefix ${escapeHtml(config.prefix)} &middot; ${guild.memberCount ?? 0} members</small>
           </div>
         </div>
         <div class="rail-mini-stats">
