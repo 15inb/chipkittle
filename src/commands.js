@@ -2880,6 +2880,8 @@ define({
 
     await saveApplicationTicket(ctx.store, ctx.message.guild.id, ctx.message.author.id, {
       channelId: thread.id,
+      parentChannelId: thread.parentId || parentChannel.id,
+      guildId: ctx.message.guild.id,
       questionIndex: 0,
       completed: false
     });

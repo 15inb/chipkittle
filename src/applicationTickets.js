@@ -2,6 +2,11 @@ import { ChannelType, PermissionsBitField } from "discord.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
 
 const TOPIC_PREFIX = "Chipkittle application";
+const APPLICATION_THREAD_TYPES = new Set([
+  ChannelType.PrivateThread,
+  ChannelType.PublicThread,
+  ChannelType.AnnouncementThread
+]);
 
 export function applicationQuestions(config) {
   return (config.applications?.questions || []).filter(Boolean);
@@ -29,48 +34,143 @@ export function parseTicketTopic(topic = "") {
   return { userId, questionIndex, completed };
 }
 
-function storedTicket(config, userId) {
-  const ticket = config.applications?.tickets?.[userId];
-  if (!ticket?.channelId) return null;
+function isApplicationThread(channel) {
+  return Boolean(channel?.isThread?.() || APPLICATION_THREAD_TYPES.has(channel?.type));
+}
 
+function isApplicationChannel(channel) {
+  return Boolean(
+    channel?.isTextBased?.() &&
+    (channel.type === ChannelType.GuildText || isApplicationThread(channel))
+  );
+}
+
+function normalizeTicketRecord(ticket = {}, guildId = "") {
   return {
-    channelId: ticket.channelId,
-    questionIndex: Number(ticket.questionIndex) || 0,
-    completed: Boolean(ticket.completed)
+    channelId: String(ticket.channelId || ""),
+    parentChannelId: String(ticket.parentChannelId || ticket.parentId || ""),
+    guildId: String(ticket.guildId || guildId || ""),
+    questionIndex: Math.max(Number(ticket.questionIndex) || 0, 0),
+    completed: Boolean(ticket.completed),
+    updatedAt: String(ticket.updatedAt || "")
   };
 }
 
-export function applicantIdFromChannel(channel, config = {}) {
-  const topicApplicantId = parseTicketTopic(channel.topic).userId;
-  if (topicApplicantId) return topicApplicantId;
-
-  const ticketEntry = Object.entries(config.applications?.tickets || {}).find(
-    ([, ticket]) => ticket.channelId === channel.id
-  );
-  return ticketEntry?.[0] || "";
+function storedTicket(config, userId) {
+  const ticket = normalizeTicketRecord(config.applications?.tickets?.[userId]);
+  return ticket.channelId ? ticket : null;
 }
 
-async function fetchStoredChannel(client, config, userId) {
+function ticketEntries(config = {}) {
+  return Object.entries(config.applications?.tickets || {});
+}
+
+function fallbackParentChannelIds(config = {}, ticket = null) {
+  return [...new Set([
+    ticket?.parentChannelId,
+    config.applications?.threadChannelId,
+    config.applications?.channelId
+  ].filter(Boolean))];
+}
+
+async function fetchParentChannel(client, guild, parentChannelId) {
+  if (!parentChannelId) return null;
+
+  const cached = guild.channels.cache.get(parentChannelId);
+  if (cached) return cached;
+
+  return client.channels.fetch(parentChannelId).catch(() => null);
+}
+
+async function fetchThreadFromParent(parentChannel, channelId) {
+  if (!parentChannel?.threads?.fetchActive || !channelId) return null;
+
+  const active = await parentChannel.threads.fetchActive().catch(() => null);
+  const activeThread = active?.threads?.get(channelId);
+  if (activeThread) return activeThread;
+
+  const archivedPrivate = await parentChannel.threads
+    .fetchArchived({ type: "private", fetchAll: true })
+    .catch(() => null);
+  const privateThread = archivedPrivate?.threads?.get(channelId);
+  if (privateThread) return privateThread;
+
+  const archivedPublic = await parentChannel.threads
+    .fetchArchived({ type: "public", limit: 100 })
+    .catch(() => null);
+  return archivedPublic?.threads?.get(channelId) || null;
+}
+
+async function fetchStoredChannel(client, guild, config, userId) {
   const stored = storedTicket(config, userId);
   if (!stored?.channelId) return null;
 
-  return client.channels.fetch(stored.channelId).catch(() => null);
+  const direct = await client.channels.fetch(stored.channelId).catch(() => null);
+  if (isApplicationChannel(direct)) return direct;
+
+  const cached = guild.channels.cache.get(stored.channelId);
+  if (isApplicationChannel(cached)) return cached;
+
+  const activeThreads = await guild.channels.fetchActiveThreads().catch(() => null);
+  const activeThread = activeThreads?.threads?.get(stored.channelId);
+  if (isApplicationChannel(activeThread)) return activeThread;
+
+  for (const parentChannelId of fallbackParentChannelIds(config, stored)) {
+    const parentChannel = await fetchParentChannel(client, guild, parentChannelId);
+    const thread = await fetchThreadFromParent(parentChannel, stored.channelId);
+    if (isApplicationChannel(thread)) return thread;
+  }
+
+  return null;
+}
+
+async function ensureApplicationChannelReady(channel, ticket) {
+  if (!isApplicationThread(channel) || ticket?.completed) return channel;
+
+  if (channel.locked) {
+    await channel.setLocked(false, "Reopening active application thread").catch(() => {});
+  }
+  if (channel.archived) {
+    await channel.setArchived(false, "Reopening active application thread").catch(() => {});
+  }
+  if (channel.joinable && !channel.joined) {
+    await channel.join().catch(() => {});
+  }
+
+  return channel;
+}
+
+export function applicantIdFromChannel(channel, config = {}) {
+  if (!channel) return "";
+
+  const ticketEntry = ticketEntries(config).find(
+    ([, ticket]) => ticket.channelId === channel.id
+  );
+  if (ticketEntry?.[0]) return ticketEntry[0];
+
+  if (!isApplicationThread(channel)) {
+    const topicApplicantId = parseTicketTopic(channel.topic).userId;
+    if (topicApplicantId) return topicApplicantId;
+  }
+
+  return "";
 }
 
 export async function findOpenApplicationChannel(guild, userId, config = {}, client = null) {
   const storedChannel = client
-    ? await fetchStoredChannel(client, config, userId)
+    ? await fetchStoredChannel(client, guild, config, userId)
     : guild.channels.cache.get(storedTicket(config, userId)?.channelId);
 
-  if (storedChannel?.isTextBased()) return storedChannel;
+  if (isApplicationChannel(storedChannel)) return storedChannel;
+
+  const activeThreads = await guild.channels.fetchActiveThreads().catch(() => null);
+  const activeThread = activeThreads?.threads?.find((thread) => applicantIdFromChannel(thread, config) === userId);
+  if (isApplicationChannel(activeThread)) return activeThread;
 
   return guild.channels.cache.find((channel) => {
-    const ticket = parseTicketTopic(channel.topic);
-    return (
-      [ChannelType.GuildText, ChannelType.PrivateThread, ChannelType.PublicThread].includes(channel.type) &&
-      ticket.userId === userId
-    );
-  });
+    if (!isApplicationChannel(channel)) return false;
+    return applicantIdFromChannel(channel, config) === userId;
+  }) || null;
 }
 
 export function findApplicationTicketForUser(client, store, userId) {
@@ -78,11 +178,12 @@ export function findApplicationTicketForUser(client, store, userId) {
     client.guilds.cache.map(async (guild) => {
       const config = store.getGuild(guild.id);
       const channel = await findOpenApplicationChannel(guild, userId, config, client);
+      const stored = storedTicket(config, userId);
       return channel
         ? {
             guild,
             channel,
-            ticket: storedTicket(config, userId) || parseTicketTopic(channel.topic)
+            ticket: stored || parseTicketTopic(channel.topic)
           }
         : null;
     })
@@ -91,15 +192,18 @@ export function findApplicationTicketForUser(client, store, userId) {
 
 export async function saveApplicationTicket(store, guildId, userId, ticket) {
   const config = store.getGuild(guildId);
+  const nextTicket = normalizeTicketRecord(ticket, guildId);
   return store.updateGuild(guildId, {
     applications: {
       ...config.applications,
       tickets: {
         ...(config.applications.tickets || {}),
         [userId]: {
-          channelId: ticket.channelId,
-          questionIndex: Number(ticket.questionIndex) || 0,
-          completed: Boolean(ticket.completed),
+          channelId: nextTicket.channelId,
+          parentChannelId: nextTicket.parentChannelId,
+          guildId: nextTicket.guildId,
+          questionIndex: nextTicket.questionIndex,
+          completed: nextTicket.completed,
           updatedAt: new Date().toISOString()
         }
       }
@@ -172,7 +276,8 @@ export async function handleApplicationDm({ client, store, message }) {
   }
 
   const question = questions[currentIndex];
-  await found.channel.send({
+  const channel = await ensureApplicationChannelReady(found.channel, found.ticket);
+  await channel.send({
     embeds: [
       applicationEmbed(
         `Question ${currentIndex + 1}`,
@@ -185,12 +290,14 @@ export async function handleApplicationDm({ client, store, message }) {
   const nextIndex = currentIndex + 1;
   const completed = nextIndex >= questions.length;
   await saveApplicationTicket(store, found.guild.id, message.author.id, {
-    channelId: found.channel.id,
+    channelId: channel.id,
+    parentChannelId: channel.parentId,
+    guildId: found.guild.id,
     questionIndex: nextIndex,
     completed
   });
-  if (typeof found.channel.setTopic === "function") {
-    found.channel.setTopic(ticketTopic(message.author.id, nextIndex, completed)).catch(() => {});
+  if (!isApplicationThread(channel) && typeof channel.setTopic === "function") {
+    channel.setTopic(ticketTopic(message.author.id, nextIndex, completed)).catch(() => {});
   }
 
   if (completed) {
@@ -203,7 +310,7 @@ export async function handleApplicationDm({ client, store, message }) {
         )
       ]
     }).catch(() => {});
-    await found.channel.send({
+    await channel.send({
       embeds: [
         applicationEmbed(
           "Application Ready For Review",
