@@ -1020,6 +1020,248 @@ a {
   background: linear-gradient(180deg, rgba(9, 38, 23, 0.9), rgba(8, 32, 21, 0.96));
 }
 
+.pool-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 18px;
+  align-items: start;
+  padding: 0 clamp(20px, 5vw, 80px) clamp(56px, 8vw, 104px);
+}
+
+.pool-main,
+.pool-sidebar {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.pool-stage-bar,
+.pool-bottom-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.pool-stage-bar {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: stretch;
+}
+
+.pool-badge,
+.pool-card {
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 14px;
+  background: var(--card-bg);
+  box-shadow: 0 30px 86px rgba(16, 25, 21, 0.14);
+  backdrop-filter: blur(18px);
+}
+
+.pool-badge {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+}
+
+.pool-badge span,
+.pool-card-head span,
+.pool-rule-list li,
+.player-card small {
+  color: var(--soft-ink);
+}
+
+.pool-badge span {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pool-badge strong {
+  color: var(--green-dark);
+  font-size: clamp(20px, 2vw, 28px);
+  line-height: 1;
+}
+
+.pool-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.pool-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pool-card-head strong {
+  font-size: 18px;
+}
+
+.pool-stage {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 20px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 58% 44%, rgba(95, 255, 127, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(9, 22, 18, 0.96), rgba(6, 12, 10, 0.98));
+  box-shadow: 0 40px 110px rgba(8, 16, 12, 0.28);
+}
+
+.pool-stage canvas {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  aspect-ratio: 1180 / 680;
+}
+
+.pool-stage-message {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  bottom: 24px;
+  z-index: 2;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 12px 16px;
+  background: rgba(7, 16, 13, 0.72);
+  color: rgba(237, 247, 239, 0.94);
+  font-size: 14px;
+  font-weight: 850;
+  text-align: center;
+  backdrop-filter: blur(16px);
+  pointer-events: none;
+}
+
+.pool-bottom-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+}
+
+.pool-objective {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.pool-objective-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.pool-objective-row span {
+  color: var(--soft-ink);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.pool-objective-row strong {
+  text-align: right;
+  font-size: 15px;
+}
+
+.pool-room-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pool-rack-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rack-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: #f8fbf7;
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: inset 0 -8px 18px rgba(0, 0, 0, 0.14);
+}
+
+.rack-pill.is-solids {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent), #236645;
+}
+
+.rack-pill.is-stripes {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent),
+    linear-gradient(180deg, #f5f5f1 0, #f5f5f1 28%, #225f84 28%, #225f84 72%, #f5f5f1 72%, #f5f5f1 100%);
+  color: #18302b;
+}
+
+.rack-pill.is-eight {
+  background: linear-gradient(180deg, rgba(116, 239, 112, 0.12), transparent), #0b0f0d;
+}
+
+.rack-pill.is-pocketed {
+  opacity: 0.28;
+  filter: grayscale(0.45);
+}
+
+.rack-pill.is-target {
+  border-color: rgba(116, 239, 112, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(116, 239, 112, 0.18), 0 0 0 1px rgba(116, 239, 112, 0.14);
+}
+
+.pool-last-shot {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 15px;
+  background: rgba(12, 22, 18, 0.66);
+  color: rgba(244, 250, 246, 0.92);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.pool-rule-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.pool-rule-list li {
+  line-height: 1.5;
+}
+
+.player-card small {
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.table-note.is-alert {
+  color: var(--green-dark);
+}
+
+.status-pill.is-live {
+  background: rgba(92, 230, 103, 0.16);
+  color: #2d8e45;
+}
+
+.status-pill.is-waiting {
+  background: rgba(155, 171, 161, 0.18);
+  color: var(--soft-ink);
+}
+
+.status-pill.is-finished {
+  background: rgba(19, 20, 24, 0.86);
+  color: rgba(116, 239, 112, 0.92);
+}
+
+.status-pill.is-alert {
+  background: rgba(116, 239, 112, 0.18);
+  color: var(--green-dark);
+}
+
 .member-grid,
 .commit-list {
   display: grid;
@@ -1136,6 +1378,16 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .pool-layout,
+  .pool-bottom-grid,
+  .pool-stage-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .pool-sidebar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .game-panel {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -1161,6 +1413,10 @@ a {
 
   .room-form-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .pool-room-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1208,6 +1464,34 @@ a {
 
   .game-panel {
     grid-template-columns: 1fr;
+  }
+
+  .pool-sidebar,
+  .pool-room-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pool-rack-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .pool-objective-row {
+    display: grid;
+    gap: 4px;
+  }
+
+  .pool-stage {
+    padding: 12px;
+  }
+
+  .pool-stage-message {
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    border-radius: 18px;
+    font-size: 13px;
+    line-height: 1.4;
   }
 
   .game-controls {
