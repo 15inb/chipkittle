@@ -118,11 +118,14 @@
             </div>
           </div>
           <div class="shot-meter">
-            <label>
-              Shot power
-              <input id="powerSlider" type="range" min="20" max="100" value="62">
-            </label>
-            <output id="powerValue">62%</output>
+            <div class="pool-objective-row">
+              <span>Shot power</span>
+              <strong id="powerValue">Pull cue</strong>
+            </div>
+            <div class="power-track" aria-hidden="true">
+              <div class="power-fill" id="powerFill"></div>
+            </div>
+            <p class="power-hint" id="powerHint">Drag farther across the table to pull the cue back harder.</p>
           </div>
           <div class="room-form-grid pool-room-grid">
             <button class="button secondary" type="button" id="copyCode">Copy code</button>

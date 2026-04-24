@@ -71,8 +71,9 @@
   const objectiveBadge = document.querySelector("#objectiveBadge");
   const objectiveValue = document.querySelector("#objectiveValue");
   const ballInHandValue = document.querySelector("#ballInHandValue");
-  const powerSlider = document.querySelector("#powerSlider");
   const powerValue = document.querySelector("#powerValue");
+  const powerFill = document.querySelector("#powerFill");
+  const powerHint = document.querySelector("#powerHint");
 
   let state = null;
   let renderedBalls = createFallbackBalls();
@@ -90,11 +91,17 @@
   let transientTimer = 0;
   let cuePlacementValid = true;
   const pointer = { x: 0, y: 0, moved: false };
+  let pointerRect = null;
   const backgroundCache = { key: "", canvas: null };
   const ballSpriteCache = new Map();
+  const previewCueBall = {};
+  let lastPowerDisplay = "";
+  let lastPowerScale = -1;
+  let lastPowerHint = "";
+  let lastPointerDrawX = NaN;
+  let lastPointerDrawY = NaN;
 
   playerNameInput.value = localStorage.getItem(storageKeys.name) || "";
-  powerValue.textContent = `${powerSlider.value}%`;
   ctx.imageSmoothingEnabled = true;
 
   function clamp(value, min, max) {
@@ -122,6 +129,48 @@
 
   function currentTable() {
     return state?.table || tableFallback;
+  }
+
+  function cueDeadzone(table = currentTable()) {
+    return table.ballRadius * 1.15;
+  }
+
+  function cueMaxPull(table = currentTable()) {
+    return table.ballRadius * 8.4;
+  }
+
+  function cueMetrics(point = pointer, cue = cueBallForDraw(), table = currentTable()) {
+    if (!cue) {
+      return {
+        dx: 0,
+        dy: 0,
+        length: 0,
+        normalized: 0,
+        power: 0.18,
+        nx: 0,
+        ny: 0
+      };
+    }
+
+    const dx = point.x - cue.x;
+    const dy = point.y - cue.y;
+    const length = Math.hypot(dx, dy);
+    const deadzone = cueDeadzone(table);
+    const maxPull = cueMaxPull(table);
+    const activeDistance = Math.max(length - deadzone, 0);
+    const normalized = clamp(activeDistance / Math.max(maxPull - deadzone, 1), 0, 1);
+    const power = clamp(0.18 + normalized * 0.82, 0.18, 1);
+    const safeLength = length || 1;
+
+    return {
+      dx,
+      dy,
+      length,
+      normalized,
+      power,
+      nx: dx / safeLength,
+      ny: dy / safeLength
+    };
   }
 
   function pocketsForTable(table) {
@@ -372,12 +421,11 @@
     const sourceCue = ballByNumber(renderedBalls, 0);
     if (!sourceCue) return null;
     if (!animating && hasBallInHand() && previewCuePlacement) {
-      return {
-        ...sourceCue,
-        x: previewCuePlacement.x,
-        y: previewCuePlacement.y,
-        pocketed: false
-      };
+      assignBallState(previewCueBall, sourceCue);
+      previewCueBall.x = previewCuePlacement.x;
+      previewCueBall.y = previewCuePlacement.y;
+      previewCueBall.pocketed = false;
+      return previewCueBall;
     }
     return sourceCue;
   }
@@ -402,8 +450,46 @@
     return myPlayer()?.objective || "Open table";
   }
 
-  function powerRatio() {
-    return clamp(Number(powerSlider.value) / 100, 0.2, 1);
+  function cuePowerDisplay() {
+    if (!state || state.status !== "active") {
+      return { label: "Waiting", scale: 0 };
+    }
+    if (hasBallInHand()) {
+      return { label: "Place cue", scale: 0 };
+    }
+    if (!myTurn()) {
+      return { label: "Watching", scale: 0 };
+    }
+    if (!aiming) {
+      return { label: "Pull cue", scale: 0 };
+    }
+
+    const metrics = cueMetrics();
+    return {
+      label: `${Math.round(metrics.power * 100)}%`,
+      scale: metrics.normalized
+    };
+  }
+
+  function updatePowerIndicator(force = false) {
+    const next = cuePowerDisplay();
+    if (force || next.label !== lastPowerDisplay) {
+      powerValue.textContent = next.label;
+      lastPowerDisplay = next.label;
+    }
+    if (force || Math.abs(next.scale - lastPowerScale) > 0.004) {
+      powerFill.style.transform = `scaleX(${next.scale.toFixed(3)})`;
+      lastPowerScale = next.scale;
+    }
+    if (powerHint) {
+      const nextHint = hasBallInHand()
+        ? "Set the cue ball somewhere clean first, then drag to shoot."
+        : "Drag farther across the table to pull the cue back harder.";
+      if (force || nextHint !== lastPowerHint) {
+        powerHint.textContent = nextHint;
+        lastPowerHint = nextHint;
+      }
+    }
   }
 
   function ballLabel(number) {
@@ -480,7 +566,7 @@
       if (hasBallInHand()) {
         return "Ball in hand. Grab the cue ball, place it anywhere clear, then drag to shoot.";
       }
-      return "Your turn. Drag on the table and release to fire the shot.";
+      return "Your turn. Drag across the table to line it up, pull farther to hit harder, then release.";
     }
     return `${state.players?.[state.currentTurn]?.name || "Another player"} is at the table.`;
   }
@@ -497,7 +583,7 @@
       return "You have ball-in-hand. Drag the cue ball itself to a clean spot, release it, then drag anywhere on the felt to shoot.";
     }
     if (myTurn()) {
-      return "Aim by dragging across the table. Power comes from the slider, so the shot line stays predictable.";
+      return "Aim by dragging across the table. Pull farther to draw the cue back and add power before you release.";
     }
     return state.message || "Wait for the other player to finish their turn.";
   }
@@ -598,6 +684,7 @@
     tableNote.textContent = noteText();
     tableNote.classList.toggle("is-alert", Boolean(transientNote));
     updateStatusPill();
+    updatePowerIndicator();
     renderPlayers();
     renderRack();
     updateButtonState();
@@ -612,6 +699,7 @@
     drawQueued = true;
     requestAnimationFrame(() => {
       drawQueued = false;
+      updatePowerIndicator();
       if (!animating) {
         draw();
       }
@@ -911,20 +999,17 @@
     const cue = cueBallForDraw();
     if (!cue) return;
 
-    const dx = pointer.x - cue.x;
-    const dy = pointer.y - cue.y;
-    const length = Math.hypot(dx, dy);
-    if (length < table.ballRadius * 1.2) return;
+    const metrics = cueMetrics(pointer, cue, table);
+    if (metrics.length < cueDeadzone(table)) return;
 
-    const nx = dx / length;
-    const ny = dy / length;
-    const cueStickDistance = 26 + powerRatio() * 64;
+    const { nx, ny } = metrics;
+    const cueStickDistance = 18 + metrics.normalized * 116;
 
     ctx.save();
     ctx.lineCap = "round";
-    ctx.strokeStyle = "rgba(224, 255, 229, 0.82)";
-    ctx.lineWidth = 2.2;
-    ctx.setLineDash([8, 9]);
+    ctx.strokeStyle = `rgba(224, 255, 229, ${0.56 + metrics.normalized * 0.3})`;
+    ctx.lineWidth = 1.8 + metrics.normalized * 1.6;
+    ctx.setLineDash([7, 9]);
     ctx.beginPath();
     ctx.moveTo(cue.x, cue.y);
     ctx.lineTo(cue.x + nx * 280, cue.y + ny * 280);
@@ -941,9 +1026,9 @@
     ctx.lineTo(cue.x - nx * (cueStickDistance + 20), cue.y - ny * (cueStickDistance + 20));
     ctx.stroke();
 
-    ctx.fillStyle = "rgba(116, 239, 112, 0.16)";
+    ctx.fillStyle = `rgba(116, 239, 112, ${0.12 + metrics.normalized * 0.22})`;
     ctx.beginPath();
-    ctx.arc(cue.x + nx * 46, cue.y + ny * 46, table.ballRadius * 0.92, 0, Math.PI * 2);
+    ctx.arc(cue.x + nx * 46, cue.y + ny * 46, table.ballRadius * (0.82 + metrics.normalized * 0.26), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -1005,7 +1090,7 @@
   }
 
   function tablePointFromEvent(event) {
-    const rect = canvas.getBoundingClientRect();
+    const rect = pointerRect || canvas.getBoundingClientRect();
     const table = currentTable();
     return {
       x: clamp((event.clientX - rect.left) * (table.width / rect.width), 0, table.width),
@@ -1190,7 +1275,7 @@
     }
   }
 
-  async function submitShot(dx, dy) {
+  async function submitShot(dx, dy, power) {
     const roomCode = currentRoomCode();
     const token = tokenFor(roomCode);
     if (!roomCode || !token) return;
@@ -1207,7 +1292,7 @@
           token,
           dx,
           dy,
-          power: powerRatio(),
+          power,
           cuePlacement
         }
       });
@@ -1260,6 +1345,9 @@
     pointer.x = point.x;
     pointer.y = point.y;
     pointer.moved = false;
+    lastPointerDrawX = point.x;
+    lastPointerDrawY = point.y;
+    pointerRect = canvas.getBoundingClientRect();
     canvas.setPointerCapture(pointerId);
 
     if (hasBallInHand() && Math.hypot(point.x - cue.x, point.y - cue.y) <= currentTable().ballRadius * 1.65) {
@@ -1278,6 +1366,9 @@
   function onPointerMove(event) {
     if (pointerId == null || event.pointerId !== pointerId) return;
     const point = tablePointFromEvent(event);
+    if (Math.abs(point.x - pointer.x) < 0.18 && Math.abs(point.y - pointer.y) < 0.18) {
+      return;
+    }
     pointer.x = point.x;
     pointer.y = point.y;
     pointer.moved = true;
@@ -1293,6 +1384,12 @@
     }
 
     if (aiming) {
+      if (Math.abs(point.x - lastPointerDrawX) < 0.55 && Math.abs(point.y - lastPointerDrawY) < 0.55) {
+        updatePowerIndicator();
+        return;
+      }
+      lastPointerDrawX = point.x;
+      lastPointerDrawY = point.y;
       requestDraw();
     }
   }
@@ -1302,6 +1399,9 @@
     placingCue = false;
     cuePlacementValid = true;
     pointerId = null;
+    pointerRect = null;
+    lastPointerDrawX = NaN;
+    lastPointerDrawY = NaN;
   }
 
   function onPointerUp(event) {
@@ -1328,21 +1428,20 @@
     }
 
     const cue = cueBallForDraw();
+    const metrics = cueMetrics(point, cue, currentTable());
     resetPointerState();
     if (!cue) {
       requestDraw();
       return;
     }
 
-    const dx = point.x - cue.x;
-    const dy = point.y - cue.y;
-    if (Math.hypot(dx, dy) < currentTable().ballRadius * 1.15) {
+    if (metrics.length < cueDeadzone(currentTable())) {
       requestDraw();
       return;
     }
 
     requestDraw();
-    submitShot(dx, dy);
+    submitShot(metrics.dx, metrics.dy, metrics.power);
   }
 
   function leaveRoom() {
@@ -1397,11 +1496,6 @@
     } else {
       createRoom();
     }
-  });
-
-  powerSlider.addEventListener("input", () => {
-    powerValue.textContent = `${powerSlider.value}%`;
-    requestDraw();
   });
 
   canvas.addEventListener("pointerdown", onPointerDown);
