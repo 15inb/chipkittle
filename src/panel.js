@@ -1691,9 +1691,11 @@ function roleCheckboxes(roles, selectedIds, name) {
     .join("");
 }
 
-function commandRoleAccess(commandList, roles, overrides = {}) {
+function commandRoleAccess(commandList, roles, overrides = {}, panelUser = null) {
+  const canEditGrantAccess = panelAccessAtLeast(panelUser?.level || "root", "root");
   const byCategory = new Map();
   for (const command of commandList) {
+    if (command.name === "grantaccess" && !canEditGrantAccess) continue;
     const category = command.category || "Other";
     byCategory.set(category, [...(byCategory.get(category) || []), command]);
   }
@@ -2234,7 +2236,7 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
             </div>
             <p class="field-help">Open a command, then choose which roles can bypass that command's Discord permission check.</p>
             <div class="permission-list">
-              ${commandRoleAccess(commandList, guild.roles, config.commandRoles.overrides)}
+              ${commandRoleAccess(commandList, guild.roles, config.commandRoles.overrides, panelUser)}
             </div>
           </section>
         `
@@ -3381,6 +3383,17 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
         return;
       }
       const nextConfig = parseConfigForm(request.body, section);
+      if (section === "permissions" && !panelAccessAtLeast(panelUser?.level || "root", "root")) {
+        nextConfig.commandRoles = {
+          ...nextConfig.commandRoles,
+          overrides: {
+            ...(nextConfig.commandRoles?.overrides || {}),
+            ...(store.getGuild(discordGuild.id).commandRoles?.overrides?.grantaccess
+              ? { grantaccess: store.getGuild(discordGuild.id).commandRoles.overrides.grantaccess }
+              : {})
+          }
+        };
+      }
       const mergedConfig = await store.updateGuild(discordGuild.id, nextConfig);
       writePublicMembersFile(mergedConfig.publicSite?.members || []);
       await addAuditLog(store, discordGuild.id, {

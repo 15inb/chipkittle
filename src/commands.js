@@ -1094,7 +1094,8 @@ define({
   async run(ctx) {
     const existingUsers = panelAccessUsers(ctx.config);
     const hasAnyPanelUsers = Object.values(existingUsers).some((entry) => !entry?.revokedAt);
-    if (!canGrantPanelAccess(ctx.config, ctx.message.author.id)) {
+    const hasGrantCommandOverride = hasCommandRoleOverride(ctx.message.member, ctx.config, "grantaccess");
+    if (!canGrantPanelAccess(ctx.config, ctx.message.author.id) && !hasGrantCommandOverride) {
       if (hasAnyPanelUsers || !hasPermission(ctx.message.member, PermissionsBitField.Flags.ManageGuild)) {
         await ctx.message.reply("Only configured panel grant roles can use this command.");
         return;
@@ -1107,7 +1108,9 @@ define({
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
       return;
     }
-    const grantorLevel = normalizePanelAccessLevel(existingUsers[ctx.message.author.id]?.level || (hasAnyPanelUsers ? "" : "root"));
+    const grantorLevel = hasGrantCommandOverride
+      ? "root"
+      : normalizePanelAccessLevel(existingUsers[ctx.message.author.id]?.level || (hasAnyPanelUsers ? "" : "root"));
     if (!panelAccessAtLeast(grantorLevel, level)) {
       await ctx.message.reply("You cannot grant an access level higher than your own.");
       return;
