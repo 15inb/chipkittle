@@ -938,6 +938,9 @@ const MAX_BREAD_BET = 10_000;
 const DAILY_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 const GAMBLING_COOLDOWN_MS = 5 * 1000;
 const ROB_COOLDOWN_MS = 3 * 60 * 60 * 1000;
+const BANK_INTEREST_COOLDOWN_MS = 20 * 60 * 60 * 1000;
+const BANK_INTEREST_RATE = 0.015;
+const MAX_BANK_INTEREST = 1_000;
 const ECONOMY_LOG_LIMIT = 60;
 const BLACKJACK_SESSION_MS = 120_000;
 const blackjackSessions = new Map();
@@ -946,13 +949,16 @@ function normalizeEconomy(economy = {}) {
   return {
     ...economy,
     balances: { ...(economy.balances || {}) },
+    bankBalances: { ...(economy.bankBalances || {}) },
     dailyClaims: { ...(economy.dailyClaims || {}) },
+    dailyStreaks: { ...(economy.dailyStreaks || {}) },
     stats: { ...(economy.stats || {}) },
     cooldowns: {
       ...(economy.cooldowns || {}),
       gambling: { ...(economy.cooldowns?.gambling || {}) },
       beg: { ...(economy.cooldowns?.beg || {}) },
       work: { ...(economy.cooldowns?.work || {}) },
+      interest: { ...(economy.cooldowns?.interest || {}) },
       robbers: { ...(economy.cooldowns?.robbers || {}) },
       robVictims: { ...(economy.cooldowns?.robVictims || {}) }
     },
@@ -966,6 +972,19 @@ function breadBalance(economy, userId) {
 
 function setBreadBalance(economy, userId, amount) {
   economy.balances[userId] = Math.max(Math.floor(Number(amount) || 0), 0);
+}
+
+function bankBalance(economy, userId) {
+  return Math.max(Math.floor(Number(economy.bankBalances?.[userId] || 0)), 0);
+}
+
+function setBankBalance(economy, userId, amount) {
+  economy.bankBalances ||= {};
+  economy.bankBalances[userId] = Math.max(Math.floor(Number(amount) || 0), 0);
+}
+
+function totalBreadWealth(economy, userId) {
+  return breadBalance(economy, userId) + bankBalance(economy, userId);
 }
 
 function formatBread(amount) {
@@ -1083,15 +1102,20 @@ function gameRecordChannelId(config = {}) {
 }
 
 function rankForBalance(economy, userId) {
-  return Object.entries(economy.balances || {})
-    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+  const ids = new Set([
+    ...Object.keys(economy.balances || {}),
+    ...Object.keys(economy.bankBalances || {})
+  ]);
+  return [...ids]
+    .map((id) => [id, totalBreadWealth(economy, id)])
+    .sort((a, b) => b[1] - a[1])
     .findIndex(([id]) => id === userId) + 1;
 }
 
-function parseBreadAmount(input, balance) {
+function parseBreadAmount(input, balance, maxAmount = MAX_BREAD_BET) {
   const raw = String(input || "").trim().toLowerCase();
-  if (raw === "all" || raw === "max") return Math.min(balance, MAX_BREAD_BET);
-  if (raw === "half") return Math.min(Math.floor(balance / 2), MAX_BREAD_BET);
+  if (raw === "all" || raw === "max") return Math.min(balance, maxAmount);
+  if (raw === "half") return Math.min(Math.floor(balance / 2), maxAmount);
 
   const amount = Math.floor(Number(raw.replaceAll(",", "")));
   if (!Number.isFinite(amount)) return null;
@@ -2010,12 +2034,16 @@ define({
       }
       const firstBalance = breadBalance(economy, first.id);
       const secondBalance = breadBalance(economy, second.id);
-      const diff = Math.abs(firstBalance - secondBalance);
-      const winner = firstBalance === secondBalance ? null : firstBalance > secondBalance ? first : second;
+      const firstBank = bankBalance(economy, first.id);
+      const secondBank = bankBalance(economy, second.id);
+      const firstTotal = firstBalance + firstBank;
+      const secondTotal = secondBalance + secondBank;
+      const diff = Math.abs(firstTotal - secondTotal);
+      const winner = firstTotal === secondTotal ? null : firstTotal > secondTotal ? first : second;
       await ctx.message.reply([
         `**Bread Comparison**`,
-        `${first.displayName}: **${formatBread(firstBalance)}**`,
-        `${second.displayName}: **${formatBread(secondBalance)}**`,
+        `${first.displayName}: **${formatBread(firstTotal)}** (${formatBread(firstBalance)} wallet, ${formatBread(firstBank)} bank)`,
+        `${second.displayName}: **${formatBread(secondTotal)}** (${formatBread(secondBalance)} wallet, ${formatBread(secondBank)} bank)`,
         winner ? `Lead: **${winner.displayName}** by **${formatBread(diff)}**` : "They are perfectly tied."
       ].join("\n"));
       return;
@@ -2024,17 +2052,24 @@ define({
     const targetMember = mentionTargetUser(ctx.message);
     const targetId = targetMember.id;
     const balance = breadBalance(economy, targetId);
+    const bank = bankBalance(economy, targetId);
     const stats = economyStatsFor(economy, targetId);
-    const sorted = Object.entries(economy.balances)
-      .map(([userId, amount]) => [userId, Math.max(Math.floor(Number(amount) || 0), 0)])
+    const ids = new Set([
+      ...Object.keys(economy.balances || {}),
+      ...Object.keys(economy.bankBalances || {})
+    ]);
+    const sorted = [...ids]
+      .map((userId) => [userId, totalBreadWealth(economy, userId)])
       .sort((a, b) => b[1] - a[1]);
     const rank = sorted.findIndex(([userId]) => userId === targetId);
     const lastClaim = new Date(economy.dailyClaims?.[targetId] || 0).getTime();
     const remaining = DAILY_COOLDOWN_MS - (Date.now() - lastClaim);
     await ctx.message.reply([
       `**${targetMember.displayName}'s Bread Wallet**`,
-      `Balance: **${formatBread(balance)}**`,
-      `Rank: **${rank === -1 ? "Unranked" : `#${rank + 1}`}**`,
+      `Wallet: **${formatBread(balance)}**`,
+      `Bank: **${formatBread(bank)}**`,
+      `Net worth: **${formatBread(balance + bank)}**`,
+      `Wealth rank: **${rank === -1 ? "Unranked" : `#${rank + 1}`}**`,
       `Daily bread: ${remaining > 0 ? `ready in **${formatCooldown(remaining)}**` : "**ready now**"}`,
       `Games: **${stats.gamesPlayed.toLocaleString()}** played, **${stats.gamesWon.toLocaleString()}** wins`,
       `Wagered: **${formatBread(stats.wagered)}**`,
@@ -2058,18 +2093,31 @@ define({
         return `You already claimed daily bread. Try again in ${formatCooldown(remaining)}.`;
       }
 
+      const previousStreak = Math.max(Math.floor(Number(economy.dailyStreaks?.[userId]?.streak) || 0), 0);
+      const streak = lastClaim && Date.now() - lastClaim <= DAILY_COOLDOWN_MS * 2.2 ? previousStreak + 1 : 1;
       const bonus = randomInt(0, 150);
-      const amount = DAILY_BREAD + bonus;
+      const streakBonus = Math.min(streak * 25, 500);
+      const amount = DAILY_BREAD + bonus + streakBonus;
       const nextBalance = breadBalance(economy, userId) + amount;
       economy.dailyClaims[userId] = new Date().toISOString();
+      economy.dailyStreaks[userId] = {
+        streak,
+        lastClaimedAt: economy.dailyClaims[userId]
+      };
       setBreadBalance(economy, userId, nextBalance);
       recordEconomyTransaction(economy, {
         userId,
         type: "daily",
         amount,
+        streak,
         balance: nextBalance
       });
-      return `You claimed **${formatBread(amount)}**.\nBalance: **${formatBread(nextBalance)}**.`;
+      return [
+        `You claimed **${formatBread(amount)}**.`,
+        `Daily base: **${formatBread(DAILY_BREAD)}** | random bonus: **${formatBread(bonus)}** | streak bonus: **${formatBread(streakBonus)}**`,
+        `Streak: **${streak} day${streak === 1 ? "" : "s"}**`,
+        `Wallet: **${formatBread(nextBalance)}**.`
+      ].join("\n");
     });
 
     await ctx.message.reply(output);
@@ -2111,6 +2159,127 @@ define({
       ].join("\n");
     });
 
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "bank",
+  aliases: ["vault", "breadbank", "networth"],
+  category: "Gambling",
+  description: "Show your wallet, bank, and total bread net worth.",
+  usage: "bank [@user]",
+  async run(ctx) {
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const target = mentionTargetUser(ctx.message);
+    const wallet = breadBalance(economy, target.id);
+    const bank = bankBalance(economy, target.id);
+    const interest = Math.min(Math.floor(bank * BANK_INTEREST_RATE), MAX_BANK_INTEREST);
+    const cooldown = persistentCooldownStatus(economy, "interest", target.id, BANK_INTEREST_COOLDOWN_MS);
+    await ctx.message.reply([
+      `**${target.displayName}'s Bread Bank**`,
+      `Wallet: **${formatBread(wallet)}**`,
+      `Bank: **${formatBread(bank)}**`,
+      `Net worth: **${formatBread(wallet + bank)}**`,
+      `Next interest: **${formatBread(interest)}**`,
+      `Interest status: ${cooldown.limited ? `ready in **${formatCooldown(cooldown.remainingMs)}**` : "**ready now**"}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "deposit",
+  aliases: ["dep", "bankdeposit"],
+  category: "Gambling",
+  description: "Move bread from your wallet into the bank.",
+  usage: "deposit 500|half|all",
+  async run(ctx) {
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const userId = ctx.message.author.id;
+      const wallet = breadBalance(economy, userId);
+      const amount = parseBreadAmount(ctx.args[0], wallet, wallet);
+      if (!amount || amount < 1) return `Usage: \`${usage(ctx.config, this)}\``;
+      if (amount > wallet) return `You only have ${formatBread(wallet)} in your wallet.`;
+      setBreadBalance(economy, userId, wallet - amount);
+      setBankBalance(economy, userId, bankBalance(economy, userId) + amount);
+      recordEconomyTransaction(economy, {
+        userId,
+        type: "deposit",
+        amount,
+        balance: breadBalance(economy, userId),
+        bank: bankBalance(economy, userId)
+      });
+      return [
+        `Deposited **${formatBread(amount)}**.`,
+        `Wallet: **${formatBread(breadBalance(economy, userId))}**`,
+        `Bank: **${formatBread(bankBalance(economy, userId))}**`
+      ].join("\n");
+    });
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "withdraw",
+  aliases: ["with", "bankwithdraw"],
+  category: "Gambling",
+  description: "Move bread from your bank into your wallet.",
+  usage: "withdraw 500|half|all",
+  async run(ctx) {
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const userId = ctx.message.author.id;
+      const bank = bankBalance(economy, userId);
+      const amount = parseBreadAmount(ctx.args[0], bank, bank);
+      if (!amount || amount < 1) return `Usage: \`${usage(ctx.config, this)}\``;
+      if (amount > bank) return `You only have ${formatBread(bank)} in the bank.`;
+      setBankBalance(economy, userId, bank - amount);
+      setBreadBalance(economy, userId, breadBalance(economy, userId) + amount);
+      recordEconomyTransaction(economy, {
+        userId,
+        type: "withdraw",
+        amount,
+        balance: breadBalance(economy, userId),
+        bank: bankBalance(economy, userId)
+      });
+      return [
+        `Withdrew **${formatBread(amount)}**.`,
+        `Wallet: **${formatBread(breadBalance(economy, userId))}**`,
+        `Bank: **${formatBread(bankBalance(economy, userId))}**`
+      ].join("\n");
+    });
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "interest",
+  aliases: ["bankinterest", "collectinterest"],
+  category: "Gambling",
+  description: "Collect bank interest once per cycle.",
+  async run(ctx) {
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const userId = ctx.message.author.id;
+      const cooldown = persistentCooldownStatus(economy, "interest", userId, BANK_INTEREST_COOLDOWN_MS);
+      if (cooldown.limited) return `Bank interest will be ready in ${formatCooldown(cooldown.remainingMs)}.`;
+      const bank = bankBalance(economy, userId);
+      if (bank < 100) return "You need at least 100 bread in the bank before it earns interest.";
+      const amount = Math.min(Math.floor(bank * BANK_INTEREST_RATE), MAX_BANK_INTEREST);
+      if (amount < 1) return "Your bank balance is too low to generate interest yet.";
+      setPersistentCooldown(economy, "interest", userId);
+      setBankBalance(economy, userId, bank + amount);
+      recordEconomyTransaction(economy, {
+        userId,
+        type: "interest",
+        amount,
+        bank: bankBalance(economy, userId),
+        balance: breadBalance(economy, userId)
+      });
+      return [
+        `Collected **${formatBread(amount)}** in bank interest.`,
+        `Bank: **${formatBread(bankBalance(economy, userId))}**`,
+        `Net worth: **${formatBread(totalBreadWealth(economy, userId))}**`
+      ].join("\n");
+    });
     await ctx.message.reply(output);
   }
 });
@@ -2166,25 +2335,32 @@ define({
   async run(ctx) {
     const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
     const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
-    const balances = Object.entries(economy.balances)
-      .map(([userId, amount]) => [userId, Math.max(Math.floor(Number(amount) || 0), 0)]);
+    const ids = new Set([
+      ...Object.keys(economy.balances || {}),
+      ...Object.keys(economy.bankBalances || {})
+    ]);
+    const balances = [...ids]
+      .map((userId) => [userId, breadBalance(economy, userId), bankBalance(economy, userId), totalBreadWealth(economy, userId)]);
 
     if (["breadworth", "economyworth", "breadtotal"].includes(invoked)) {
-      const amounts = balances.map(([, amount]) => amount);
-      const total = amounts.reduce((sum, amount) => sum + amount, 0);
-      const average = amounts.length ? Math.floor(total / amounts.length) : 0;
+      const walletTotal = balances.reduce((sum, [, wallet]) => sum + wallet, 0);
+      const bankTotal = balances.reduce((sum, [, , bank]) => sum + bank, 0);
+      const total = walletTotal + bankTotal;
+      const average = balances.length ? Math.floor(total / balances.length) : 0;
       await ctx.message.reply([
         `**Server Bread Economy**`,
-        `Tracked wallets: **${amounts.length}**`,
-        `Total bread: **${formatBread(total)}**`,
-        `Average wallet: **${formatBread(average)}**`
+        `Tracked accounts: **${balances.length}**`,
+        `Wallet bread: **${formatBread(walletTotal)}**`,
+        `Bank bread: **${formatBread(bankTotal)}**`,
+        `Total net worth: **${formatBread(total)}**`,
+        `Average net worth: **${formatBread(average)}**`
       ].join("\n"));
       return;
     }
 
     const ascending = ["breadpoor", "poorbread", "breadbottom"].includes(invoked);
     const entries = balances
-      .sort((a, b) => ascending ? a[1] - b[1] : b[1] - a[1])
+      .sort((a, b) => ascending ? a[3] - b[3] : b[3] - a[3])
       .slice(0, 10);
 
     if (!entries.length) {
@@ -2195,7 +2371,7 @@ define({
     await ctx.message.reply([
       ascending ? `**Bread Poverty Index**` : `**Bread Leaderboard**`,
       entries
-        .map(([userId, amount], index) => `${index + 1}. <@${userId}> - **${formatBread(amount)}**`)
+        .map(([userId, wallet, bank, total], index) => `${index + 1}. <@${userId}> - **${formatBread(total)}** (${formatBread(wallet)} wallet, ${formatBread(bank)} bank)`)
         .join("\n")
     ].join("\n"));
   }
@@ -2227,6 +2403,12 @@ define({
       }
       if (entry.type === "daily") return `${when} - Daily claim: **+${formatBread(entry.amount || 0)}**`;
       if (entry.type === "game-claim") return `${when} - Website game claim: **+${formatBread(entry.amount || 0)}**`;
+      if (entry.type === "deposit") return `${when} - Deposit: **${formatBread(entry.amount || 0)}** into bank`;
+      if (entry.type === "withdraw") return `${when} - Withdrawal: **${formatBread(entry.amount || 0)}** to wallet`;
+      if (entry.type === "interest") return `${when} - Bank interest: **+${formatBread(entry.amount || 0)}**`;
+      if (entry.type === "admin-set") return `${when} - Staff set wallet to **${formatBread(entry.amount || 0)}**`;
+      if (entry.type === "admin-add") return `${when} - Staff added **${formatBread(entry.amount || 0)}**`;
+      if (entry.type === "admin-take") return `${when} - Staff removed **${formatBread(Math.abs(entry.amount || 0))}**`;
       if (entry.type === "transfer-in") return `${when} - Received **${formatBread(entry.amount || 0)}** from <@${entry.sourceId}>`;
       if (entry.type === "transfer-out") return `${when} - Sent **${formatBread(Math.abs(entry.amount || 0))}** to <@${entry.targetId}>`;
       return `${when} - ${entry.type || "bread"}: **${formatBread(entry.amount || entry.net || 0)}**`;
@@ -4764,6 +4946,14 @@ define({
 
     const output = await updateBreadEconomy(ctx, async (economy) => {
       setBreadBalance(economy, member.id, amount);
+      recordEconomyTransaction(economy, {
+        userId: member.id,
+        type: "admin-set",
+        amount,
+        actorId: ctx.message.author.id,
+        balance: breadBalance(economy, member.id),
+        bank: bankBalance(economy, member.id)
+      });
       return `${member} now has **${formatBread(amount)}**.`;
     });
     await ctx.message.reply(output);
@@ -4788,6 +4978,14 @@ define({
     const output = await updateBreadEconomy(ctx, async (economy) => {
       const nextBalance = breadBalance(economy, member.id) + amount;
       setBreadBalance(economy, member.id, nextBalance);
+      recordEconomyTransaction(economy, {
+        userId: member.id,
+        type: "admin-add",
+        amount,
+        actorId: ctx.message.author.id,
+        balance: nextBalance,
+        bank: bankBalance(economy, member.id)
+      });
       return `Added **${formatBread(amount)}** to ${member}.\nNew balance: **${formatBread(nextBalance)}**.`;
     });
     await ctx.message.reply(output);
@@ -4812,6 +5010,14 @@ define({
     const output = await updateBreadEconomy(ctx, async (economy) => {
       const nextBalance = Math.max(breadBalance(economy, member.id) - amount, 0);
       setBreadBalance(economy, member.id, nextBalance);
+      recordEconomyTransaction(economy, {
+        userId: member.id,
+        type: "admin-take",
+        amount: -amount,
+        actorId: ctx.message.author.id,
+        balance: nextBalance,
+        bank: bankBalance(economy, member.id)
+      });
       return `Removed **${formatBread(amount)}** from ${member}.\nNew balance: **${formatBread(nextBalance)}**.`;
     });
     await ctx.message.reply(output);
