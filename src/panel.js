@@ -29,7 +29,8 @@ const UPDATE_STALE_MS = 10 * 60 * 1000;
 const ACTIVE_UPDATE_STATUSES = new Set(["running", "updating", "restarting"]);
 const SETTINGS_SECTIONS = [
   { id: "dashboard", label: "Dashboard", description: "At-a-glance stats, audit activity, and quick links." },
-  { id: "general", label: "General", description: "Slash commands, legacy prefix, welcome, autorole, and public directory." },
+  { id: "general", label: "General", description: "Slash commands, legacy prefix, welcome, and autorole." },
+  { id: "members", label: "Members", description: "Edit the public member directory and review community profiles." },
   { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
   { id: "ai", label: "AI", description: "Chipkittle AI channels, model, cooldowns, and personality." },
   { id: "applications", label: "Applications", description: "DM questions, review threads, roles, and cooldowns." },
@@ -186,6 +187,7 @@ function updateControls() {
         </form>
         <a class="primary-link secondary-link" href="/admin/export/config">Export config</a>
         <a class="primary-link secondary-link" href="/admin/export/community">Export community</a>
+        <a class="primary-link secondary-link" href="/admin/export/full">Full backup snapshot</a>
       </div>
       ${
         status
@@ -197,6 +199,63 @@ function updateControls() {
             </div>`
           : '<p class="muted">No panel updates have been run yet.</p>'
       }
+    </section>
+  `;
+}
+
+function moderationCenter(config = {}) {
+  const warnings = Object.entries(config.moderation?.warnings || {});
+  const warningTotals = warnings.reduce((sum, [, entries]) => sum + (Array.isArray(entries) ? entries.length : 0), 0);
+  const warnedMembers = warnings.filter(([, entries]) => Array.isArray(entries) && entries.length).length;
+  const cases = Array.isArray(config.community?.cases) ? config.community.cases : [];
+  const openCases = cases.filter((entry) => String(entry.status || "open").toLowerCase() !== "closed");
+  const closedCases = Math.max(cases.length - openCases.length, 0);
+  const warningHotlist = warnings
+    .map(([userId, entries]) => ({
+      userId,
+      count: Array.isArray(entries) ? entries.length : 0,
+      latest: Array.isArray(entries) && entries.length ? entries[entries.length - 1] : ""
+    }))
+    .filter((entry) => entry.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Moderation Center</h2>
+        <p>Quick visibility into warnings, open cases, and who is generating the most staff action.</p>
+      </div>
+      <div class="stats-grid">
+        <article class="stat-card"><strong>${escapeHtml(cases.length)}</strong><span>Total Cases</span></article>
+        <article class="stat-card"><strong>${escapeHtml(openCases.length)}</strong><span>Open Cases</span></article>
+        <article class="stat-card"><strong>${escapeHtml(closedCases)}</strong><span>Closed Cases</span></article>
+        <article class="stat-card"><strong>${escapeHtml(warningTotals)}</strong><span>Total Warnings</span></article>
+        <article class="stat-card"><strong>${escapeHtml(warnedMembers)}</strong><span>Warned Members</span></article>
+      </div>
+      <div class="dashboard-grid">
+        <div class="sub-panel">
+          <div class="section-heading">
+            <h2>Open Cases</h2>
+            <p>Newest active cases that still need attention.</p>
+          </div>
+          ${
+            openCases.length
+              ? `<div class="stack-list">${openCases.slice(0, 8).map((entry) => `<div class="audit-row"><strong>Case #${escapeHtml(entry.id)} • ${escapeHtml(entry.action)}</strong><small>${escapeHtml(entry.targetTag || entry.targetId || "Unknown target")} • ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.reason || "No reason recorded.")}</p>${entry.updates?.length ? `<small>${escapeHtml(entry.updates.length)} note${entry.updates.length === 1 ? "" : "s"}</small>` : ""}</div>`).join("")}</div>`
+              : '<p class="muted">No open moderation cases right now.</p>'
+          }
+        </div>
+        <div class="sub-panel">
+          <div class="section-heading">
+            <h2>Warning Hotlist</h2>
+            <p>Members with the largest warning totals in the current config.</p>
+          </div>
+          ${
+            warningHotlist.length
+              ? `<div class="stack-list">${warningHotlist.map((entry) => `<div class="list-row"><div><strong>${escapeHtml(entry.userId)}</strong><span>${escapeHtml(entry.latest || "Warning recorded")}</span></div><strong>${escapeHtml(entry.count)} warn${entry.count === 1 ? "" : "s"}</strong></div>`).join("")}</div>`
+              : '<p class="muted">No warnings recorded yet.</p>'
+          }
+        </div>
+      </div>
     </section>
   `;
 }
@@ -286,6 +345,76 @@ function memberDirectoryText(members = []) {
   return members
     .map((member) => [member.name, member.role, member.bio, member.title, (member.badges || []).join(", ")].filter((part) => part !== undefined).join(" | "))
     .join("\n");
+}
+
+function memberDirectoryRows(members = []) {
+  return members
+    .map(
+      (member) => `
+        <div class="member-editor-row" data-member-row>
+          <div class="member-editor-fields">
+            <label>Name<input data-member-name value="${escapeHtml(member.name || "")}" maxlength="80"></label>
+            <label>Role<input data-member-role value="${escapeHtml(member.role || "")}" maxlength="80"></label>
+            <label>Title<input data-member-title value="${escapeHtml(member.title || "")}" maxlength="80"></label>
+            <label>Badges<input data-member-badges value="${escapeHtml(Array.isArray(member.badges) ? member.badges.join(", ") : "")}" maxlength="180"></label>
+            <label class="member-editor-bio">Bio<textarea data-member-bio rows="3" maxlength="220">${escapeHtml(member.bio || "")}</textarea></label>
+          </div>
+          <button type="button" class="secondary-button member-editor-remove" data-remove-member>Remove</button>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function memberDirectoryEditor(members = []) {
+  return `
+    <section class="panel-section" data-member-directory-editor>
+      <div class="section-heading">
+        <h2>Public Member Directory</h2>
+        <p>Manage the member cards shown on the public website without hand-editing a giant block of text.</p>
+      </div>
+      <div class="member-editor-toolbar">
+        <strong data-member-count>${escapeHtml(members.length)} member${members.length === 1 ? "" : "s"}</strong>
+        <button type="button" data-add-member>Add member</button>
+      </div>
+      <div class="member-editor-list" data-member-rows>
+        ${memberDirectoryRows(members) || '<p class="muted member-editor-empty">No public members yet. Add the first one here.</p>'}
+      </div>
+      <textarea name="publicMembers" hidden>${escapeHtml(memberDirectoryText(members))}</textarea>
+      <details class="advanced-note">
+        <summary>Advanced raw format</summary>
+        <p class="field-help">Saved as <code>Name | Role | Bio | Title | Badge, Badge</code> behind the scenes.</p>
+      </details>
+    </section>
+  `;
+}
+
+function profileDirectoryCards(config = {}) {
+  const profiles = Object.entries(config.community?.profiles || {})
+    .map(([userId, profile]) => ({
+      userId,
+      displayName: String(profile.displayName || userId),
+      title: String(profile.title || "Unranked Observer"),
+      reputation: Math.max(Number(profile.reputation) || 0, 0),
+      badges: Array.isArray(profile.badges) ? profile.badges : [],
+      vouches: Array.isArray(profile.vouches) ? profile.vouches : [],
+      bio: String(profile.bio || "").trim()
+    }))
+    .sort((a, b) => b.reputation - a.reputation || a.displayName.localeCompare(b.displayName))
+    .slice(0, 24);
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Community Profiles</h2>
+        <p>Live profile data earned through the bot. This gives you a quick read on active members and titles.</p>
+      </div>
+      ${
+        profiles.length
+          ? `<div class="member-chip-grid">${profiles.map((profile) => `<article class="member-mini-card"><strong>${escapeHtml(profile.displayName)}</strong><small>${escapeHtml(profile.title)}</small><p>${escapeHtml(profile.bio || "No profile bio set.")}</p><div class="mini-stats"><span>${escapeHtml(profile.reputation)} rep</span><span>${escapeHtml(profile.vouches.length)} vouches</span><span>${escapeHtml(profile.badges.length)} badges</span></div></article>`).join("")}</div>`
+          : '<p class="muted">No profile activity has been recorded yet.</p>'
+      }
+    </section>
+  `;
 }
 
 function publicMembersFromConfig(config = {}) {
@@ -847,6 +976,87 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
   const currentSection = normalizeSettingsSection(activeSection);
   const currentMeta = activeSectionMeta(currentSection);
   const gameSettings = publicGameSettings(config);
+  const memberDirectoryScript = `
+    <script>
+      (() => {
+        const editor = document.querySelector("[data-member-directory-editor]");
+        if (!editor) return;
+        const list = editor.querySelector("[data-member-rows]");
+        const count = editor.querySelector("[data-member-count]");
+        const hidden = editor.querySelector('textarea[name="publicMembers"]');
+        const addButton = editor.querySelector("[data-add-member]");
+
+        function sanitize(value) {
+          return String(value || "").replace(/\\|/g, "/").replace(/\\r?\\n/g, " ").replace(/\\s+/g, " ").trim();
+        }
+
+        function updateEmptyState() {
+          const rows = list.querySelectorAll("[data-member-row]");
+          const empty = list.querySelector(".member-editor-empty");
+          if (!rows.length && !empty) {
+            const message = document.createElement("p");
+            message.className = "muted member-editor-empty";
+            message.textContent = "No public members yet. Add the first one here.";
+            list.appendChild(message);
+          }
+          if (rows.length && empty) empty.remove();
+          count.textContent = rows.length + " member" + (rows.length === 1 ? "" : "s");
+        }
+
+        function serialize() {
+          const rows = [...list.querySelectorAll("[data-member-row]")];
+          const lines = rows
+            .map((row) => {
+              const name = sanitize(row.querySelector("[data-member-name]")?.value);
+              if (!name) return "";
+              const role = sanitize(row.querySelector("[data-member-role]")?.value);
+              const bio = sanitize(row.querySelector("[data-member-bio]")?.value);
+              const title = sanitize(row.querySelector("[data-member-title]")?.value);
+              const badges = sanitize(row.querySelector("[data-member-badges]")?.value);
+              return [name, role, bio, title, badges].join(" | ");
+            })
+            .filter(Boolean);
+          hidden.value = lines.join("\\n");
+          updateEmptyState();
+        }
+
+        function attachRow(row) {
+          row.querySelectorAll("input, textarea").forEach((field) => {
+            field.addEventListener("input", serialize);
+          });
+          row.querySelector("[data-remove-member]")?.addEventListener("click", () => {
+            row.remove();
+            serialize();
+          });
+        }
+
+        function createRow() {
+          const row = document.createElement("div");
+          row.className = "member-editor-row";
+          row.setAttribute("data-member-row", "");
+          row.innerHTML = \`
+            <div class="member-editor-fields">
+              <label>Name<input data-member-name maxlength="80"></label>
+              <label>Role<input data-member-role maxlength="80"></label>
+              <label>Title<input data-member-title maxlength="80"></label>
+              <label>Badges<input data-member-badges maxlength="180"></label>
+              <label class="member-editor-bio">Bio<textarea data-member-bio rows="3" maxlength="220"></textarea></label>
+            </div>
+            <button type="button" class="secondary-button member-editor-remove" data-remove-member>Remove</button>
+          \`;
+          attachRow(row);
+          list.appendChild(row);
+          row.querySelector("[data-member-name]")?.focus();
+          serialize();
+        }
+
+        list.querySelectorAll("[data-member-row]").forEach(attachRow);
+        addButton?.addEventListener("click", createRow);
+        editor.closest("form")?.addEventListener("submit", serialize);
+        serialize();
+      })();
+    </script>
+  `;
   return layout({
     title: guild.name,
     user: true,
@@ -913,23 +1123,19 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
                     </select>
                   </label>
                 </section>
+              </div>
+            </section>
 
-                <section class="panel-section">
-                  <div class="section-heading">
-                    <h2>Public Member Directory</h2>
-                    <p>Edit the member list used by the public website. Use one member per line.</p>
-                  </div>
-                  <label>
-                    Members
-                    <textarea name="publicMembers" rows="8" placeholder="Name | Role | Bio | Title | Badge, Badge">${escapeHtml(memberDirectoryText(config.publicSite.members))}</textarea>
-                  </label>
-                  <p class="field-help">Format: <code>Name | Role | Bio | Title | Badge, Badge</code></p>
-                </section>
+            <section class="${sectionClass("members", currentSection)}">
+              <div class="settings-stack">
+                ${memberDirectoryEditor(config.publicSite.members)}
+                ${profileDirectoryCards(config)}
               </div>
             </section>
 
             <section class="${sectionClass("moderation", currentSection)}">
               <div class="settings-stack">
+                ${moderationCenter(config)}
                 <section class="panel-section">
                   <div class="section-heading">
                     <h2>Automod</h2>
@@ -1189,7 +1395,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
             ${updateControls()}
           </section>
         </div>
-      </div>
+      </div>${memberDirectoryScript}
     `
   });
 }
@@ -1631,6 +1837,13 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       ])
     );
     downloadJson(response, "chipkittle-community-export.json", payload);
+  });
+
+  app.get("/admin/export/full", requireAuth, (_request, response) => {
+    downloadJson(response, "chipkittle-backup-snapshot.json", {
+      generatedAt: new Date().toISOString(),
+      guilds: store.data?.guilds || {}
+    });
   });
 
   app.post("/admin/game-leaderboard/delete", requireAuth, (request, response) => {
