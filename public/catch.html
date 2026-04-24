@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bread Catch</title>
+  <meta name="description" content="Catch falling bread and dodge cursed junk.">
+  <link rel="icon" type="image/png" href="/notativelogotransparent.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior game-page">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <img src="/notativelogotransparent.png" alt="">
+        <span>chipkittle</span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="/game">Games</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+
+    <section class="page-head game-head">
+      <p class="eyebrow">Bakery reflex</p>
+      <h1>Bread Catch</h1>
+      <p>Slide the basket, catch bread, and dodge cursed stones before the timer runs out.</p>
+    </section>
+
+    <section class="game-shell" aria-label="Bread Catch game">
+      <div class="game-stage">
+        <canvas id="catchCanvas" width="960" height="540" aria-label="Bread Catch playfield"></canvas>
+      </div>
+      <aside class="game-panel">
+        <div class="game-stat"><span>Score</span><strong id="scoreValue">0</strong></div>
+        <div class="game-stat"><span>Bread</span><strong id="breadValue">0</strong></div>
+        <div class="game-stat"><span>Time</span><strong id="timeValue">45</strong></div>
+        <label>
+          Player name
+          <input id="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
+        </label>
+        <div class="game-controls">
+          <button class="button primary" type="button" id="startGame">Start</button>
+          <button class="button secondary" type="button" id="resetGame">Reset</button>
+        </div>
+        <div class="claim-card" id="claimCard">
+          <span>Discord claim</span>
+          <small>Catch bread until the round ends to get a claim code.</small>
+        </div>
+        <div class="leaderboard">
+          <div class="leaderboard-head">
+            <span>Leaderboard</span>
+            <button type="button" id="refreshLeaderboard">Refresh</button>
+          </div>
+          <ol id="leaderboardList"></ol>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const gameId = "catch";
+    const leaderboardUrl = `https://panel.chipkittle.com/api/public/game-leaderboard?game=${gameId}`;
+    const claimUrl = "https://panel.chipkittle.com/api/public/dash-claim";
+    const canvas = document.querySelector("#catchCanvas");
+    const ctx = canvas.getContext("2d");
+    const scoreValue = document.querySelector("#scoreValue");
+    const breadValue = document.querySelector("#breadValue");
+    const timeValue = document.querySelector("#timeValue");
+    const playerName = document.querySelector("#playerName");
+    const startButton = document.querySelector("#startGame");
+    const resetButton = document.querySelector("#resetGame");
+    const claimCard = document.querySelector("#claimCard");
+    const leaderboardList = document.querySelector("#leaderboardList");
+    const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
+
+    const basket = { x: 480, y: 468, width: 126, height: 34 };
+    let drops = [];
+    let running = false;
+    let ended = false;
+    let lastTime = 0;
+    let spawnTimer = 0;
+    let score = 0;
+    let bread = 0;
+    let timeLeft = 45;
+    let claimRequested = false;
+    const keys = new Set();
+
+    function safeName(value) {
+      return String(value || "").replace(/[^\w .#-]/g, "").replace(/\s+/g, " ").trim().slice(0, 24) || "Anonymous Chipkittle";
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (match) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[match]));
+    }
+
+    function setClaimCard(message, code = "", amount = 0) {
+      claimCard.innerHTML = code
+        ? `<span>Discord claim</span><strong>${escapeHtml(code)}</strong><small>Use <code>!claimdash ${escapeHtml(code)}</code> for ${Number(amount) || 0} bread.</small>`
+        : `<span>Discord claim</span><small>${escapeHtml(message)}</small>`;
+    }
+
+    function updateStats() {
+      scoreValue.textContent = score;
+      breadValue.textContent = bread;
+      timeValue.textContent = Math.max(Math.ceil(timeLeft), 0);
+    }
+
+    function renderLeaderboard(scores = []) {
+      leaderboardList.innerHTML = scores.length
+        ? scores.map((entry) => `<li><span>${escapeHtml(safeName(entry.name))}</span><strong>${Number(entry.score) || 0}</strong></li>`).join("")
+        : '<li><span>No catches saved yet</span><strong>0</strong></li>';
+    }
+
+    async function loadLeaderboard() {
+      try {
+        const response = await fetch(leaderboardUrl, { cache: "no-store" });
+        const payload = response.ok ? await response.json() : { scores: [] };
+        renderLeaderboard(Array.isArray(payload.scores) ? payload.scores : []);
+      } catch {
+        renderLeaderboard([]);
+      }
+    }
+
+    async function createClaimCode() {
+      if (claimRequested) return;
+      claimRequested = true;
+      if (bread <= 0) {
+        setClaimCard("This round ended with 0 bread, so there is nothing to claim.");
+        return;
+      }
+      setClaimCard("Creating your Discord claim code...");
+      try {
+        const response = await fetch(claimUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ game: gameId, name: safeName(playerName.value), score, bread })
+        });
+        const payload = response.ok ? await response.json() : {};
+        if (!payload.claimCode) throw new Error("No claim code.");
+        setClaimCard("", payload.claimCode, payload.claimBread);
+      } catch {
+        setClaimCard("The claim code request failed. Try again after the panel updates.");
+      }
+    }
+
+    async function saveLeaderboard() {
+      if (score <= 0) return;
+      try {
+        const response = await fetch(leaderboardUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ game: gameId, name: safeName(playerName.value), score, bread })
+        });
+        const payload = response.ok ? await response.json() : { scores: [] };
+        if (Array.isArray(payload.scores)) renderLeaderboard(payload.scores);
+      } catch {
+        // Optional leaderboard save.
+      }
+    }
+
+    function endGame() {
+      if (ended) return;
+      ended = true;
+      running = false;
+      createClaimCode();
+      saveLeaderboard();
+    }
+
+    function resetGame() {
+      drops = [];
+      running = false;
+      ended = false;
+      lastTime = 0;
+      spawnTimer = 0;
+      score = 0;
+      bread = 0;
+      timeLeft = 45;
+      claimRequested = false;
+      basket.x = 480;
+      setClaimCard("Catch bread until the round ends to get a claim code.");
+      updateStats();
+      draw();
+    }
+
+    function spawnDrop() {
+      const bad = Math.random() < 0.28;
+      drops.push({
+        x: 45 + Math.random() * (canvas.width - 90),
+        y: -35,
+        speed: 180 + Math.random() * 140,
+        type: bad ? "stone" : "bread",
+        size: bad ? 34 : 28
+      });
+    }
+
+    function update(dt) {
+      if (!running || ended) return;
+      timeLeft -= dt;
+      if (timeLeft <= 0) {
+        timeLeft = 0;
+        endGame();
+        updateStats();
+        return;
+      }
+      if (keys.has("ArrowLeft") || keys.has("a")) basket.x -= 520 * dt;
+      if (keys.has("ArrowRight") || keys.has("d")) basket.x += 520 * dt;
+      basket.x = Math.max(basket.width / 2, Math.min(canvas.width - basket.width / 2, basket.x));
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        spawnDrop();
+        spawnTimer = Math.max(0.22, 0.62 - score * 0.002) + Math.random() * 0.34;
+      }
+      drops.forEach((drop) => { drop.y += drop.speed * dt; });
+      drops = drops.filter((drop) => {
+        const caught = drop.y + drop.size / 2 >= basket.y && Math.abs(drop.x - basket.x) < basket.width / 2;
+        if (caught && drop.type === "bread") {
+          bread += 1;
+          score += 10;
+          return false;
+        }
+        if (caught && drop.type === "stone") {
+          score = Math.max(score - 20, 0);
+          timeLeft = Math.max(timeLeft - 5, 0);
+          return false;
+        }
+        return drop.y < canvas.height + 50;
+      });
+      updateStats();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, "#eef8ec");
+      gradient.addColorStop(1, "#9ab7a0");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      drops.forEach((drop) => {
+        ctx.save();
+        ctx.translate(drop.x, drop.y);
+        if (drop.type === "bread") {
+          ctx.fillStyle = "#d99a3b";
+          ctx.strokeStyle = "#875719";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.roundRect(-18, -12, 36, 24, 8);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = "#111917";
+          ctx.beginPath();
+          ctx.arc(0, 0, drop.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      });
+      ctx.fillStyle = "#1a8a38";
+      ctx.beginPath();
+      ctx.roundRect(basket.x - basket.width / 2, basket.y, basket.width, basket.height, 12);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.fillRect(basket.x - 44, basket.y + 8, 88, 6);
+      if (!running) {
+        ctx.fillStyle = "rgba(5,12,10,0.48)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "900 54px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(ended ? "Basket closed" : "Bread Catch", canvas.width / 2, canvas.height / 2);
+        ctx.font = "800 22px system-ui";
+        ctx.fillText("Move with arrows, A/D, or drag", canvas.width / 2, canvas.height / 2 + 42);
+      }
+    }
+
+    function loop(time) {
+      const dt = Math.min((time - lastTime) / 1000 || 0, 0.033);
+      lastTime = time;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    startButton.addEventListener("click", () => { if (ended) resetGame(); running = true; });
+    resetButton.addEventListener("click", resetGame);
+    canvas.addEventListener("pointermove", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      basket.x = (event.clientX - rect.left) * (canvas.width / rect.width);
+    });
+    canvas.addEventListener("pointerdown", () => { if (!ended) running = true; });
+    window.addEventListener("keydown", (event) => keys.add(event.key));
+    window.addEventListener("keyup", (event) => keys.delete(event.key));
+    refreshLeaderboard.addEventListener("click", loadLeaderboard);
+    resetGame();
+    loadLeaderboard();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bread Mines</title>
+  <meta name="description" content="Reveal bread, avoid cursed mines, and claim what you keep.">
+  <link rel="icon" type="image/png" href="/notativelogotransparent.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior game-page">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <img src="/notativelogotransparent.png" alt="">
+        <span>chipkittle</span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="/game">Games</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+
+    <section class="page-head game-head">
+      <p class="eyebrow">Risk board</p>
+      <h1>Bread Mines</h1>
+      <p>Reveal tiles, bank bread, and cash out before a cursed mine eats the run.</p>
+    </section>
+
+    <section class="game-shell mines-shell" aria-label="Bread Mines game">
+      <div class="mines-board" id="minesBoard" aria-label="Bread Mines board"></div>
+      <aside class="game-panel">
+        <div class="game-stat"><span>Score</span><strong id="scoreValue">0</strong></div>
+        <div class="game-stat"><span>Bread</span><strong id="breadValue">0</strong></div>
+        <div class="game-stat"><span>Safe</span><strong id="safeValue">0</strong></div>
+        <label>
+          Player name
+          <input id="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
+        </label>
+        <div class="game-controls">
+          <button class="button primary" type="button" id="cashOut">Cash Out</button>
+          <button class="button secondary" type="button" id="resetGame">New Board</button>
+        </div>
+        <div class="claim-card" id="claimCard">
+          <span>Discord claim</span>
+          <small>Find bread and cash out to get a claim code.</small>
+        </div>
+        <div class="leaderboard">
+          <div class="leaderboard-head">
+            <span>Leaderboard</span>
+            <button type="button" id="refreshLeaderboard">Refresh</button>
+          </div>
+          <ol id="leaderboardList"></ol>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const gameId = "mines";
+    const leaderboardUrl = `https://panel.chipkittle.com/api/public/game-leaderboard?game=${gameId}`;
+    const claimUrl = "https://panel.chipkittle.com/api/public/dash-claim";
+    const board = document.querySelector("#minesBoard");
+    const scoreValue = document.querySelector("#scoreValue");
+    const breadValue = document.querySelector("#breadValue");
+    const safeValue = document.querySelector("#safeValue");
+    const playerName = document.querySelector("#playerName");
+    const cashOutButton = document.querySelector("#cashOut");
+    const resetButton = document.querySelector("#resetGame");
+    const claimCard = document.querySelector("#claimCard");
+    const leaderboardList = document.querySelector("#leaderboardList");
+    const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
+
+    const tileCount = 25;
+    const mineCount = 5;
+    let tiles = [];
+    let ended = false;
+    let score = 0;
+    let bread = 0;
+    let safe = 0;
+    let claimRequested = false;
+
+    function safeName(value) {
+      return String(value || "").replace(/[^\w .#-]/g, "").replace(/\s+/g, " ").trim().slice(0, 24) || "Anonymous Chipkittle";
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (match) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[match]));
+    }
+
+    function setClaimCard(message, code = "", amount = 0) {
+      claimCard.innerHTML = code
+        ? `<span>Discord claim</span><strong>${escapeHtml(code)}</strong><small>Use <code>!claimdash ${escapeHtml(code)}</code> for ${Number(amount) || 0} bread.</small>`
+        : `<span>Discord claim</span><small>${escapeHtml(message)}</small>`;
+    }
+
+    function updateStats() {
+      scoreValue.textContent = score;
+      breadValue.textContent = bread;
+      safeValue.textContent = safe;
+    }
+
+    function renderLeaderboard(scores = []) {
+      leaderboardList.innerHTML = scores.length
+        ? scores.map((entry) => `<li><span>${escapeHtml(safeName(entry.name))}</span><strong>${Number(entry.score) || 0}</strong></li>`).join("")
+        : '<li><span>No boards saved yet</span><strong>0</strong></li>';
+    }
+
+    async function loadLeaderboard() {
+      try {
+        const response = await fetch(leaderboardUrl, { cache: "no-store" });
+        const payload = response.ok ? await response.json() : { scores: [] };
+        renderLeaderboard(Array.isArray(payload.scores) ? payload.scores : []);
+      } catch {
+        renderLeaderboard([]);
+      }
+    }
+
+    async function createClaimCode() {
+      if (claimRequested) return;
+      claimRequested = true;
+      if (bread <= 0) {
+        setClaimCard("This board ended with 0 bread, so there is nothing to claim.");
+        return;
+      }
+      setClaimCard("Creating your Discord claim code...");
+      try {
+        const response = await fetch(claimUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ game: gameId, name: safeName(playerName.value), score, bread })
+        });
+        const payload = response.ok ? await response.json() : {};
+        if (!payload.claimCode) throw new Error("No claim code.");
+        setClaimCard("", payload.claimCode, payload.claimBread);
+      } catch {
+        setClaimCard("The claim code request failed. Try again after the panel updates.");
+      }
+    }
+
+    async function saveLeaderboard() {
+      if (score <= 0) return;
+      try {
+        const response = await fetch(leaderboardUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ game: gameId, name: safeName(playerName.value), score, bread })
+        });
+        const payload = response.ok ? await response.json() : { scores: [] };
+        if (Array.isArray(payload.scores)) renderLeaderboard(payload.scores);
+      } catch {
+        // Optional leaderboard save.
+      }
+    }
+
+    function finish(message, keepBread) {
+      if (ended) return;
+      ended = true;
+      if (!keepBread) bread = 0;
+      setClaimCard(message);
+      revealAll();
+      updateStats();
+      if (keepBread) createClaimCode();
+      if (keepBread) saveLeaderboard();
+    }
+
+    function revealAll() {
+      [...board.children].forEach((button, index) => {
+        button.disabled = true;
+        button.classList.add(tiles[index].mine ? "is-mine" : "is-safe");
+        button.textContent = tiles[index].mine ? "X" : tiles[index].bread;
+      });
+    }
+
+    function handleTile(index, button) {
+      if (ended || tiles[index].revealed) return;
+      tiles[index].revealed = true;
+      button.disabled = true;
+      if (tiles[index].mine) {
+        button.classList.add("is-mine");
+        button.textContent = "X";
+        score = Math.max(score - 25, 0);
+        finish("A cursed mine ate the run. No bread can be claimed.", false);
+        return;
+      }
+      const found = tiles[index].bread;
+      bread += found;
+      safe += 1;
+      score += found * 12 + safe * 4;
+      button.classList.add("is-safe");
+      button.textContent = found;
+      updateStats();
+      if (safe >= tileCount - mineCount) finish("Perfect board. Claim code incoming.", true);
+    }
+
+    function resetGame() {
+      ended = false;
+      score = 0;
+      bread = 0;
+      safe = 0;
+      claimRequested = false;
+      const mines = new Set();
+      while (mines.size < mineCount) mines.add(Math.floor(Math.random() * tileCount));
+      tiles = Array.from({ length: tileCount }, (_, index) => ({
+        mine: mines.has(index),
+        bread: 1 + Math.floor(Math.random() * 4),
+        revealed: false
+      }));
+      board.innerHTML = "";
+      tiles.forEach((_tile, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "mine-tile";
+        button.textContent = "?";
+        button.addEventListener("click", () => handleTile(index, button));
+        board.appendChild(button);
+      });
+      setClaimCard("Find bread and cash out to get a claim code.");
+      updateStats();
+    }
+
+    cashOutButton.addEventListener("click", () => finish(bread > 0 ? "Cash out locked. Claim code incoming." : "Find at least 1 bread before cashing out.", bread > 0));
+    resetButton.addEventListener("click", resetGame);
+    refreshLeaderboard.addEventListener("click", loadLeaderboard);
+    resetGame();
+    loadLeaderboard();
+  </script>
+</body>
+</html>

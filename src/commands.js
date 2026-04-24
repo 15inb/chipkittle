@@ -1551,7 +1551,7 @@ define({
   name: "claimdash",
   aliases: ["dashclaim", "claimbread"],
   category: "Gambling",
-  description: "Claim bread collected in Chipkittle Dash.",
+  description: "Claim bread collected in Chipkittle browser games.",
   usage: "claimdash CK123ABC",
   async run(ctx) {
     const code = ctx.args[0];
@@ -1569,7 +1569,7 @@ define({
       setBreadBalance(economy, userId, nextBalance);
 
       return [
-        `Claimed **${formatBread(claim.bread)}** from Chipkittle Dash.`,
+        `Claimed **${formatBread(claim.bread)}** from a Chipkittle game.`,
         `Run score: **${claim.score.toLocaleString()}**.`,
         `Balance: **${formatBread(nextBalance)}**.`
       ].join("\n");

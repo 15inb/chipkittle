@@ -95,7 +95,7 @@
     const claimCard = document.querySelector("#claimCard");
     const leaderboardList = document.querySelector("#leaderboardList");
     const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
-    const leaderboardUrl = "https://panel.chipkittle.com/api/public/game-leaderboard";
+    const leaderboardUrl = "https://panel.chipkittle.com/api/public/game-leaderboard?game=dash";
     const claimUrl = "https://panel.chipkittle.com/api/public/dash-claim";
     const storageKey = "chipkittle-dash-best";
     const leaderboardKey = "chipkittle-dash-leaderboard";
@@ -404,6 +404,7 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            game: "dash",
             name: safeName(playerName.value),
             score,
             bread
@@ -435,6 +436,7 @@
     async function submitScore(name) {
       if (score <= 0) return;
       const entry = {
+        game: "dash",
         name: safeName(name),
         score,
         bread,

@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ritual Runner</title>
+  <meta name="description" content="Run, jump, collect bread, and dodge ritual stones.">
+  <link rel="icon" type="image/png" href="/notativelogotransparent.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior game-page">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <img src="/notativelogotransparent.png" alt="">
+        <span>chipkittle</span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="/game">Games</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+
+    <section class="page-head game-head">
+      <p class="eyebrow">Endless ritual</p>
+      <h1>Ritual Runner</h1>
+      <p>Jump over curse stones, collect bread, and keep the ceremony moving.</p>
+    </section>
+
+    <section class="game-shell" aria-label="Ritual Runner game">
+      <div class="game-stage">
+        <canvas id="runnerCanvas" width="960" height="540" aria-label="Ritual Runner playfield"></canvas>
+      </div>
+      <aside class="game-panel">
+        <div class="game-stat"><span>Score</span><strong id="scoreValue">0</strong></div>
+        <div class="game-stat"><span>Bread</span><strong id="breadValue">0</strong></div>
+        <label>
+          Player name
+          <input id="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
+        </label>
+        <div class="game-controls">
+          <button class="button primary" type="button" id="startGame">Start</button>
+          <button class="button secondary" type="button" id="resetGame">Reset</button>
+        </div>
+        <div class="claim-card" id="claimCard">
+          <span>Discord claim</span>
+          <small>Collect bread, then crash or finish to get a claim code.</small>
+        </div>
+        <div class="leaderboard">
+          <div class="leaderboard-head">
+            <span>Leaderboard</span>
+            <button type="button" id="refreshLeaderboard">Refresh</button>
+          </div>
+          <ol id="leaderboardList"></ol>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const gameId = "runner";
+    const leaderboardUrl = `https://panel.chipkittle.com/api/public/game-leaderboard?game=${gameId}`;
+    const claimUrl = "https://panel.chipkittle.com/api/public/dash-claim";
+    const canvas = document.querySelector("#runnerCanvas");
+    const ctx = canvas.getContext("2d");
+    const scoreValue = document.querySelector("#scoreValue");
+    const breadValue = document.querySelector("#breadValue");
+    const playerName = document.querySelector("#playerName");
+    const startButton = document.querySelector("#startGame");
+    const resetButton = document.querySelector("#resetGame");
+    const claimCard = document.querySelector("#claimCard");
+    const leaderboardList = document.querySelector("#leaderboardList");
+    const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
+
+    let running = false;
+    let ended = false;
+    let lastTime = 0;
+    let score = 0;
+    let bread = 0;
+    let speed = 250;
+    let spawnTimer = 0;
+    let claimRequested = false;
+    const player = { x: 110, y: 410, vy: 0, size: 44, grounded: true };
+    let objects = [];
+
+    function safeName(value) {
+      return String(value || "").replace(/[^\w .#-]/g, "").replace(/\s+/g, " ").trim().slice(0, 24) || "Anonymous Chipkittle";
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (match) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[match]));
+    }
+
+    function setClaimCard(message, code = "", amount = 0) {
+      claimCard.innerHTML = code
+        ? `<span>Discord claim</span><strong>${escapeHtml(code)}</strong><small>Use <code>!claimdash ${escapeHtml(code)}</code> for ${Number(amount) || 0} bread.</small>`
+        : `<span>Discord claim</span><small>${escapeHtml(message)}</small>`;
+    }
+
+    function updateStats() {
+      scoreValue.textContent = Math.floor(score);
+      breadValue.textContent = bread;
+    }
+
+    function renderLeaderboard(scores = []) {
+      leaderboardList.innerHTML = scores.length
+        ? scores.map((entry) => `<li><span>${escapeHtml(safeName(entry.name))}</span><strong>${Number(entry.score) || 0}</strong></li>`).join("")
+        : '<li><span>No runs saved yet</span><strong>0</strong></li>';
+    }
+
+    async function loadLeaderboard() {
+      try {
+        const response = await fetch(leaderboardUrl, { cache: "no-store" });
+        const payload = response.ok ? await response.json() : { scores: [] };
+        renderLeaderboard(Array.isArray(payload.scores) ? payload.scores : []);
+      } catch {
+        renderLeaderboard([]);
+      }
+    }
+
+    async function createClaimCode() {
+      if (claimRequested) return;
+      claimRequested = true;
+      if (bread <= 0) {
+        setClaimCard("This run ended with 0 bread, so there is nothing to claim.");
+        return;
+      }
+      setClaimCard("Creating your Discord claim code...");
+      try {
+        const response = await fetch(claimUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ game: gameId, name: safeName(playerName.value), score: Math.floor(score), bread })
+        });
+        const payload = response.ok ? await response.json() : {};
+        if (!payload.claimCode) throw new Error("No claim code.");
+        setClaimCard("", payload.claimCode, payload.claimBread);
+      } catch {
+        setClaimCard("The claim code request failed. Try again after the panel updates.");
+      }
+    }
+
+    async function saveLeaderboard() {
+      if (score <= 0) return;
+      try {
+        const response = await fetch(leaderboardUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ game: gameId, name: safeName(playerName.value), score: Math.floor(score), bread })
+        });
+        const payload = response.ok ? await response.json() : { scores: [] };
+        if (Array.isArray(payload.scores)) renderLeaderboard(payload.scores);
+      } catch {
+        // Leaderboard is optional; claims are separate.
+      }
+    }
+
+    function endGame() {
+      if (ended) return;
+      ended = true;
+      running = false;
+      createClaimCode();
+      saveLeaderboard();
+    }
+
+    function resetGame() {
+      running = false;
+      ended = false;
+      lastTime = 0;
+      score = 0;
+      bread = 0;
+      speed = 250;
+      spawnTimer = 0;
+      claimRequested = false;
+      player.y = 410;
+      player.vy = 0;
+      player.grounded = true;
+      objects = [];
+      setClaimCard("Collect bread, then crash or finish to get a claim code.");
+      updateStats();
+      draw();
+    }
+
+    function jump() {
+      if (!running || ended) return;
+      if (player.grounded) {
+        player.vy = -720;
+        player.grounded = false;
+      }
+    }
+
+    function spawnObject() {
+      const isBread = Math.random() < 0.58;
+      objects.push({
+        x: canvas.width + 50,
+        y: isBread ? 350 + Math.random() * 80 : 410,
+        size: isBread ? 30 : 42,
+        type: isBread ? "bread" : "stone"
+      });
+    }
+
+    function update(dt) {
+      if (!running || ended) return;
+      score += dt * 12;
+      speed += dt * 4;
+      player.vy += 1600 * dt;
+      player.y += player.vy * dt;
+      if (player.y >= 410) {
+        player.y = 410;
+        player.vy = 0;
+        player.grounded = true;
+      }
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        spawnObject();
+        spawnTimer = 0.75 + Math.random() * 0.85;
+      }
+      objects.forEach((item) => { item.x -= speed * dt; });
+      objects = objects.filter((item) => {
+        const hit = Math.abs(item.x - player.x) < (item.size + player.size) * 0.45 && Math.abs(item.y - player.y) < (item.size + player.size) * 0.5;
+        if (hit && item.type === "bread") {
+          bread += 1;
+          score += 18;
+          updateStats();
+          return false;
+        }
+        if (hit && item.type === "stone") {
+          endGame();
+          return false;
+        }
+        return item.x > -80;
+      });
+      updateStats();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, "#eaf6e7");
+      gradient.addColorStop(1, "#8fa899");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "rgba(16,25,21,0.14)";
+      for (let x = -80; x < canvas.width; x += 82) {
+        ctx.beginPath();
+        ctx.moveTo(x, canvas.height);
+        ctx.lineTo(x + 250, 0);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(16,25,21,0.18)";
+      ctx.fillRect(0, 452, canvas.width, 18);
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.fillStyle = "#f7faf5";
+      ctx.beginPath();
+      ctx.arc(0, 0, player.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#0c130f";
+      ctx.beginPath();
+      ctx.arc(-8, -6, 5, 0, Math.PI * 2);
+      ctx.arc(8, -6, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      objects.forEach((item) => {
+        ctx.save();
+        ctx.translate(item.x, item.y);
+        if (item.type === "bread") {
+          ctx.fillStyle = "#d69a3c";
+          ctx.strokeStyle = "#8d5a20";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.roundRect(-18, -12, 36, 24, 8);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = "#111917";
+          ctx.strokeStyle = "#4d5c54";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(-22, -8);
+          ctx.quadraticCurveTo(-8, -26, 18, -17);
+          ctx.quadraticCurveTo(28, 9, 4, 24);
+          ctx.quadraticCurveTo(-24, 19, -22, -8);
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+      });
+      if (!running) {
+        ctx.fillStyle = "rgba(5,12,10,0.48)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "900 54px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(ended ? "Ritual complete" : "Ritual Runner", canvas.width / 2, canvas.height / 2);
+        ctx.font = "800 22px system-ui";
+        ctx.fillText("Space, click, or tap to jump", canvas.width / 2, canvas.height / 2 + 42);
+      }
+    }
+
+    function loop(time) {
+      const dt = Math.min((time - lastTime) / 1000 || 0, 0.033);
+      lastTime = time;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    startButton.addEventListener("click", () => { if (ended) resetGame(); running = true; });
+    resetButton.addEventListener("click", resetGame);
+    canvas.addEventListener("pointerdown", () => { if (!running && !ended) running = true; jump(); });
+    window.addEventListener("keydown", (event) => {
+      if (event.key === " " || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (!running && !ended) running = true;
+        jump();
+      }
+    });
+    refreshLeaderboard.addEventListener("click", loadLeaderboard);
+    resetGame();
+    loadLeaderboard();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

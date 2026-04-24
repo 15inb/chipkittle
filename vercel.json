@@ -26,6 +26,18 @@
     {
       "source": "/8ball",
       "destination": "/8ball.html"
+    },
+    {
+      "source": "/runner",
+      "destination": "/runner.html"
+    },
+    {
+      "source": "/mines",
+      "destination": "/mines.html"
+    },
+    {
+      "source": "/catch",
+      "destination": "/catch.html"
     }
   ]
 }

@@ -208,6 +208,11 @@ function leaderboardPath() {
   return path.join(process.cwd(), "data", "game-leaderboard.json");
 }
 
+function cleanGameId(value = "") {
+  const gameId = String(value || "dash").toLowerCase().replace(/[^a-z0-9-]/g, "");
+  return ["dash", "runner", "mines", "catch"].includes(gameId) ? gameId : "dash";
+}
+
 function cleanLeaderboardName(value = "") {
   return String(value || "")
     .replace(/[^\w .#-]/g, "")
@@ -225,29 +230,56 @@ function readGameLeaderboard() {
   }
 }
 
-function publicLeaderboardEntries(entries = []) {
+function allPublicLeaderboardEntries(entries = []) {
+  const grouped = new Map();
   return entries
     .map((entry) => ({
+      game: cleanGameId(entry.game),
       name: cleanLeaderboardName(entry.name),
       score: Math.max(Math.floor(Number(entry.score) || 0), 0),
       bread: Math.max(Math.floor(Number(entry.bread) || 0), 0),
       createdAt: String(entry.createdAt || "")
     }))
     .filter((entry) => entry.score > 0)
+    .reduce((accumulator, entry) => {
+      const bucket = accumulator.get(entry.game) || [];
+      bucket.push(entry);
+      accumulator.set(entry.game, bucket);
+      return accumulator;
+    }, grouped);
+}
+
+function publicLeaderboardEntries(entries = [], gameId = "dash") {
+  const grouped = allPublicLeaderboardEntries(entries);
+  return (grouped.get(cleanGameId(gameId)) || [])
     .sort((a, b) => b.score - a.score || b.bread - a.bread)
     .slice(0, 10);
+}
+
+function publicLeaderboardFileEntries(entries = []) {
+  return [...allPublicLeaderboardEntries(entries).values()]
+    .flatMap((bucket) => bucket.sort((a, b) => b.score - a.score || b.bread - a.bread).slice(0, 10));
 }
 
 function writeGameLeaderboard(entries = []) {
   const filePath = leaderboardPath();
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(`${filePath}.tmp`, `${JSON.stringify(publicLeaderboardEntries(entries), null, 2)}\n`, "utf8");
+  fs.writeFileSync(`${filePath}.tmp`, `${JSON.stringify(publicLeaderboardFileEntries(entries), null, 2)}\n`, "utf8");
   fs.renameSync(`${filePath}.tmp`, filePath);
 }
 
 function deleteGameLeaderboardEntry(index) {
-  const entries = publicLeaderboardEntries(readGameLeaderboard());
-  entries.splice(index, 1);
+  const entries = publicLeaderboardFileEntries(readGameLeaderboard());
+  const target = publicLeaderboardEntries(entries)[index];
+  if (!target) return entries;
+  const targetIndex = entries.findIndex((entry) =>
+    entry.game === target.game &&
+    entry.name === target.name &&
+    entry.score === target.score &&
+    entry.bread === target.bread &&
+    entry.createdAt === target.createdAt
+  );
+  if (targetIndex >= 0) entries.splice(targetIndex, 1);
   writeGameLeaderboard(entries);
   return entries;
 }
@@ -995,10 +1027,10 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
     });
   });
 
-  app.get("/api/public/game-leaderboard", (_request, response) => {
+  app.get("/api/public/game-leaderboard", (request, response) => {
     setPublicApiHeaders(response);
     response.json({
-      scores: publicLeaderboardEntries(readGameLeaderboard()),
+      scores: publicLeaderboardEntries(readGameLeaderboard(), request.query.game),
       updatedAt: new Date().toISOString()
     });
   });
@@ -1006,6 +1038,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   app.post("/api/public/game-leaderboard", (request, response) => {
     setPublicApiHeaders(response);
     const entry = {
+      game: cleanGameId(request.body?.game),
       name: cleanLeaderboardName(request.body?.name),
       score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), 100000),
       bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), 100000),
@@ -1017,10 +1050,9 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       return;
     }
 
-    const scores = publicLeaderboardEntries([...readGameLeaderboard(), entry]);
-    writeGameLeaderboard(scores);
+    writeGameLeaderboard([...readGameLeaderboard(), entry]);
     response.json({
-      scores,
+      scores: publicLeaderboardEntries(readGameLeaderboard(), entry.game),
       updatedAt: new Date().toISOString()
     });
   });
@@ -1028,6 +1060,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   app.post("/api/public/dash-claim", (request, response) => {
     setPublicApiHeaders(response);
     const entry = {
+      game: cleanGameId(request.body?.game),
       name: cleanLeaderboardName(request.body?.name),
       score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), 100000),
       bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), 100000)
