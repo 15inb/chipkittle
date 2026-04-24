@@ -46,8 +46,11 @@
   </main>
 
   <script>
+    const { readCachedJson, fetchCachedJson } = window.ChipkittleSite;
     const grid = document.querySelector("#memberGrid");
     const panelMembersUrl = "https://panel.chipkittle.com/api/public/members";
+    const panelCacheKey = "chipkittle-public-members-v1";
+    const panelCacheTtlMs = 10 * 60 * 1000;
 
     function text(value) {
       return String(value || "").replace(/[&<>"']/g, (match) => ({
@@ -60,13 +63,17 @@
     }
 
     async function loadMembers() {
-      const panelResponse = await fetch(panelMembersUrl, { cache: "no-store" });
-      if (panelResponse.ok) {
-        const payload = await panelResponse.json();
-        return Array.isArray(payload.members) ? payload.members : [];
-      }
+      try {
+        const payload = await fetchCachedJson(panelMembersUrl, {
+          key: panelCacheKey,
+          ttlMs: panelCacheTtlMs
+        });
+        if (Array.isArray(payload?.members)) {
+          return payload.members;
+        }
+      } catch {}
 
-      const fallbackResponse = await fetch("/members.json", { cache: "no-store" });
+      const fallbackResponse = await fetch("/members.json");
       return fallbackResponse.ok ? fallbackResponse.json() : [];
     }
 

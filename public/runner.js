@@ -58,6 +58,7 @@ let powerups = [];
 let dust = [];
 let lastStatsText = "";
 let lastPowerupText = "";
+let animationFrame = 0;
 
 const drawBackground = createBackgroundCache(canvas, (cacheCtx, targetCanvas, key) => {
   const palettes = [
@@ -495,22 +496,36 @@ function draw() {
 }
 
 function loop(time) {
+  animationFrame = 0;
   const dt = Math.min((time - lastTime) / 1000 || 0, 0.033);
   lastTime = time;
   update(dt);
   draw();
-  requestAnimationFrame(loop);
+  if (!document.hidden && (running || dust.length > 0)) {
+    scheduleFrame();
+  }
+}
+
+function scheduleFrame() {
+  if (animationFrame) return;
+  animationFrame = requestAnimationFrame(loop);
 }
 
 startButton.addEventListener("click", () => {
   if (ended) resetGame();
   running = true;
+  lastTime = performance.now();
+  scheduleFrame();
 });
 resetButton.addEventListener("click", resetGame);
 refreshLeaderboard.addEventListener("click", () => services.loadLeaderboard());
 
 canvas.addEventListener("pointerdown", () => {
   requestJump();
+  if (running) {
+    lastTime = performance.now();
+    scheduleFrame();
+  }
 });
 
 window.addEventListener("keydown", (event) => {
@@ -518,6 +533,10 @@ window.addEventListener("keydown", (event) => {
   if (event.key === " " || event.key === "ArrowUp" || event.key === "w") {
     event.preventDefault();
     requestJump();
+    if (running) {
+      lastTime = performance.now();
+      scheduleFrame();
+    }
   }
 });
 
@@ -527,10 +546,12 @@ window.addEventListener("keyup", (event) => {
 
 document.addEventListener("visibilitychange", () => {
   lastTime = performance.now();
-  if (!document.hidden) draw();
+  if (!document.hidden) {
+    draw();
+    if (running || dust.length > 0) scheduleFrame();
+  }
 });
 
 resetGame();
 services.renderLeaderboard();
 services.loadLeaderboard();
-requestAnimationFrame(loop);

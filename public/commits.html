@@ -46,7 +46,10 @@
   </main>
 
   <script>
+    const { readCachedJson, fetchCachedJson } = window.ChipkittleSite;
     const list = document.querySelector("#commitList");
+    const cacheKey = "chipkittle-public-commits-v1";
+    const cacheTtlMs = 5 * 60 * 1000;
 
     function text(value) {
       return String(value || "").replace(/[&<>"']/g, (match) => ({
@@ -63,39 +66,49 @@
       return author.toLowerCase() === "elijahenglish" ? "English" : author || "Unknown";
     }
 
-    fetch("https://api.github.com/repos/15inb/chipkittle/commits?per_page=20", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : [])
-      .then((commits) => {
-        if (!Array.isArray(commits) || commits.length === 0) {
-          list.innerHTML = '<p class="empty">No commits could be loaded right now.</p>';
-          return;
-        }
+    function renderCommits(commits) {
+      if (!Array.isArray(commits) || commits.length === 0) {
+        list.innerHTML = '<p class="empty">No commits could be loaded right now.</p>';
+        return;
+      }
 
-        // Filter out quiet housekeeping commits
-        const visibleCommits = commits.filter((item) => {
-          const message = item.commit?.message?.toLowerCase() || "";
-          return !message.includes("silent") && !message.startsWith("merge branch 'main'");
-        });
+      const visibleCommits = commits.filter((item) => {
+        const message = item.commit?.message?.toLowerCase() || "";
+        return !message.includes("silent") && !message.startsWith("merge branch 'main'");
+      });
 
-        list.innerHTML = visibleCommits.map((item) => {
-          const hash = text(item.sha || "");
-          const shortHash = hash.slice(0, 7);
-          const subject = text(item.commit?.message?.split("\n")[0] || "Untitled commit");
-          const author = text(displayAuthor(item.commit?.author?.name));
-          const date = item.commit?.author?.date ? new Date(item.commit.author.date).toLocaleDateString() : "";
-          const url = item.html_url || "https://github.com/15inb/chipkittle";
+      list.innerHTML = visibleCommits.map((item) => {
+        const hash = text(item.sha || "");
+        const shortHash = hash.slice(0, 7);
+        const subject = text(item.commit?.message?.split("\n")[0] || "Untitled commit");
+        const author = text(displayAuthor(item.commit?.author?.name));
+        const date = item.commit?.author?.date ? new Date(item.commit.author.date).toLocaleDateString() : "";
+        const url = item.html_url || "https://github.com/15inb/chipkittle";
 
-          return `
-            <a class="commit-row" href="${text(url)}" target="_blank" rel="noreferrer">
-              <code>${shortHash}</code>
-              <strong>${subject}</strong>
-              <small>${author}${date ? ` / ${text(date)}` : ""}</small>
-            </a>
-          `;
-        }).join("");
-      })
+        return `
+          <a class="commit-row" href="${text(url)}" target="_blank" rel="noreferrer">
+            <code>${shortHash}</code>
+            <strong>${subject}</strong>
+            <small>${author}${date ? ` / ${text(date)}` : ""}</small>
+          </a>
+        `;
+      }).join("");
+    }
+
+    const cachedCommits = readCachedJson(cacheKey, cacheTtlMs);
+    if (cachedCommits) {
+      renderCommits(cachedCommits);
+    }
+
+    fetchCachedJson("https://api.github.com/repos/15inb/chipkittle/commits?per_page=20", {
+      key: cacheKey,
+      ttlMs: cacheTtlMs
+    })
+      .then(renderCommits)
       .catch(() => {
-        list.innerHTML = '<p class="empty">Could not load commits from GitHub.</p>';
+        if (!cachedCommits) {
+          list.innerHTML = '<p class="empty">Could not load commits from GitHub.</p>';
+        }
       });
   </script>
 </body>

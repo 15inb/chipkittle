@@ -40,8 +40,11 @@
     </section>
   </main>
   <script>
+    const { debounce, readCachedJson, fetchCachedJson } = window.ChipkittleSite;
     const container = document.querySelector("#commandGroups");
     const search = document.querySelector("#commandSearch");
+    const cacheKey = "chipkittle-public-commands-v1";
+    const cacheTtlMs = 5 * 60 * 1000;
     let commands = [];
 
     function text(value) {
@@ -87,17 +90,27 @@
       `).join("");
     }
 
-    fetch("https://panel.chipkittle.com/api/public/commands", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : null)
+    const cachedPayload = readCachedJson(cacheKey, cacheTtlMs);
+    if (Array.isArray(cachedPayload?.commands)) {
+      commands = cachedPayload.commands;
+      render();
+    }
+
+    fetchCachedJson("https://panel.chipkittle.com/api/public/commands", {
+      key: cacheKey,
+      ttlMs: cacheTtlMs
+    })
       .then((payload) => {
         commands = Array.isArray(payload?.commands) ? payload.commands : [];
         render();
       })
       .catch(() => {
-        container.innerHTML = '<p class="empty">Could not load the command explorer.</p>';
+        if (!commands.length) {
+          container.innerHTML = '<p class="empty">Could not load the command explorer.</p>';
+        }
       });
 
-    search.addEventListener("input", render);
+    search.addEventListener("input", debounce(render, 120));
   </script>
 </body>
 </html>

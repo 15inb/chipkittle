@@ -37,24 +37,41 @@
     </section>
   </main>
   <script>
+    const { readCachedJson, fetchCachedJson } = window.ChipkittleSite;
     const cards = document.querySelector("#statusCards");
-    fetch("https://panel.chipkittle.com/api/public/status", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : null)
+    const cacheKey = "chipkittle-public-status-v1";
+    const cacheTtlMs = 60 * 1000;
+
+    function renderStatus(payload) {
+      cards.innerHTML = `
+        <article><strong>${payload.ready ? "Online" : "Offline"}</strong><p>${payload.botTag || "Chipkittle"} is ${payload.ready ? "connected and responsive." : "currently disconnected."}</p></article>
+        <article><strong>${payload.guildCount || 0}</strong><p>Guilds connected</p></article>
+        <article><strong>${payload.memberCount || 0}</strong><p>Members in the primary server</p></article>
+        <article><strong>${payload.snapshot?.commandsRun || 0}</strong><p>Total tracked command runs</p></article>
+        <article><strong>${payload.snapshot?.aiReplies || 0}</strong><p>AI replies recorded</p></article>
+        <article><strong>${payload.snapshot?.applicationsOpened || 0}</strong><p>Applications opened</p></article>
+        <article><strong>${payload.currentEvent || "No event set"}</strong><p>Current ritual</p></article>
+        <article><strong>${payload.seasonalMessage || "No season set"}</strong><p>Seasonal message</p></article>
+      `;
+    }
+
+    const cachedPayload = readCachedJson(cacheKey, cacheTtlMs);
+    if (cachedPayload) {
+      renderStatus(cachedPayload);
+    }
+
+    fetchCachedJson("https://panel.chipkittle.com/api/public/status", {
+      key: cacheKey,
+      ttlMs: cacheTtlMs
+    })
       .then((payload) => {
         if (!payload) throw new Error("No payload");
-        cards.innerHTML = `
-          <article><strong>${payload.ready ? "Online" : "Offline"}</strong><p>${payload.botTag || "Chipkittle"} is ${payload.ready ? "connected and responsive." : "currently disconnected."}</p></article>
-          <article><strong>${payload.guildCount || 0}</strong><p>Guilds connected</p></article>
-          <article><strong>${payload.memberCount || 0}</strong><p>Members in the primary server</p></article>
-          <article><strong>${payload.snapshot?.commandsRun || 0}</strong><p>Total tracked command runs</p></article>
-          <article><strong>${payload.snapshot?.aiReplies || 0}</strong><p>AI replies recorded</p></article>
-          <article><strong>${payload.snapshot?.applicationsOpened || 0}</strong><p>Applications opened</p></article>
-          <article><strong>${payload.currentEvent || "No event set"}</strong><p>Current ritual</p></article>
-          <article><strong>${payload.seasonalMessage || "No season set"}</strong><p>Seasonal message</p></article>
-        `;
+        renderStatus(payload);
       })
       .catch(() => {
-        cards.innerHTML = `<article><strong>Unavailable</strong><p>The status feed could not be loaded right now.</p></article>`;
+        if (!cachedPayload) {
+          cards.innerHTML = `<article><strong>Unavailable</strong><p>The status feed could not be loaded right now.</p></article>`;
+        }
       });
   </script>
 </body>

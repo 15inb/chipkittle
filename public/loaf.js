@@ -61,6 +61,7 @@ let moveCooldown = 0;
 let pointerRect = null;
 let statusText = "";
 let lastStatsText = "";
+let animationFrame = 0;
 
 const player = {
   col: Math.floor(cols / 2),
@@ -276,7 +277,11 @@ function handlePointer(event) {
   } else {
     attemptMove(0, dy > 0 ? 1 : -1);
   }
-  if (!ended) running = true;
+  if (!ended) {
+    running = true;
+    lastTime = performance.now();
+    scheduleFrame();
+  }
 }
 
 function update(dt) {
@@ -474,17 +479,27 @@ function draw() {
 }
 
 function loop(time) {
+  animationFrame = 0;
   const dt = Math.min((time - lastTime) / 1000 || 0, 0.033);
   lastTime = time;
   update(dt);
   draw();
-  requestAnimationFrame(loop);
+  if (!document.hidden && (running || sparks.length > 0)) {
+    scheduleFrame();
+  }
+}
+
+function scheduleFrame() {
+  if (animationFrame) return;
+  animationFrame = requestAnimationFrame(loop);
 }
 
 startButton.addEventListener("click", () => {
   if (!ensurePlayerReady()) return;
   if (ended) resetGame();
   running = true;
+  lastTime = performance.now();
+  scheduleFrame();
 });
 
 resetButton.addEventListener("click", resetGame);
@@ -503,6 +518,10 @@ window.addEventListener("keydown", (event) => {
   if (lowerKey === "arrowleft" || lowerKey === "a") attemptMove(-1, 0);
   if (lowerKey === "arrowright" || lowerKey === "d") attemptMove(1, 0);
   if (!ended) running = true;
+  if (!ended) {
+    lastTime = performance.now();
+    scheduleFrame();
+  }
 });
 
 canvas.addEventListener("pointerdown", handlePointer);
@@ -512,10 +531,12 @@ window.addEventListener("resize", () => {
 
 document.addEventListener("visibilitychange", () => {
   lastTime = performance.now();
-  if (!document.hidden) draw();
+  if (!document.hidden) {
+    draw();
+    if (running || sparks.length > 0) scheduleFrame();
+  }
 });
 
 resetGame();
 services.renderLeaderboard();
 services.loadLeaderboard();
-requestAnimationFrame(loop);

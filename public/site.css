@@ -1823,3 +1823,54 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 980px), (pointer: coarse) {
+  .nav-button,
+  .button,
+  .theme-toggle,
+  .nav-actions,
+  .feature-card,
+  .eight-ball-input-row input,
+  .game-card,
+  .game-stage,
+  .mines-board,
+  .game-panel,
+  .pool-badge,
+  .pool-card,
+  .pool-stage,
+  .member-card,
+  .commit-row {
+    backdrop-filter: none;
+  }
+
+  .interior,
+  .game-page {
+    background-attachment: scroll;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .hero-logo-overlay img,
+  .eight-ball-glow,
+  .eight-ball-logo,
+  .eight-ball.is-shaking,
+  .eight-ball.is-shaking .eight-ball-logo {
+    animation: none;
+  }
+
+  .nav-button,
+  .button,
+  .theme-toggle,
+  .topbar nav a {
+    transition: none;
+  }
+
+  .interior,
+  .game-page {
+    background-attachment: scroll;
+  }
+}

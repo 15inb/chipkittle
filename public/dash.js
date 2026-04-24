@@ -68,6 +68,7 @@ let elapsedTime = 0;
 let lastStatsText = "";
 let lastPowerupText = "";
 let particles = [];
+let animationFrame = 0;
 
 bestValue.textContent = String(best);
 
@@ -622,23 +623,41 @@ function draw() {
   drawOverlay();
 }
 
+function shouldAnimate() {
+  return !document.hidden && (running || particles.length > 0);
+}
+
+function scheduleFrame() {
+  if (animationFrame) return;
+  animationFrame = requestAnimationFrame(loop);
+}
+
 function loop(time) {
+  animationFrame = 0;
   const dt = Math.min((time - lastTime) / 1000 || 0, 0.033);
   lastTime = time;
   update(dt);
   draw();
-  requestAnimationFrame(loop);
+  if (shouldAnimate()) {
+    scheduleFrame();
+  }
 }
 
 startButton.addEventListener("click", () => {
   if (!ensurePlayerReady()) return;
   if (gameOver) resetGame();
   running = true;
+  lastTime = performance.now();
+  scheduleFrame();
 });
 
 pauseButton.addEventListener("click", () => {
   running = !running;
   pauseButton.textContent = running ? "Pause" : "Resume";
+  if (running) {
+    lastTime = performance.now();
+    scheduleFrame();
+  }
 });
 
 resetButton.addEventListener("click", resetGame);
@@ -649,7 +668,11 @@ window.addEventListener("keydown", (event) => {
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(event.key)) {
     event.preventDefault();
   }
-  if (event.key === " " && ensurePlayerReady()) running = true;
+  if (event.key === " " && ensurePlayerReady()) {
+    running = true;
+    lastTime = performance.now();
+    scheduleFrame();
+  }
 });
 
 window.addEventListener("keyup", (event) => {
@@ -664,6 +687,8 @@ canvas.addEventListener("pointerdown", (event) => {
   pointer.active = true;
   setPointerFromEvent(event);
   running = true;
+  lastTime = performance.now();
+  scheduleFrame();
 });
 
 canvas.addEventListener("pointermove", (event) => {
@@ -681,10 +706,12 @@ canvas.addEventListener("pointerleave", () => {
 
 document.addEventListener("visibilitychange", () => {
   lastTime = performance.now();
-  if (!document.hidden) draw();
+  if (!document.hidden) {
+    draw();
+    if (shouldAnimate()) scheduleFrame();
+  }
 });
 
 resetGame();
 services.renderLeaderboard();
 services.loadLeaderboard();
-requestAnimationFrame(loop);

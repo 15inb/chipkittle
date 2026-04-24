@@ -1,7 +1,63 @@
 (function () {
   const storageKey = "chipkittle-theme";
   const root = document.documentElement;
-  const savedTheme = localStorage.getItem(storageKey);
+  function safeStorageGet(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  function safeStorageSet(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+  }
+
+  function readCachedJson(key, ttlMs) {
+    const rawValue = safeStorageGet(key);
+    if (!rawValue) return null;
+    try {
+      const parsed = JSON.parse(rawValue);
+      if (!parsed || typeof parsed !== "object") return null;
+      if (typeof parsed.savedAt !== "number" || !("data" in parsed)) return null;
+      if (Date.now() - parsed.savedAt > ttlMs) return null;
+      return parsed.data;
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchCachedJson(url, { key, ttlMs = 300000, fetchOptions } = {}) {
+    const cached = key ? readCachedJson(key, ttlMs) : null;
+    if (cached) return cached;
+
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    if (key) {
+      safeStorageSet(key, JSON.stringify({
+        savedAt: Date.now(),
+        data: payload
+      }));
+    }
+    return payload;
+  }
+
+  function debounce(fn, wait = 120) {
+    let timeoutId = 0;
+    return (...args) => {
+      clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(() => {
+        fn(...args);
+      }, wait);
+    };
+  }
+
+  const savedTheme = safeStorageGet(storageKey);
   const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
   const initialTheme = savedTheme || (prefersDark ? "dark" : "light");
 
@@ -23,9 +79,15 @@
     document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
       button.addEventListener("click", () => {
         const nextTheme = root.dataset.theme === "dark" ? "light" : "dark";
-        localStorage.setItem(storageKey, nextTheme);
+        safeStorageSet(storageKey, nextTheme);
         applyTheme(nextTheme);
       });
     });
+  });
+
+  window.ChipkittleSite = Object.assign(window.ChipkittleSite || {}, {
+    debounce,
+    readCachedJson,
+    fetchCachedJson
   });
 })();

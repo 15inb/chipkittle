@@ -37,7 +37,11 @@
     </div>
   </main>
   <script>
+    const { readCachedJson, fetchCachedJson } = window.ChipkittleSite;
     const grid = document.querySelector("#archiveGrid");
+    const cacheKey = "chipkittle-public-archive-v1";
+    const cacheTtlMs = 10 * 60 * 1000;
+
     function text(value) {
       return String(value || "").replace(/[&<>"']/g, (match) => ({
         "&": "&amp;",
@@ -47,21 +51,35 @@
         "'": "&#39;"
       }[match]));
     }
-    fetch("https://panel.chipkittle.com/api/public/archive", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : null)
+
+    function renderArchive(payload) {
+      grid.innerHTML = `
+        <article><strong>Current Event</strong><p>${text(payload.rituals?.currentEvent || "None recorded.")}</p></article>
+        <article><strong>Seasonal Message</strong><p>${text(payload.rituals?.seasonalMessage || "No season recorded.")}</p></article>
+        <article><strong>Principles</strong><p>${(payload.lore?.principles || []).map(text).join("<br>")}</p></article>
+        <article><strong>Ranks</strong><p>${(payload.lore?.ranks || []).map(text).join("<br>")}</p></article>
+        <article><strong>Key Figures</strong><p>${(payload.lore?.figures || []).slice(0, 6).map(text).join("<br>")}</p></article>
+        <article><strong>Artifact Registry</strong><p>${(payload.artifacts || []).slice(0, 8).map((item) => `${text(item.name)} (${text(item.rarity)})`).join("<br>") || "No artifacts yet."}</p></article>
+      `;
+    }
+
+    const cachedPayload = readCachedJson(cacheKey, cacheTtlMs);
+    if (cachedPayload) {
+      renderArchive(cachedPayload);
+    }
+
+    fetchCachedJson("https://panel.chipkittle.com/api/public/archive", {
+      key: cacheKey,
+      ttlMs: cacheTtlMs
+    })
       .then((payload) => {
         if (!payload) throw new Error("No archive");
-        grid.innerHTML = `
-          <article><strong>Current Event</strong><p>${text(payload.rituals?.currentEvent || "None recorded.")}</p></article>
-          <article><strong>Seasonal Message</strong><p>${text(payload.rituals?.seasonalMessage || "No season recorded.")}</p></article>
-          <article><strong>Principles</strong><p>${(payload.lore?.principles || []).map(text).join("<br>")}</p></article>
-          <article><strong>Ranks</strong><p>${(payload.lore?.ranks || []).map(text).join("<br>")}</p></article>
-          <article><strong>Key Figures</strong><p>${(payload.lore?.figures || []).slice(0, 6).map(text).join("<br>")}</p></article>
-          <article><strong>Artifact Registry</strong><p>${(payload.artifacts || []).slice(0, 8).map((item) => `${text(item.name)} (${text(item.rarity)})`).join("<br>") || "No artifacts yet."}</p></article>
-        `;
+        renderArchive(payload);
       })
       .catch(() => {
-        grid.innerHTML = '<article><strong>Unavailable</strong><p>The archive could not be loaded right now.</p></article>';
+        if (!cachedPayload) {
+          grid.innerHTML = '<article><strong>Unavailable</strong><p>The archive could not be loaded right now.</p></article>';
+        }
       });
   </script>
 </body>

@@ -57,6 +57,7 @@ let powerupTimer = 8;
 let elapsed = 0;
 let lastStatsText = "";
 let lastPowerupText = "";
+let animationFrame = 0;
 
 const drawBackground = createBackgroundCache(canvas, (cacheCtx, targetCanvas) => {
   const gradient = cacheCtx.createRadialGradient(
@@ -607,17 +608,27 @@ function draw() {
 }
 
 function loop(time) {
+  animationFrame = 0;
   const dt = Math.min((time - lastTime) / 1000 || 0, 0.033);
   lastTime = time;
   update(dt);
   draw();
-  requestAnimationFrame(loop);
+  if (!document.hidden && (running || particles.length > 0)) {
+    scheduleFrame();
+  }
+}
+
+function scheduleFrame() {
+  if (animationFrame) return;
+  animationFrame = requestAnimationFrame(loop);
 }
 
 startButton.addEventListener("click", () => {
   if (!ensurePlayerReady()) return;
   if (ended) resetGame();
   running = true;
+  lastTime = performance.now();
+  scheduleFrame();
 });
 
 resetButton.addEventListener("click", resetGame);
@@ -629,7 +640,11 @@ window.addEventListener("keydown", (event) => {
   if (["w", "a", "s", "d", " "].includes(key)) {
     event.preventDefault();
   }
-  if (key === " " && ensurePlayerReady()) running = true;
+  if (key === " " && ensurePlayerReady()) {
+    running = true;
+    lastTime = performance.now();
+    scheduleFrame();
+  }
 });
 
 window.addEventListener("keyup", (event) => {
@@ -641,6 +656,8 @@ canvas.addEventListener("pointerdown", (event) => {
   canvasRect = canvas.getBoundingClientRect();
   setPointer(event);
   running = true;
+  lastTime = performance.now();
+  scheduleFrame();
 });
 canvas.addEventListener("pointermove", (event) => {
   setPointer(event);
@@ -651,10 +668,12 @@ window.addEventListener("resize", () => {
 
 document.addEventListener("visibilitychange", () => {
   lastTime = performance.now();
-  if (!document.hidden) draw();
+  if (!document.hidden) {
+    draw();
+    if (running || particles.length > 0) scheduleFrame();
+  }
 });
 
 resetGame();
 services.renderLeaderboard();
 services.loadLeaderboard();
-requestAnimationFrame(loop);

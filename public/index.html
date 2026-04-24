@@ -150,6 +150,7 @@
     </section>
   </main>
   <script>
+    const { readCachedJson, fetchCachedJson } = window.ChipkittleSite;
     const eightBallAnswers = [
       "Yes. Chipkittle approves.",
       "Yes. The artifact agrees.",
@@ -170,6 +171,8 @@
     const eightBallAnswer = document.querySelector("#eightBallAnswer");
     const eightBallQuestion = document.querySelector("#eightBallQuestion");
     const statusGrid = document.querySelector("#statusGrid");
+    const cacheKey = "chipkittle-public-home-status-v1";
+    const cacheTtlMs = 60 * 1000;
 
     function askEightBall() {
       const answer = eightBallAnswers[Math.floor(Math.random() * eightBallAnswers.length)];
@@ -187,28 +190,39 @@
       if (event.key === "Enter") askEightBall();
     });
 
-    fetch("https://panel.chipkittle.com/api/public/status", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : null)
+    function renderStatus(payload) {
+      statusGrid.innerHTML = `
+        <article>
+          <strong>${payload.ready ? "Online" : "Offline"}</strong>
+          <p>${payload.botTag || "Chipkittle bot"} is ${payload.ready ? "awake and judging" : "currently napping"}.</p>
+        </article>
+        <article>
+          <strong>${payload.memberCount || 0} Members</strong>
+          <p>Watching the artifact and destabilizing the bread economy.</p>
+        </article>
+        <article>
+          <strong>${payload.snapshot?.commandsRun || 0} Commands</strong>
+          <p>Total command runs recorded by the current community layer.</p>
+        </article>
+        <article>
+          <strong>${payload.currentEvent || "No event set"}</strong>
+          <p>${payload.seasonalMessage || "No seasonal message set."}</p>
+        </article>
+      `;
+    }
+
+    const cachedPayload = readCachedJson(cacheKey, cacheTtlMs);
+    if (cachedPayload) {
+      renderStatus(cachedPayload);
+    }
+
+    fetchCachedJson("https://panel.chipkittle.com/api/public/status", {
+      key: cacheKey,
+      ttlMs: cacheTtlMs
+    })
       .then((payload) => {
         if (!payload) return;
-        statusGrid.innerHTML = `
-          <article>
-            <strong>${payload.ready ? "Online" : "Offline"}</strong>
-            <p>${payload.botTag || "Chipkittle bot"} is ${payload.ready ? "awake and judging" : "currently napping"}.</p>
-          </article>
-          <article>
-            <strong>${payload.memberCount || 0} Members</strong>
-            <p>Watching the artifact and destabilizing the bread economy.</p>
-          </article>
-          <article>
-            <strong>${payload.snapshot?.commandsRun || 0} Commands</strong>
-            <p>Total command runs recorded by the current community layer.</p>
-          </article>
-          <article>
-            <strong>${payload.currentEvent || "No event set"}</strong>
-            <p>${payload.seasonalMessage || "No seasonal message set."}</p>
-          </article>
-        `;
+        renderStatus(payload);
       })
       .catch(() => {});
   </script>
