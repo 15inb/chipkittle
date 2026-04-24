@@ -975,7 +975,7 @@ define({
 define({
   name: "mug",
   category: "Dating",
-  description: "Mug someone and steal up to 10 bread from them (10 minute cooldown).",
+  description: "Mug someone and steal up to 10 bread from them (24 hour cooldown).",
   usage: "mug @user",
   async run(ctx) {
     const target = ctx.message.mentions.users.first();
@@ -989,10 +989,10 @@ define({
       return;
     }
 
-    // Check cooldown (10 minutes)
+    // Check cooldown (24 hours)
     const cooldownKey = `mug_${ctx.message.author.id}`;
     const lastMug = ctx.config.cooldowns?.[cooldownKey];
-    const cooldownMs = 10 * 60 * 1000; // 10 minutes
+    const cooldownMs = 24 * 60 * 60 * 1000; // 24 hours
     
     if (lastMug && Date.now() - new Date(lastMug).getTime() < cooldownMs) {
       const remaining = cooldownMs - (Date.now() - new Date(lastMug).getTime());
@@ -1033,7 +1033,7 @@ define({
 define({
   name: "drug",
   category: "Dating",
-  description: "Drug someone with a random set of 10 drugs.",
+  description: "Drug someone with a random set of 2 drugs.",
   usage: "drug @user",
   async run(ctx) {
     const member = mentionUser(ctx.message);
@@ -1043,10 +1043,10 @@ define({
       "caffeine", "nicotine", "alcohol", "sugar", "chocolate", "bread"
     ];
     
-    // Randomly select 10 unique drugs
+    // Randomly select 2 unique drugs
     const selectedDrugs = [];
     const shuffled = [...drugs].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < Math.min(10, drugs.length); i++) {
+    for (let i = 0; i < Math.min(2, drugs.length); i++) {
       selectedDrugs.push(shuffled[i]);
     }
     
