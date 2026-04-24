@@ -721,15 +721,15 @@ a {
 }
 
 .runner-card {
-  --game-card-art: linear-gradient(135deg, rgba(82, 215, 101, 0.5), rgba(12, 23, 18, 0.1));
+  --game-card-art: url("/assets/runner-funny.svg");
 }
 
 .mines-card {
-  --game-card-art: linear-gradient(135deg, rgba(214, 154, 60, 0.48), rgba(17, 25, 23, 0.1));
+  --game-card-art: url("/assets/mines-funny.svg");
 }
 
 .catch-card {
-  --game-card-art: linear-gradient(135deg, rgba(244, 210, 65, 0.52), rgba(82, 215, 101, 0.16));
+  --game-card-art: url("/assets/catch-funny.svg");
 }
 
 .game-card h2 {
@@ -778,7 +778,9 @@ a {
 }
 
 .mines-shell {
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(320px, 520px) 280px;
+  justify-content: start;
+  align-items: start;
 }
 
 .mines-board {
@@ -787,7 +789,7 @@ a {
   gap: 8px;
   align-content: center;
   min-height: 420px;
-  max-width: 520px;
+  width: min(100%, 520px);
   border: 1px solid rgba(255, 255, 255, 0.46);
   border-radius: 14px;
   padding: clamp(14px, 2.5vw, 22px);

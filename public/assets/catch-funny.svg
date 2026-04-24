@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Bread Catch art</title>
+  <desc id="desc">A funny basket catching bread while a very smug Chipkittle watches cursed junk fall nearby.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f9f4c8"/>
+      <stop offset="100%" stop-color="#8dc59a"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#17311e" flood-opacity=".28"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <g opacity=".14" stroke="#2a5830" stroke-width="5">
+    <path d="M0 120 H1200"/>
+    <path d="M0 250 H1200"/>
+    <path d="M0 380 H1200"/>
+    <path d="M0 510 H1200"/>
+    <path d="M0 640 H1200"/>
+  </g>
+  <g filter="url(#shadow)">
+    <g transform="translate(300 570)">
+      <rect x="-130" y="0" width="260" height="74" rx="26" fill="#20893c"/>
+      <rect x="-92" y="18" width="184" height="16" rx="8" fill="rgba(255,255,255,.42)"/>
+      <rect x="-64" y="-60" width="88" height="60" rx="18" fill="#d89d3a" stroke="#8b5920" stroke-width="10"/>
+    </g>
+    <g fill="#d89d3a" stroke="#8b5920" stroke-width="10">
+      <rect x="234" y="136" width="98" height="74" rx="18" transform="rotate(8 283 173)"/>
+      <rect x="546" y="224" width="98" height="74" rx="18" transform="rotate(-8 595 261)"/>
+      <rect x="422" y="84" width="98" height="74" rx="18" transform="rotate(18 471 121)"/>
+    </g>
+    <g transform="translate(880 380)">
+      <ellipse cx="0" cy="126" rx="150" ry="42" fill="#17311e" opacity=".18"/>
+      <ellipse cx="0" cy="0" rx="108" ry="128" fill="#f7faf5"/>
+      <ellipse cx="0" cy="132" rx="82" ry="38" fill="#f1d0bd"/>
+      <ellipse cx="-34" cy="-18" rx="17" ry="24" fill="#101915"/>
+      <ellipse cx="34" cy="-18" rx="17" ry="24" fill="#101915"/>
+      <circle cx="-34" cy="-18" r="6" fill="#70ef66"/>
+      <circle cx="34" cy="-18" r="6" fill="#70ef66"/>
+      <path d="M-106 -28 C-122 -108 -74 -178 -20 -188 C-54 -130 -46 -74 -4 -32 Z" fill="#111917"/>
+      <path d="M106 -28 C122 -108 74 -178 20 -188 C54 -130 46 -74 4 -32 Z" fill="#111917"/>
+      <text x="0" y="88" text-anchor="middle" font-size="36" font-family="Arial, sans-serif" font-weight="700" fill="#101915">nice catch</text>
+    </g>
+    <g transform="translate(650 218) rotate(-10)">
+      <path d="M-54 -28 C-20 -64 42 -62 64 -10 C74 24 48 62 8 74 C-44 90 -84 8 -54 -28 Z" fill="#111917"/>
+      <path d="M-42 -12 C-16 -40 28 -40 42 -8 C48 16 34 38 6 48 C-28 58 -54 4 -42 -12 Z" fill="#26372d"/>
+    </g>
+  </g>
+</svg>
