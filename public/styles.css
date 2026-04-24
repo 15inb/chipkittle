@@ -16,6 +16,40 @@
   --danger: #ff7b7b;
   --warning: #f7c66a;
   --radius: 8px;
+  --accent-rgb: 89, 215, 138;
+  --accent-2-rgb: 164, 243, 127;
+}
+
+html[data-panel-theme="blue"] {
+  --accent: #63b3ff;
+  --accent-2: #9ad7ff;
+  --accent-ink: #04101f;
+  --accent-rgb: 99, 179, 255;
+  --accent-2-rgb: 154, 215, 255;
+}
+
+html[data-panel-theme="red"] {
+  --accent: #ff6b7a;
+  --accent-2: #ffb0a3;
+  --accent-ink: #210306;
+  --accent-rgb: 255, 107, 122;
+  --accent-2-rgb: 255, 176, 163;
+}
+
+html[data-panel-theme="purple"] {
+  --accent: #b58cff;
+  --accent-2: #e0bdff;
+  --accent-ink: #12051f;
+  --accent-rgb: 181, 140, 255;
+  --accent-2-rgb: 224, 189, 255;
+}
+
+html[data-panel-theme="gold"] {
+  --accent: #f4c85f;
+  --accent-2: #ffe59a;
+  --accent-ink: #1d1302;
+  --accent-rgb: 244, 200, 95;
+  --accent-2-rgb: 255, 229, 154;
 }
 
 * {
@@ -30,8 +64,8 @@ body {
   margin: 0;
   min-height: 100svh;
   background:
-    radial-gradient(circle at 12% 0%, rgba(164, 243, 127, 0.08), transparent 22%),
-    radial-gradient(circle at 88% 10%, rgba(89, 215, 138, 0.14), transparent 28%),
+    radial-gradient(circle at 12% 0%, rgba(var(--accent-2-rgb), 0.08), transparent 22%),
+    radial-gradient(circle at 88% 10%, rgba(var(--accent-rgb), 0.14), transparent 28%),
     linear-gradient(180deg, #06080c 0%, #090d12 24%, var(--bg) 100%);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -111,6 +145,36 @@ textarea {
 .topbar-nav a:hover {
   color: var(--text);
   background: var(--surface-2);
+}
+
+.theme-picker {
+  display: inline-flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 6px 8px 6px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.theme-picker span {
+  line-height: 1;
+}
+
+.theme-picker select {
+  width: auto;
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 5px 28px 5px 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .sidebar {
@@ -209,7 +273,7 @@ textarea {
   height: 8px;
   border-radius: 999px;
   background: var(--accent);
-  box-shadow: 0 0 18px rgba(89, 215, 138, 0.7);
+  box-shadow: 0 0 18px rgba(var(--accent-rgb), 0.7);
 }
 
 .content {
@@ -461,6 +525,7 @@ button:hover {
 .panel-section {
   display: grid;
   gap: 16px;
+  align-content: start;
 }
 
 .section-heading {
@@ -516,7 +581,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(89, 215, 138, 0.14);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.14);
 }
 
 .field-pair {
@@ -730,8 +795,8 @@ textarea:focus {
 
 .filter-pill.is-active,
 .filter-pill:hover {
-  border-color: rgba(89, 215, 138, 0.45);
-  background: rgba(89, 215, 138, 0.12);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--text);
 }
 
@@ -842,7 +907,7 @@ textarea:focus {
 }
 
 .flash {
-  border-color: rgba(89, 215, 138, 0.48);
+  border-color: rgba(var(--accent-rgb), 0.48);
   margin-bottom: 20px;
 }
 
@@ -866,6 +931,7 @@ code {
 
 .dashboard-grid {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: start;
 }
 
 .stat-card,
@@ -907,11 +973,12 @@ code {
 }
 
 .list-row {
-  padding: 14px 16px;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 54px;
 }
 
 .list-row span,
@@ -1025,7 +1092,7 @@ code {
 }
 
 .case-status.is-closed {
-  background: rgba(89, 215, 138, 0.14);
+  background: rgba(var(--accent-rgb), 0.14);
   color: var(--accent);
 }
 
@@ -1111,10 +1178,10 @@ code {
   align-items: end;
   gap: 24px;
   padding: 32px;
-  border: 1px solid rgba(164, 243, 127, 0.18);
+  border: 1px solid rgba(var(--accent-2-rgb), 0.18);
   border-radius: 24px;
   background:
-    radial-gradient(circle at 85% 15%, rgba(89, 215, 138, 0.18), transparent 28%),
+    radial-gradient(circle at 85% 15%, rgba(var(--accent-rgb), 0.18), transparent 28%),
     radial-gradient(circle at 12% 5%, rgba(255, 255, 255, 0.05), transparent 26%),
     linear-gradient(140deg, rgba(11, 14, 19, 0.98), rgba(15, 20, 27, 0.94));
 }
@@ -1247,9 +1314,9 @@ code {
 
 .rail-focus span {
   justify-self: start;
-  border: 1px solid rgba(89, 215, 138, 0.35);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
   border-radius: 999px;
-  background: rgba(89, 215, 138, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   color: var(--text);
   padding: 7px 10px;
   font-size: 11px;
@@ -1313,8 +1380,8 @@ code {
 
 .settings-nav a:hover,
 .settings-nav a.active {
-  border-color: rgba(89, 215, 138, 0.35);
-  background: linear-gradient(180deg, rgba(89, 215, 138, 0.12), rgba(255, 255, 255, 0.02));
+  border-color: rgba(var(--accent-rgb), 0.35);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), rgba(255, 255, 255, 0.02));
 }
 
 .settings-nav a.active::before {
@@ -1388,8 +1455,8 @@ code {
 }
 
 .workspace-quicklinks a:hover {
-  border-color: rgba(89, 215, 138, 0.35);
-  background: linear-gradient(180deg, rgba(89, 215, 138, 0.12), rgba(255, 255, 255, 0.02));
+  border-color: rgba(var(--accent-rgb), 0.35);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), rgba(255, 255, 255, 0.02));
 }
 
 .section-spotlight {
@@ -1397,10 +1464,10 @@ code {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
   align-items: end;
-  border: 1px solid rgba(164, 243, 127, 0.16);
+  border: 1px solid rgba(var(--accent-2-rgb), 0.16);
   border-radius: 22px;
   background:
-    radial-gradient(circle at 100% 0%, rgba(89, 215, 138, 0.15), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(var(--accent-rgb), 0.15), transparent 34%),
     linear-gradient(135deg, rgba(14, 17, 23, 0.98), rgba(17, 21, 29, 0.92));
   padding: 24px 26px;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
@@ -1607,6 +1674,7 @@ textarea {
   }
 
   .topbar-nav a,
+  .theme-picker,
   .topbar-status {
     width: 100%;
     justify-content: center;

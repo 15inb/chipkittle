@@ -1189,10 +1189,16 @@ function layout({ title, body, user, flash = "" }) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
+  <script>
+    (() => {
+      const theme = localStorage.getItem("chipkittlePanelTheme") || "green";
+      document.documentElement.dataset.panelTheme = theme;
+    })();
+  </script>
   <link rel="icon" type="image/png" href="/notativelogotransparent.png">
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="panel-ui">
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-brand">
@@ -1209,6 +1215,16 @@ function layout({ title, body, user, flash = "" }) {
         </div>
       </div>
       <nav class="topbar-nav">
+        <label class="theme-picker">
+          <span>Theme</span>
+          <select data-theme-picker aria-label="Panel color theme">
+            <option value="green">Green</option>
+            <option value="blue">Blue</option>
+            <option value="red">Red</option>
+            <option value="purple">Purple</option>
+            <option value="gold">Gold</option>
+          </select>
+        </label>
         <a href="/">Panel</a>
         <a href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
         ${user ? '<a href="/commits">Commits</a>' : ""}
@@ -1220,6 +1236,19 @@ function layout({ title, body, user, flash = "" }) {
       ${body}
     </main>
   </div>
+  <script>
+    (() => {
+      const picker = document.querySelector("[data-theme-picker]");
+      if (!picker) return;
+      const current = document.documentElement.dataset.panelTheme || "green";
+      picker.value = current;
+      picker.addEventListener("change", () => {
+        const next = picker.value || "green";
+        document.documentElement.dataset.panelTheme = next;
+        localStorage.setItem("chipkittlePanelTheme", next);
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }
