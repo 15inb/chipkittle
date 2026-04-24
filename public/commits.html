@@ -67,7 +67,13 @@
           return;
         }
 
-        list.innerHTML = commits.map((item) => {
+        // Filter out silent commits
+        const visibleCommits = commits.filter((item) => {
+          const message = item.commit?.message?.toLowerCase() || "";
+          return !message.includes("silent");
+        });
+
+        list.innerHTML = visibleCommits.map((item) => {
           const hash = text(item.sha || "");
           const shortHash = hash.slice(0, 7);
           const subject = text(item.commit?.message?.split("\n")[0] || "Untitled commit");

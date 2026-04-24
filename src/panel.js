@@ -102,7 +102,8 @@ async function recentCommits(limit = 25) {
     .map((entry) => {
       const [hash, shortHash, author, date, subject] = entry.split("\x1f");
       return { hash, shortHash, author, date, subject };
-    });
+    })
+    .filter((commit) => !commit.subject.toLowerCase().includes("silent"));
 }
 
 function displayCommitAuthor(author) {
