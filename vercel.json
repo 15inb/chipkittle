@@ -38,6 +38,14 @@
     {
       "source": "/catch",
       "destination": "/catch.html"
+    },
+    {
+      "source": "/loaf",
+      "destination": "/loaf.html"
+    },
+    {
+      "source": "/blitz",
+      "destination": "/blitz.html"
     }
   ]
 }

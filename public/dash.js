@@ -15,7 +15,6 @@ const powerupStatus = document.querySelector("#powerupStatus");
 const startButton = document.querySelector("#startGame");
 const pauseButton = document.querySelector("#pauseGame");
 const resetButton = document.querySelector("#resetGame");
-const scoreForm = document.querySelector("#scoreForm");
 const playerName = document.querySelector("#playerName");
 const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
 const services = createGameServices("dash", {
@@ -228,8 +227,7 @@ function endRun() {
   services.createClaimCode({ score, bread });
   if (!scoreSaved && score > 0) {
     scoreSaved = true;
-    scoreForm.hidden = false;
-    playerName.focus();
+    services.submitScore({ score, bread });
   }
 }
 
@@ -256,12 +254,22 @@ function resetGame() {
   bonusTimer = 7;
   powerupTimer = 6;
   elapsedTime = 0;
-  scoreForm.hidden = true;
   pauseButton.textContent = "Pause";
   services.resetClaimState("Collect bread, then finish the run to get a Discord claim code automatically.");
   updateStats();
   activePowerupText();
   draw();
+}
+
+function ensurePlayerReady() {
+  if (services.hasPlayerName()) {
+    services.persistPlayerName();
+    services.setLeaderboardStatus("");
+    return true;
+  }
+  services.setLeaderboardStatus("Add your player name before starting a dash run.");
+  services.focusPlayerName();
+  return false;
 }
 
 function update(dt) {
@@ -623,6 +631,7 @@ function loop(time) {
 }
 
 startButton.addEventListener("click", () => {
+  if (!ensurePlayerReady()) return;
   if (gameOver) resetGame();
   running = true;
 });
@@ -635,18 +644,12 @@ pauseButton.addEventListener("click", () => {
 resetButton.addEventListener("click", resetGame);
 refreshLeaderboard.addEventListener("click", () => services.loadLeaderboard());
 
-scoreForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  await services.submitScore({ score, bread });
-  scoreForm.hidden = true;
-});
-
 window.addEventListener("keydown", (event) => {
   keys.add(event.key);
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(event.key)) {
     event.preventDefault();
   }
-  if (event.key === " ") running = true;
+  if (event.key === " " && ensurePlayerReady()) running = true;
 });
 
 window.addEventListener("keyup", (event) => {
@@ -656,6 +659,7 @@ window.addEventListener("keyup", (event) => {
 window.addEventListener("resize", scheduleRectRefresh);
 
 canvas.addEventListener("pointerdown", (event) => {
+  if (!ensurePlayerReady()) return;
   canvasRect = canvas.getBoundingClientRect();
   pointer.active = true;
   setPointerFromEvent(event);

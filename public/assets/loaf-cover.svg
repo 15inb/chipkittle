@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Loaf Hopper cover art</title>
+  <desc id="desc">A Chipkittle hopping across spooky traffic lanes toward glowing altar pads while bread drifts nearby.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#14261d"/>
+      <stop offset="100%" stop-color="#4b6154"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="720" fill="url(#bg)"/>
+  <rect x="0" y="110" width="1200" height="70" fill="#24372c"/>
+  <rect x="0" y="188" width="1200" height="70" fill="#36424a"/>
+  <rect x="0" y="266" width="1200" height="70" fill="#52658e"/>
+  <rect x="0" y="344" width="1200" height="70" fill="#2b353b"/>
+  <rect x="0" y="422" width="1200" height="70" fill="#7b8f80"/>
+  <rect x="0" y="500" width="1200" height="70" fill="#51655a"/>
+  <g fill="#79d66f">
+    <rect x="90" y="46" width="96" height="44" rx="18"/>
+    <rect x="320" y="46" width="96" height="44" rx="18"/>
+    <rect x="552" y="46" width="96" height="44" rx="18"/>
+    <rect x="784" y="46" width="96" height="44" rx="18"/>
+    <rect x="1014" y="46" width="96" height="44" rx="18"/>
+  </g>
+  <g>
+    <rect x="160" y="202" width="128" height="44" rx="16" fill="#4252c9"/>
+    <rect x="640" y="202" width="128" height="44" rx="16" fill="#4252c9"/>
+    <rect x="960" y="202" width="128" height="44" rx="16" fill="#4252c9"/>
+    <rect x="300" y="280" width="148" height="46" rx="18" fill="#d99a3b"/>
+    <rect x="790" y="280" width="148" height="46" rx="18" fill="#d99a3b"/>
+    <rect x="80" y="358" width="112" height="46" rx="16" fill="#111917"/>
+    <rect x="480" y="358" width="112" height="46" rx="16" fill="#111917"/>
+    <rect x="900" y="358" width="112" height="46" rx="16" fill="#111917"/>
+  </g>
+  <g transform="translate(600 544)">
+    <ellipse rx="78" ry="26" fill="rgba(0,0,0,0.24)"/>
+    <ellipse rx="56" ry="62" fill="#f7faf5"/>
+    <circle cx="-18" cy="-18" r="10" fill="#111917"/>
+    <circle cx="18" cy="-18" r="10" fill="#111917"/>
+    <ellipse cy="22" rx="28" ry="16" fill="#f1d0bd"/>
+  </g>
+  <g fill="#f4cf70" stroke="#8d5a20" stroke-width="8">
+    <rect x="488" y="236" width="76" height="50" rx="16"/>
+    <rect x="706" y="430" width="76" height="50" rx="16"/>
+  </g>
+</svg>

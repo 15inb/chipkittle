@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chipkittle Game</title>
-  <meta name="description" content="Play as a small Chipkittle.">
+  <title>Bread Blitz</title>
+  <meta name="description" content="Survive the swarm, auto-zap cursed shapes, and vacuum up bread.">
   <link rel="icon" type="image/png" href="/notativelogotransparent.png">
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/site.css">
@@ -30,41 +30,31 @@
     </header>
 
     <section class="page-head game-head">
-      <p class="eyebrow">Artifact run</p>
-      <h1>Chipkittle Dash</h1>
-      <p>Collect glowing artifacts and bread while the curse stones drift across the ceremony floor.</p>
+      <p class="eyebrow">Arena swarm</p>
+      <h1>Bread Blitz</h1>
+      <p>Slide around the ritual circle, auto-fire at the nearest curse, and vacuum every loaf shard you can reach.</p>
     </section>
 
-    <section class="game-shell" aria-label="Chipkittle Dash game">
+    <section class="game-shell" aria-label="Bread Blitz game">
       <div class="game-stage">
-        <canvas id="chipkittleGame" width="960" height="540" aria-label="Chipkittle Dash playfield"></canvas>
+        <canvas id="blitzCanvas" width="960" height="540" aria-label="Bread Blitz playfield"></canvas>
       </div>
       <aside class="game-panel">
-        <div class="game-stat">
-          <span>Score</span>
-          <strong id="scoreValue">0</strong>
-        </div>
-        <div class="game-stat">
-          <span>Bread</span>
-          <strong id="breadValue">0</strong>
-        </div>
-        <div class="game-stat">
-          <span>Best</span>
-          <strong id="bestValue">0</strong>
-        </div>
+        <div class="game-stat"><span>Score</span><strong id="scoreValue">0</strong></div>
+        <div class="game-stat"><span>Bread</span><strong id="breadValue">0</strong></div>
+        <div class="game-stat"><span>Vitality</span><strong id="healthValue">5</strong></div>
+        <label>
+          Player name
+          <input id="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
+        </label>
         <div class="game-controls">
           <button class="button primary" type="button" id="startGame">Start</button>
-          <button class="button secondary" type="button" id="pauseGame">Pause</button>
           <button class="button secondary" type="button" id="resetGame">Reset</button>
         </div>
         <div class="game-status" id="powerupStatus">Power-up: None</div>
-        <label>
-          Player name
-          <input id="playerName" name="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
-        </label>
         <div class="claim-card" id="claimCard">
           <span>Discord claim</span>
-          <small>Collect bread, then finish the run to get a claim code automatically.</small>
+          <small>Hold the swarm off and gather bread to get a claim code.</small>
         </div>
         <div class="leaderboard">
           <div class="leaderboard-head">
@@ -78,6 +68,6 @@
     </section>
   </main>
 
-  <script type="module" src="/dash.js"></script>
+  <script type="module" src="/blitz.js"></script>
 </body>
 </html>

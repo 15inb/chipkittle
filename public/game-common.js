@@ -1,4 +1,5 @@
 const PANEL_BASE = "https://panel.chipkittle.com";
+const PLAYER_NAME_KEY = "chipkittle-player-name";
 
 export function safeName(value) {
   return String(value || "")
@@ -75,6 +76,37 @@ export function createGameServices(gameId, options) {
   const leaderboardKey = `chipkittle-${gameId}-leaderboard`;
   let claimRequested = false;
 
+  function hydratePlayerName() {
+    if (!playerName) return;
+    if (!playerName.value) {
+      playerName.value = localStorage.getItem(PLAYER_NAME_KEY) || "";
+    }
+  }
+
+  function persistPlayerName({ allowAnonymous = false } = {}) {
+    if (!playerName) return allowAnonymous ? "Anonymous Chipkittle" : "";
+    const rawValue = String(playerName.value || "").trim() || localStorage.getItem(PLAYER_NAME_KEY) || "";
+    if (!rawValue && !allowAnonymous) {
+      playerName.value = "";
+      return "";
+    }
+    const nextName = safeName(rawValue);
+    playerName.value = allowAnonymous || rawValue ? nextName : "";
+    if (rawValue) {
+      localStorage.setItem(PLAYER_NAME_KEY, nextName);
+    }
+    return nextName;
+  }
+
+  function hasPlayerName() {
+    return Boolean(String(playerName?.value || "").trim() || localStorage.getItem(PLAYER_NAME_KEY) || "");
+  }
+
+  function focusPlayerName() {
+    playerName?.focus();
+    playerName?.select?.();
+  }
+
   function setLeaderboardStatus(message = "") {
     leaderboardStatus.hidden = !message;
     leaderboardStatus.textContent = message;
@@ -116,9 +148,10 @@ export function createGameServices(gameId, options) {
 
   async function submitScore({ score, bread }) {
     if (score <= 0) return;
+    const name = persistPlayerName({ allowAnonymous: true });
     const entry = {
       game: gameId,
-      name: safeName(playerName?.value),
+      name,
       score: Math.floor(score),
       bread: Math.floor(bread),
       createdAt: new Date().toISOString()
@@ -165,7 +198,7 @@ export function createGameServices(gameId, options) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           game: gameId,
-          name: safeName(playerName?.value),
+          name: persistPlayerName({ allowAnonymous: true }),
           score: Math.floor(score),
           bread: Math.floor(bread)
         })
@@ -186,7 +219,21 @@ export function createGameServices(gameId, options) {
     setLeaderboardStatus("");
   }
 
+  hydratePlayerName();
+  if (playerName) {
+    playerName.addEventListener("change", () => {
+      persistPlayerName();
+    });
+    playerName.addEventListener("blur", () => {
+      persistPlayerName();
+    });
+  }
+
   return {
+    hydratePlayerName,
+    persistPlayerName,
+    hasPlayerName,
+    focusPlayerName,
     renderLeaderboard,
     loadLeaderboard,
     submitScore,

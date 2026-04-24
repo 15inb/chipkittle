@@ -25,6 +25,7 @@ const services = createGameServices("runner", {
 });
 
 const groundY = 430;
+const obstacleGroundY = 462;
 const keys = new Set();
 const player = {
   x: 116,
@@ -183,7 +184,7 @@ function spawnObstacle() {
   const tall = Math.random() < 0.28;
   obstacles.push({
     x: canvas.width + 70,
-    y: groundY,
+    y: obstacleGroundY,
     width: tall ? 40 : 52,
     height: tall ? 88 : 52
   });

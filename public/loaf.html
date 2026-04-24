@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chipkittle Game</title>
-  <meta name="description" content="Play as a small Chipkittle.">
+  <title>Loaf Hopper</title>
+  <meta name="description" content="Hop through cursed lanes, grab bread, and reach the altars.">
   <link rel="icon" type="image/png" href="/notativelogotransparent.png">
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/site.css">
@@ -30,41 +30,31 @@
     </header>
 
     <section class="page-head game-head">
-      <p class="eyebrow">Artifact run</p>
-      <h1>Chipkittle Dash</h1>
-      <p>Collect glowing artifacts and bread while the curse stones drift across the ceremony floor.</p>
+      <p class="eyebrow">Road ritual</p>
+      <h1>Loaf Hopper</h1>
+      <p>Hop through drifting curse lanes, scoop up bread, and reach the altar pads before the ritual snaps.</p>
     </section>
 
-    <section class="game-shell" aria-label="Chipkittle Dash game">
+    <section class="game-shell" aria-label="Loaf Hopper game">
       <div class="game-stage">
-        <canvas id="chipkittleGame" width="960" height="540" aria-label="Chipkittle Dash playfield"></canvas>
+        <canvas id="hopperCanvas" width="960" height="540" aria-label="Loaf Hopper playfield"></canvas>
       </div>
       <aside class="game-panel">
-        <div class="game-stat">
-          <span>Score</span>
-          <strong id="scoreValue">0</strong>
-        </div>
-        <div class="game-stat">
-          <span>Bread</span>
-          <strong id="breadValue">0</strong>
-        </div>
-        <div class="game-stat">
-          <span>Best</span>
-          <strong id="bestValue">0</strong>
-        </div>
-        <div class="game-controls">
-          <button class="button primary" type="button" id="startGame">Start</button>
-          <button class="button secondary" type="button" id="pauseGame">Pause</button>
-          <button class="button secondary" type="button" id="resetGame">Reset</button>
-        </div>
-        <div class="game-status" id="powerupStatus">Power-up: None</div>
+        <div class="game-stat"><span>Score</span><strong id="scoreValue">0</strong></div>
+        <div class="game-stat"><span>Bread</span><strong id="breadValue">0</strong></div>
+        <div class="game-stat"><span>Lives</span><strong id="livesValue">3</strong></div>
         <label>
           Player name
-          <input id="playerName" name="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
+          <input id="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
         </label>
+        <div class="game-controls">
+          <button class="button primary" type="button" id="startGame">Start</button>
+          <button class="button secondary" type="button" id="resetGame">Reset</button>
+        </div>
+        <div class="game-status" id="statusValue">Altars open. Hop with arrows, WASD, or tap nearby.</div>
         <div class="claim-card" id="claimCard">
           <span>Discord claim</span>
-          <small>Collect bread, then finish the run to get a claim code automatically.</small>
+          <small>Collect bread and survive as long as you can to get a claim code.</small>
         </div>
         <div class="leaderboard">
           <div class="leaderboard-head">
@@ -78,6 +68,6 @@
     </section>
   </main>
 
-  <script type="module" src="/dash.js"></script>
+  <script type="module" src="/loaf.js"></script>
 </body>
 </html>
