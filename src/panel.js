@@ -1189,28 +1189,29 @@ function layout({ title, body, user, flash = "" }) {
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <a class="brand" href="https://chipkittle.com" target="_blank" rel="noreferrer">
-        <span class="brand-mark"><img src="/chipkittle-logo.svg" alt="Chipkittle logo"></span>
-        <span>
-          <strong>Chipkittle Panel</strong>
-          <small>Server configuration</small>
-        </span>
-      </a>
-      <nav>
-        <a href="/">Config</a>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <a class="brand brand-inline" href="https://chipkittle.com" target="_blank" rel="noreferrer">
+          <span class="brand-mark"><img src="/chipkittle-logo.svg" alt="Chipkittle logo"></span>
+          <span>
+            <strong>Chipkittle Panel</strong>
+            <small>Server operations</small>
+          </span>
+        </a>
+        <div class="topbar-status">
+          <span class="status-dot"></span>
+          <span>Live control room</span>
+        </div>
+      </div>
+      <nav class="topbar-nav">
+        <a href="/">Panel</a>
         <a href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
         ${user ? '<a href="/commits">Commits</a>' : ""}
         ${user ? '<a href="/logout">Sign out</a>' : '<a href="/login">Sign in</a>'}
       </nav>
-      <a class="sidebar-button" href="https://chipkittle.com/" aria-label="Open the Chipkittle homepage">Homepage</a>
-      <div class="sidebar-note">
-        <span class="status-dot"></span>
-        Web panel active
-      </div>
-    </aside>
-    <main class="content">
+    </header>
+    <main class="content content-wide">
       ${flash ? `<div class="flash">${escapeHtml(flash)}</div>` : ""}
       ${body}
     </main>
@@ -1431,10 +1432,11 @@ function commandRoleAccess(commandList, roles, overrides = {}) {
 
 function settingsNav(guildId, activeSection) {
   return `
-    <nav class="settings-nav" aria-label="Settings categories">
+    <nav class="settings-nav settings-nav-panels" aria-label="Settings categories">
       ${SETTINGS_NAV_GROUPS.map((group) => `
-        <section class="settings-nav-group">
+        <section class="settings-nav-group settings-nav-panel">
           <p class="settings-nav-label">${escapeHtml(group.label)}</p>
+          <div class="settings-nav-links">
           ${group.sections.map((sectionId) => {
             const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
             if (!section) return "";
@@ -1444,6 +1446,7 @@ function settingsNav(guildId, activeSection) {
                 <small>${escapeHtml(section.description)}</small>
               </a>`;
           }).join("")}
+          </div>
         </section>
       `).join("")}
     </nav>
@@ -1947,18 +1950,19 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
         </div>
       </section>
       ${guildSummaryStrip(guild, config)}
-      <div class="panel-workspace">
+      <section class="panel-deck">
         ${settingsNav(guild.id, currentSection)}
         <div class="panel-content-shell">
-          <section class="section-header-card">
+          <section class="section-header-card section-header-card--loud">
             <div>
               <p class="eyebrow">Current workspace</p>
               <h2>${escapeHtml(currentMeta.label)}</h2>
               <p class="muted">${escapeHtml(currentMeta.description)}</p>
             </div>
             <div class="section-header-meta">
+              <span>${NON_FORM_SECTIONS.has(currentSection) ? "Operational view" : "Configuration editor"}</span>
+              <span>${escapeHtml(guild.name)}</span>
               <span>Prefix ${escapeHtml(config.prefix)}</span>
-              <span>${NON_FORM_SECTIONS.has(currentSection) ? "Read / action workspace" : "Editable settings"}</span>
             </div>
           </section>
           <div class="settings-main">
@@ -1975,7 +1979,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
             })}
           </div>
         </div>
-      </div>${panelClientScript}
+      </section>${panelClientScript}
     `
   });
 }

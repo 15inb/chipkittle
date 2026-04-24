@@ -1106,15 +1106,19 @@ define({
 
 define({
   name: "server",
-  aliases: ["serverinfo"],
+  aliases: ["serverinfo", "membercount", "members", "guildcount"],
   category: "Info",
   description: "Show server details.",
   async run(ctx) {
     const guild = ctx.message.guild;
+    const humans = guild.members.cache.filter((member) => !member.user.bot).size;
+    const bots = guild.members.cache.filter((member) => member.user.bot).size;
     await ctx.message.reply(
       [
         `**${guild.name}**`,
         `Members: ${guild.memberCount}`,
+        `Humans: ${humans}`,
+        `Bots: ${bots}`,
         `Channels: ${guild.channels.cache.size}`,
         `Roles: ${guild.roles.cache.size}`,
         `Created: <t:${Math.floor(guild.createdTimestamp / 1000)}:D>`
@@ -1125,7 +1129,7 @@ define({
 
 define({
   name: "user",
-  aliases: ["userinfo"],
+  aliases: ["userinfo", "joined", "joindate", "joinedat"],
   category: "Info",
   description: "Show user details.",
   usage: "user [@user]",
@@ -3669,6 +3673,7 @@ define({
 
 define({
   name: "profile",
+  aliases: ["title", "profiletitle", "mytitle"],
   category: "Chipkittle",
   description: "Show a member's Chipkittle profile card.",
   usage: "profile [@user]",
@@ -4180,7 +4185,7 @@ define({
 
 define({
   name: "gamerecords",
-  aliases: ["records", "gameranks"],
+  aliases: ["records", "gameranks", "leaderboardall", "allleaderboards", "gameboards"],
   category: "Games",
   description: "Show the current top record holder for each public browser game.",
   async run(ctx) {
@@ -4619,19 +4624,6 @@ define({
 });
 
 define({
-  name: "title",
-  aliases: ["profiletitle", "mytitle"],
-  category: "Chipkittle",
-  description: "Show a member's ceremonial profile title.",
-  usage: "title [@user]",
-  async run(ctx) {
-    const member = mentionTargetUser(ctx.message);
-    const profile = profileFor(ctx.config, member.id, member.displayName);
-    await ctx.message.reply(`**${member.displayName}** currently bears the title **${profile.title || "Unranked Witness"}**.`);
-  }
-});
-
-define({
   name: "randomprinciple",
   aliases: ["ruleofthestep", "principleroll"],
   category: "Chipkittle",
@@ -4774,7 +4766,7 @@ define({
 
 define({
   name: "aistatus",
-  aliases: ["chipstatusai", "aiinfo"],
+  aliases: ["chipstatusai", "aiinfo", "aichannels", "ailist", "aiconfigchannels"],
   category: "AI",
   description: "Show the current AI settings without editing them.",
   async run(ctx) {
@@ -4889,23 +4881,6 @@ define({
 });
 
 define({
-  name: "membercount",
-  aliases: ["members", "guildcount"],
-  category: "Info",
-  description: "Show member counts for the current server.",
-  async run(ctx) {
-    const humans = ctx.message.guild.members.cache.filter((member) => !member.user.bot).size;
-    const bots = ctx.message.guild.members.cache.filter((member) => member.user.bot).size;
-    await ctx.message.reply([
-      `**Member Count**`,
-      `Total: **${ctx.message.guild.memberCount}**`,
-      `Humans: **${humans}**`,
-      `Bots: **${bots}**`
-    ].join("\n"));
-  }
-});
-
-define({
   name: "servericon",
   aliases: ["guildicon", "icon"],
   category: "Info",
@@ -4954,19 +4929,6 @@ define({
       `NSFW: **${channel.nsfw ? "Yes" : "No"}**`,
       `Topic: ${channel.topic || "No topic set."}`
     ].join("\n"));
-  }
-});
-
-define({
-  name: "joined",
-  aliases: ["joindate", "joinedat"],
-  category: "Info",
-  description: "Show when someone joined the server.",
-  usage: "joined [@user]",
-  async run(ctx) {
-    const member = mentionTargetUser(ctx.message);
-    const joinedAt = member.joinedAt ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:F>` : "Unknown";
-    await ctx.message.reply(`**${member.displayName}** joined this server on ${joinedAt}.`);
   }
 });
 
@@ -5160,25 +5122,6 @@ define({
     await ctx.message.reply([
       `**Chipkittle Browser Games**`,
       PUBLIC_GAME_IDS.map((gameId) => `• **${publicGameLabel(gameId)}** — use \`${ctx.config.prefix}gameinfo ${gameId}\``).join("\n")
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "leaderboardall",
-  aliases: ["allleaderboards", "gameboards"],
-  category: "Games",
-  description: "Show the current top score for every public game.",
-  async run(ctx) {
-    const entries = readPublicLeaderboardEntries();
-    await ctx.message.reply([
-      `**All Public Game Leaders**`,
-      PUBLIC_GAME_IDS.map((gameId) => {
-        const top = publicGameEntries(entries, gameId, 1)[0];
-        return top
-          ? `• **${publicGameLabel(gameId)}** — ${top.name} (${top.score.toLocaleString()})`
-          : `• **${publicGameLabel(gameId)}** — no scores yet`;
-      }).join("\n")
     ].join("\n"));
   }
 });
@@ -5384,21 +5327,6 @@ define({
       `Reviewer roles: ${ctx.config.applications?.reviewerRoleIds?.length ? ctx.config.applications.reviewerRoleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "None"}`,
       `Approved role: ${ctx.config.applications?.approvedRoleId ? `<@&${ctx.config.applications.approvedRoleId}>` : "None"}`,
       `Blocked applicant roles: ${ctx.config.applications?.blockedRoleIds?.length ? ctx.config.applications.blockedRoleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "None"}`
-    ].join("\n"));
-  }
-});
-
-define({
-  name: "aichannels",
-  aliases: ["ailist", "aiconfigchannels"],
-  category: "AI",
-  description: "Show AI whitelist/blacklist channel routing.",
-  async run(ctx) {
-    await ctx.message.reply([
-      `**AI Channel Routing**`,
-      `Whitelisted channels: ${channelMentionList(ctx.config.ai.channelIds)}`,
-      `Blacklisted channels: ${channelMentionList(ctx.config.ai.blacklistedChannelIds || [])}`,
-      `Reply to mentions: **${ctx.config.ai.replyToMentions ? "Yes" : "No"}**`
     ].join("\n"));
   }
 });
