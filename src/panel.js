@@ -162,6 +162,7 @@ function flashFromQuery(query = {}) {
   if (query.modAction === "bad-duration") return "Timeout duration must look like 10m, 2h, or 1d.";
   if (query.modAction === "missing-permission") return "The bot is missing the required Discord permission for that action.";
   if (query.modAction === "hierarchy") return "Discord blocked that action because of role hierarchy.";
+  if (query.modAction === "actor-hierarchy") return "Panel moderation blocked: you cannot punish members with an equal or higher Discord role.";
   if (query.modAction === "failed") return "Moderation action failed. Check the bot logs for details.";
   if (query.update === "started") return "GitHub pull started.";
   if (query.update === "restart-started") return "Bot restart started.";
@@ -429,6 +430,35 @@ function assertModerationHierarchy(member, capability) {
   }
 }
 
+async function assertPanelActorCanModerate(discordGuild, panelUser, targetMember) {
+  if (!panelUser?.userId || panelUser.legacy || panelUser.userId === "legacy-root") {
+    const error = new Error("Panel user is not linked to a Discord member");
+    error.panelStatus = "actor-hierarchy";
+    throw error;
+  }
+
+  if (panelUser.userId === targetMember.id) {
+    const error = new Error("Panel user cannot moderate themselves");
+    error.panelStatus = "actor-hierarchy";
+    throw error;
+  }
+
+  if (targetMember.id === discordGuild.ownerId) {
+    const error = new Error("Panel user cannot moderate the server owner");
+    error.panelStatus = "actor-hierarchy";
+    throw error;
+  }
+
+  if (panelUser.userId === discordGuild.ownerId) return;
+
+  const actorMember = await discordGuild.members.fetch(panelUser.userId).catch(() => null);
+  if (!actorMember || actorMember.roles.highest.comparePositionTo(targetMember.roles.highest) <= 0) {
+    const error = new Error("Panel user role is not above target role");
+    error.panelStatus = "actor-hierarchy";
+    throw error;
+  }
+}
+
 function displayRoleName(guild, roleId) {
   if (!roleId) return "Not set";
   return guild.roles.find((role) => role.id === roleId)?.name || roleId;
@@ -438,6 +468,15 @@ function displayChannelName(guild, channelId) {
   if (!channelId) return "Not set";
   const channel = guild.channels.find((item) => item.id === channelId);
   return channel ? `#${channel.name}` : channelId;
+}
+
+function warningReasonText(warning) {
+  if (typeof warning === "string") return warning;
+  if (!warning || typeof warning !== "object") return "Warning recorded";
+  const reason = String(warning.reason || warning.message || warning.note || "Warning recorded");
+  const moderator = warning.moderatorTag || warning.moderatorId;
+  const createdAt = warning.createdAt ? ` on ${warning.createdAt}` : "";
+  return `${reason}${moderator ? ` by ${moderator}` : ""}${createdAt}`;
 }
 
 function moderationCenter(config = {}) {
@@ -451,7 +490,7 @@ function moderationCenter(config = {}) {
     .map(([userId, entries]) => ({
       userId,
       count: Array.isArray(entries) ? entries.length : 0,
-      latest: Array.isArray(entries) && entries.length ? entries[entries.length - 1] : ""
+      latest: Array.isArray(entries) && entries.length ? warningReasonText(entries[entries.length - 1]) : ""
     }))
     .filter((entry) => entry.count > 0)
     .sort((a, b) => b.count - a.count)
@@ -652,7 +691,7 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
                 <div class="warning-row-main">
                   <strong>${escapeHtml(entry.userId)}</strong>
                   <small>${escapeHtml(entry.entries.length)} active warning${entry.entries.length === 1 ? "" : "s"}</small>
-                  <ul>${entry.entries.slice(-5).reverse().map((reason) => `<li>${escapeHtml(reason || "Warning recorded")}</li>`).join("")}</ul>
+                  <ul>${entry.entries.slice(-5).reverse().map((warning) => `<li>${escapeHtml(warningReasonText(warning))}</li>`).join("")}</ul>
                 </div>
                 <button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/warnings/${entry.userId}/clear?section=moderation">Clear warnings</button>
               </article>
@@ -3350,6 +3389,8 @@ export function createPanel({
         response.redirect(moderationRedirect(discordGuild, request, "missing-target"));
         return;
       }
+
+      await assertPanelActorCanModerate(discordGuild, panelUser, member);
 
       let output = "";
       let durationMs = 0;

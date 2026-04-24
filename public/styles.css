@@ -1486,6 +1486,26 @@ code {
   top: 88px;
   display: grid;
   gap: 14px;
+  max-height: calc(100vh - 104px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--accent-rgb), 0.55) rgba(255, 255, 255, 0.04);
+}
+
+.settings-rail::-webkit-scrollbar {
+  width: 8px;
+}
+
+.settings-rail::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+.settings-rail::-webkit-scrollbar-thumb {
+  background: rgba(var(--accent-rgb), 0.55);
+  border-radius: 999px;
 }
 
 .settings-rail-card {
@@ -1865,6 +1885,9 @@ textarea {
 
   .settings-rail {
     position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 
   .settings-nav {
