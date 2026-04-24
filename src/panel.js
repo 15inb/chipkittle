@@ -6,9 +6,7 @@ import { promisify } from "node:util";
 import express from "express";
 import session from "express-session";
 import { serializeGuild } from "./bot.js";
-<<<<<<< HEAD
 import { createDashClaim } from "./dashClaims.js";
-=======
 import {
   createEightBallRoom,
   getEightBallRoomState,
@@ -16,7 +14,6 @@ import {
   resetEightBallRoom,
   shootEightBall
 } from "./eightBallRooms.js";
->>>>>>> 9963cb1334ef8ae6aae1f8cf9b0c089029bcee9a
 
 const execFileAsync = promisify(execFile);
 const UPDATE_STALE_MS = 10 * 60 * 1000;

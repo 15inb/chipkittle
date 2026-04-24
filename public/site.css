@@ -1436,16 +1436,12 @@ a {
 
   .game-controls,
   .score-form,
-<<<<<<< HEAD
   .claim-card,
-  .leaderboard {
-=======
   .leaderboard,
   .room-form,
   .shot-meter,
   .player-list,
   .table-note {
->>>>>>> 9963cb1334ef8ae6aae1f8cf9b0c089029bcee9a
     grid-column: 1 / -1;
   }
 
