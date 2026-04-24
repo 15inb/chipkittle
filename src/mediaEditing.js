@@ -17,54 +17,39 @@ function extFromMimeType(mimeType) {
   return ".bin";
 }
 
-function ffmpegFilterPath(filePath) {
-  return filePath.replace(/\\/g, "/").replace(/:/g, "\\:");
+function captionText(value) {
+  return String(value || "")
+    .replace(/\r\n|\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
-function assEscape(value) {
+function drawTextEscape(value) {
   return String(value || "")
     .replace(/\\/g, "\\\\")
-    .replace(/\{/g, "\\{")
-    .replace(/\}/g, "\\}")
-    .replace(/\r\n|\r|\n/g, "\\N");
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/,/g, "\\,")
+    .replace(/%/g, "\\%");
 }
 
-function durationForSubtitles(seconds = 60) {
-  const total = Math.max(1, Math.round(seconds));
-  const hours = Math.floor(total / 3600).toString().padStart(1, "0");
-  const minutes = Math.floor((total % 3600) / 60).toString().padStart(2, "0");
-  const secs = (total % 60).toString().padStart(2, "0");
-  return `${hours}:${minutes}:${secs}.00`;
-}
-
-function buildCaptionAss({ topText = "", bottomText = "", durationSeconds = 60 }) {
-  const end = durationForSubtitles(durationSeconds);
-  const events = [];
-
-  if (topText.trim()) {
-    events.push(`Dialogue: 0,0:00:00.00,${end},Top,,0,0,0,,${assEscape(topText)}`);
-  }
-
-  if (bottomText.trim()) {
-    events.push(`Dialogue: 0,0:00:00.00,${end},Bottom,,0,0,0,,${assEscape(bottomText)}`);
-  }
+function esmCaptionFilter({ text, width = 720 } = {}) {
+  const safeText = drawTextEscape(captionText(text));
+  const fontSize = Math.max(28, Math.min(54, Math.floor(width / 13)));
+  const lineSpacing = Math.max(4, Math.floor(fontSize / 7));
+  const horizontalPadding = Math.max(18, Math.floor(width * 0.04));
+  const verticalPadding = Math.max(16, Math.floor(fontSize * 0.55));
+  const estimatedLines = Math.max(1, safeText.split(/\\n|\n/).length);
+  const boxHeight = Math.max(96, Math.min(260, (fontSize + lineSpacing) * estimatedLines + verticalPadding * 2));
+  const textY = Math.max(8, Math.floor((boxHeight - fontSize * estimatedLines - lineSpacing * Math.max(0, estimatedLines - 1)) / 2));
 
   return [
-    "[Script Info]",
-    "ScriptType: v4.00+",
-    "PlayResX: 1280",
-    "PlayResY: 720",
-    "",
-    "[V4+ Styles]",
-    "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-    "Style: Top,Arial,62,&H00FFFFFF,&H000000FF,&H00000000,&H66000000,-1,0,0,0,100,100,0,0,1,6,0,8,60,60,34,1",
-    "Style: Bottom,Arial,62,&H00FFFFFF,&H000000FF,&H00000000,&H66000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,34,1",
-    "",
-    "[Events]",
-    "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
-    ...events,
-    ""
-  ].join("\n");
+    `scale='min(${width},iw)':-1:flags=lanczos`,
+    `pad=iw:ih+${boxHeight}:0:${boxHeight}:white`,
+    `drawtext=text='${safeText}':fontcolor=black:fontsize=${fontSize}:font='Arial':x=${horizontalPadding}:y=${textY}:line_spacing=${lineSpacing}:box=0`
+  ].join(",");
 }
 
 function gifFinalizeChain(baseFilter) {
@@ -140,22 +125,18 @@ function staticInputArgs(inputPath, seconds) {
 }
 
 export async function captionMedia(media, { topText = "", bottomText = "", forceGif = false } = {}) {
-  const contentTop = String(topText || "").trim();
-  const contentBottom = String(bottomText || "").trim();
-  if (!contentTop && !contentBottom) {
+  const caption = captionText([topText, bottomText].filter((part) => String(part || "").trim()).join("\n"));
+  if (!caption) {
     throw new Error("Give me some caption text first.");
   }
 
   return withMediaFiles(media, async ({ workDir, inputPath }) => {
     const isGif = media.mimeType === "image/gif";
-    const assPath = path.join(workDir, "caption.ass");
-    await writeFile(assPath, buildCaptionAss({ topText: contentTop, bottomText: contentBottom }));
 
     if (isGif || forceGif) {
       const outputPath = path.join(workDir, "captioned.gif");
       const sourceArgs = isGif ? ["-i", inputPath] : staticInputArgs(inputPath, DEFAULT_STATIC_GIF_SECONDS);
-      const subtitleFilter = `subtitles='${ffmpegFilterPath(assPath)}':original_size=1280x720`;
-      const filter = gifFinalizeChain(`${subtitleFilter},fps=15,${scaledFilter()}`);
+      const filter = gifFinalizeChain(`${esmCaptionFilter({ text: caption })},fps=15`);
 
       await runFfmpeg([
         "-y",
@@ -175,13 +156,13 @@ export async function captionMedia(media, { topText = "", bottomText = "", force
     }
 
     const outputPath = path.join(workDir, "captioned.png");
-    const subtitleFilter = `subtitles='${ffmpegFilterPath(assPath)}':original_size=1280x720,${scaledFilter(1024)}`;
+    const captionFilter = esmCaptionFilter({ text: caption, width: 1024 });
     await runFfmpeg([
       "-y",
       "-i",
       inputPath,
       "-vf",
-      subtitleFilter,
+      captionFilter,
       "-frames:v",
       "1",
       outputPath
