@@ -118,7 +118,22 @@ function usage(config, command) {
   return `${config.prefix}${command.usage || command.name}`;
 }
 
-const HELP_COMMANDS_PER_PAGE = 8;
+const HELP_COMMANDS_PER_PAGE = 7;
+const HELP_CATEGORIES_PER_PAGE = 8;
+const HELP_CATEGORY_ORDER = [
+  "General",
+  "Info",
+  "Utility",
+  "Games",
+  "Gambling",
+  "Chipkittle",
+  "AI",
+  "Applications",
+  "Moderation",
+  "Config",
+  "Fun",
+  "Dating"
+];
 
 function commandCategoryMap(commandList) {
   const byCategory = new Map();
@@ -126,7 +141,18 @@ function commandCategoryMap(commandList) {
     const category = item.category || "Other";
     byCategory.set(category, [...(byCategory.get(category) || []), item]);
   }
-  return byCategory;
+  for (const [category, commands] of byCategory.entries()) {
+    byCategory.set(category, [...commands].sort((a, b) => a.name.localeCompare(b.name)));
+  }
+  return new Map(
+    [...byCategory.entries()].sort((a, b) => {
+      const leftIndex = HELP_CATEGORY_ORDER.indexOf(a[0]);
+      const rightIndex = HELP_CATEGORY_ORDER.indexOf(b[0]);
+      const leftRank = leftIndex === -1 ? HELP_CATEGORY_ORDER.length : leftIndex;
+      const rightRank = rightIndex === -1 ? HELP_CATEGORY_ORDER.length : rightIndex;
+      return leftRank - rightRank || a[0].localeCompare(b[0]);
+    })
+  );
 }
 
 function chunkItems(items, size) {
@@ -142,27 +168,77 @@ function helpCustomId(messageId, action) {
 }
 
 function formatHelpCommand(config, command) {
-  const aliases = command.aliases?.length ? ` Aliases: ${command.aliases.join(", ")}.` : "";
-  return `\`${config.prefix}${command.name}\` - ${command.description || "No description."}${aliases}`;
+  const aliases = command.aliases?.length ? ` • aliases: ${command.aliases.join(", ")}` : "";
+  return `\`${config.prefix}${command.name}\` — ${command.description || "No description."}${aliases}`;
 }
 
-function helpOverviewEmbed(ctx, byCategory) {
-  const categories = [...byCategory.entries()]
-    .map(([category, items]) => `**${category}** - ${items.length} command${items.length === 1 ? "" : "s"}`)
+function helpNormalized(value = "") {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function helpSortedCategories(byCategory) {
+  return [...byCategory.entries()];
+}
+
+function helpCategoryChunks(byCategory) {
+  return chunkItems(helpSortedCategories(byCategory), HELP_CATEGORIES_PER_PAGE);
+}
+
+function resolveHelpTarget(commandList, rawTarget = "") {
+  const normalized = helpNormalized(rawTarget);
+  if (!normalized) return { type: "overview" };
+
+  const command = commandList.find((entry) =>
+    helpNormalized(entry.name) === normalized ||
+    (entry.aliases || []).some((alias) => helpNormalized(alias) === normalized)
+  );
+  if (command) return { type: "command", command };
+
+  const category = [...new Set(commandList.map((entry) => entry.category || "Other"))]
+    .find((entry) => helpNormalized(entry) === normalized);
+  if (category) return { type: "category", category };
+
+  return null;
+}
+
+function helpDetailEmbed(ctx, command) {
+  const aliases = command.aliases?.length ? command.aliases.join(", ") : "None";
+  return buildPrettyEmbed({
+    title: `Help: ${ctx.config.prefix}${command.name}`,
+    description: [
+      command.description || "No description.",
+      "",
+      `**Category:** ${command.category || "Other"}`,
+      `**Usage:** \`${usage(ctx.config, command)}\``,
+      `**Aliases:** ${aliases}`,
+      "",
+      "Tip: you can also run this as a slash command by typing `/` in Discord."
+    ].join("\n"),
+    color: 0x65d6ad,
+    footer: `Requested by ${ctx.message.author.tag}`
+  });
+}
+
+function helpOverviewEmbed(ctx, byCategory, overviewPage = 0) {
+  const categoryPages = helpCategoryChunks(byCategory);
+  const pageItems = categoryPages[overviewPage] || categoryPages[0] || [];
+  const totalCommands = ctx.commandList.length;
+  const categoryLines = pageItems
+    .map(([category, items]) => `**${category}** — ${items.length} command${items.length === 1 ? "" : "s"}`)
     .join("\n");
 
   return buildPrettyEmbed({
     title: "Chipkittle Help",
     description: [
-      `Commands for this server use \`${ctx.config.prefix}\` or Discord slash commands.`,
-      "Use the dropdown below to view a command category.",
+      `This bot currently has **${totalCommands}** commands across **${byCategory.size}** categories.`,
+      `Prefix commands use \`${ctx.config.prefix}\` and most also work as slash commands.`,
       "",
-      categories,
+      categoryLines || "No command categories found.",
       "",
-      `Use \`${ctx.config.prefix}help command\` for details about one command.`
+      `Use \`${ctx.config.prefix}help command\` for one command, or pick a category below.`
     ].join("\n"),
     color: 0x65d6ad,
-    footer: `Requested by ${ctx.message.author.tag}`
+    footer: `Category page ${overviewPage + 1}/${Math.max(categoryPages.length, 1)} • Requested by ${ctx.message.author.tag}`
   });
 }
 
@@ -173,47 +249,100 @@ function helpCategoryEmbed(ctx, category, commands, page) {
 
   return buildPrettyEmbed({
     title: `${category} Commands`,
-    description: commandLines || "No commands in this category.",
+    description: [
+      `Showing **${pageItems.length}** of **${commands.length}** command${commands.length === 1 ? "" : "s"}.`,
+      "",
+      commandLines || "No commands in this category.",
+      "",
+      "Use the command picker below to open details for one command."
+    ].join("\n"),
     color: 0x65d6ad,
-    footer: `Page ${page + 1}/${Math.max(pages.length, 1)} - Requested by ${ctx.message.author.tag}`
+    footer: `Page ${page + 1}/${Math.max(pages.length, 1)} • Requested by ${ctx.message.author.tag}`
   });
 }
 
-function helpComponents(ctx, byCategory, selectedCategory = "", page = 0, disabled = false) {
-  const categories = [...byCategory.keys()];
-  const select = new StringSelectMenuBuilder()
-    .setCustomId(helpCustomId(ctx.message.id, "category"))
-    .setPlaceholder("Choose a command category")
-    .setDisabled(disabled)
-    .addOptions(
-      categories.slice(0, 25).map((category) => ({
-        label: category,
-        value: category,
-        description: `${byCategory.get(category).length} command${byCategory.get(category).length === 1 ? "" : "s"}`,
-        default: category === selectedCategory
-      }))
-    );
+function helpRenderEmbed(ctx, byCategory, state) {
+  if (state.view === "command" && state.command) return helpDetailEmbed(ctx, state.command);
+  if (state.view === "category" && state.category) {
+    return helpCategoryEmbed(ctx, state.category, byCategory.get(state.category) || [], state.categoryPage || 0);
+  }
+  return helpOverviewEmbed(ctx, byCategory, state.overviewPage || 0);
+}
 
-  const components = [new ActionRowBuilder().addComponents(select)];
-  if (selectedCategory) {
-    const pages = chunkItems(byCategory.get(selectedCategory) || [], HELP_COMMANDS_PER_PAGE);
-    components.push(
+function helpComponents(ctx, byCategory, state, disabled = false) {
+  const categoryOptions = helpSortedCategories(byCategory)
+    .slice(0, 25)
+    .map(([category, commands]) => ({
+      label: category,
+      value: category,
+      description: `${commands.length} command${commands.length === 1 ? "" : "s"}`,
+      default: category === state.category
+    }));
+
+  const rows = [
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(helpCustomId(ctx.message.id, "category"))
+        .setPlaceholder("Choose a command category")
+        .setDisabled(disabled)
+        .addOptions(categoryOptions)
+    )
+  ];
+
+  const categoryPages = helpCategoryChunks(byCategory);
+  const categoryCommands = state.category ? byCategory.get(state.category) || [] : [];
+  const commandPages = chunkItems(categoryCommands, HELP_COMMANDS_PER_PAGE);
+  const activePageCount = state.view === "overview"
+    ? Math.max(categoryPages.length, 1)
+    : Math.max(commandPages.length, 1);
+  const activePage = state.view === "overview" ? (state.overviewPage || 0) : (state.categoryPage || 0);
+
+  rows.push(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(helpCustomId(ctx.message.id, "home"))
+        .setLabel("Overview")
+        .setStyle(state.view === "overview" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+        .setDisabled(disabled),
+      new ButtonBuilder()
+        .setCustomId(helpCustomId(ctx.message.id, "back"))
+        .setLabel("Back")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(disabled || (state.view === "overview" && !state.category)),
+      new ButtonBuilder()
+        .setCustomId(helpCustomId(ctx.message.id, "prev"))
+        .setLabel("Previous")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(disabled || activePage <= 0),
+      new ButtonBuilder()
+        .setCustomId(helpCustomId(ctx.message.id, "next"))
+        .setLabel("Next")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(disabled || activePage >= activePageCount - 1)
+    )
+  );
+
+  if (state.category && categoryCommands.length) {
+    const pageCommands = commandPages[state.categoryPage || 0] || commandPages[0] || [];
+    rows.push(
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(helpCustomId(ctx.message.id, "prev"))
-          .setLabel("Previous")
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(disabled || page <= 0),
-        new ButtonBuilder()
-          .setCustomId(helpCustomId(ctx.message.id, "next"))
-          .setLabel("Next")
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(disabled || page >= pages.length - 1)
+        new StringSelectMenuBuilder()
+          .setCustomId(helpCustomId(ctx.message.id, "command"))
+          .setPlaceholder("Open help for a command in this category")
+          .setDisabled(disabled)
+          .addOptions(
+            pageCommands.map((command) => ({
+              label: `${ctx.config.prefix}${command.name}`.slice(0, 100),
+              value: command.name,
+              description: String(command.description || "No description.").slice(0, 100),
+              default: state.command?.name === command.name
+            }))
+          )
       )
     );
   }
 
-  return components;
+  return rows;
 }
 
 function mentionUser(message) {
@@ -794,29 +923,38 @@ define({
   description: "Show commands, or details for one command.",
   usage: "help [command]",
   async run(ctx) {
-    const target = ctx.args[0]?.toLowerCase();
-    const command = target ? ctx.commands.get(target) : null;
-
-    if (command) {
-      await ctx.message.reply(
-        [
-          `**${ctx.config.prefix}${command.name}**`,
-          command.description,
-          `Usage: \`${usage(ctx.config, command)}\``,
-          command.aliases?.length ? `Aliases: ${command.aliases.join(", ")}` : ""
-        ]
-          .filter(Boolean)
-          .join("\n")
-      );
+    const byCategory = commandCategoryMap(ctx.commandList);
+    const resolved = resolveHelpTarget(ctx.commandList, ctx.rest || ctx.args[0] || "");
+    if (resolved === null) {
+      await ctx.message.reply(`I could not find a command or category named **${ctx.rest || ctx.args[0]}**.`);
       return;
     }
 
-    const byCategory = commandCategoryMap(ctx.commandList);
-    let selectedCategory = "";
-    let page = 0;
+    const initialCategory = resolved?.type === "command"
+      ? resolved.command.category || "Other"
+      : resolved?.type === "category"
+        ? resolved.category
+        : "";
+
+    let state = {
+      view: resolved?.type === "command" ? "command" : resolved?.type === "category" ? "category" : "overview",
+      category: initialCategory,
+      categoryPage: 0,
+      overviewPage: 0,
+      command: resolved?.type === "command" ? resolved.command : null
+    };
+
+    if (initialCategory) {
+      const categoryCommands = byCategory.get(initialCategory) || [];
+      const commandIndex = resolved?.type === "command"
+        ? categoryCommands.findIndex((entry) => entry.name === resolved.command.name)
+        : 0;
+      state.categoryPage = commandIndex >= 0 ? Math.floor(commandIndex / HELP_COMMANDS_PER_PAGE) : 0;
+    }
+
     const sent = await ctx.message.reply({
-      embeds: [helpOverviewEmbed(ctx, byCategory)],
-      components: helpComponents(ctx, byCategory)
+      embeds: [helpRenderEmbed(ctx, byCategory, state)],
+      components: helpComponents(ctx, byCategory, state)
     });
 
     const collector = sent.createMessageComponentCollector({ time: 180_000 });
@@ -830,27 +968,73 @@ define({
       }
 
       if (interaction.isStringSelectMenu()) {
-        selectedCategory = interaction.values[0];
-        page = 0;
-      } else if (interaction.isButton() && selectedCategory) {
-        const pages = chunkItems(byCategory.get(selectedCategory) || [], HELP_COMMANDS_PER_PAGE);
-        if (interaction.customId.endsWith(":prev")) page = Math.max(page - 1, 0);
-        if (interaction.customId.endsWith(":next")) page = Math.min(page + 1, pages.length - 1);
+        if (interaction.customId.endsWith(":category")) {
+          state = {
+            ...state,
+            view: "category",
+            category: interaction.values[0],
+            categoryPage: 0,
+            command: null
+          };
+        } else if (interaction.customId.endsWith(":command")) {
+          const command = ctx.commandList.find((entry) => entry.name === interaction.values[0]) || null;
+          if (command) {
+            state = {
+              ...state,
+              view: "command",
+              category: command.category || state.category,
+              command
+            };
+          }
+        }
+      } else if (interaction.isButton()) {
+        const categoryCommands = state.category ? byCategory.get(state.category) || [] : [];
+        const commandPages = chunkItems(categoryCommands, HELP_COMMANDS_PER_PAGE);
+        const categoryPages = helpCategoryChunks(byCategory);
+
+        if (interaction.customId.endsWith(":home")) {
+          state = { ...state, view: "overview", command: null };
+        } else if (interaction.customId.endsWith(":back")) {
+          state = state.view === "command" && state.category
+            ? { ...state, view: "category", command: null }
+            : { ...state, view: "overview", command: null };
+        } else if (interaction.customId.endsWith(":prev")) {
+          if (state.view === "overview") {
+            state = { ...state, overviewPage: Math.max((state.overviewPage || 0) - 1, 0) };
+          } else {
+            state = {
+              ...state,
+              view: "category",
+              command: null,
+              categoryPage: Math.max((state.categoryPage || 0) - 1, 0)
+            };
+          }
+        } else if (interaction.customId.endsWith(":next")) {
+          if (state.view === "overview") {
+            state = {
+              ...state,
+              overviewPage: Math.min((state.overviewPage || 0) + 1, Math.max(categoryPages.length - 1, 0))
+            };
+          } else {
+            state = {
+              ...state,
+              view: "category",
+              command: null,
+              categoryPage: Math.min((state.categoryPage || 0) + 1, Math.max(commandPages.length - 1, 0))
+            };
+          }
+        }
       }
 
       await interaction.update({
-        embeds: [
-          selectedCategory
-            ? helpCategoryEmbed(ctx, selectedCategory, byCategory.get(selectedCategory) || [], page)
-            : helpOverviewEmbed(ctx, byCategory)
-        ],
-        components: helpComponents(ctx, byCategory, selectedCategory, page)
+        embeds: [helpRenderEmbed(ctx, byCategory, state)],
+        components: helpComponents(ctx, byCategory, state)
       });
     });
 
     collector.on("end", () => {
       sent.edit({
-        components: helpComponents(ctx, byCategory, selectedCategory, page, true)
+        components: helpComponents(ctx, byCategory, state, true)
       }).catch(() => {});
     });
   }
@@ -4724,6 +4908,325 @@ define({
       allowedMentions: NO_MENTIONS
     }).catch(() => {});
     await ctx.message.reply(`Sent a test alert to <#${channelId}>.`);
+  }
+});
+
+define({
+  name: "membercount",
+  aliases: ["members", "guildcount"],
+  category: "Info",
+  description: "Show member counts for the current server.",
+  async run(ctx) {
+    const humans = ctx.message.guild.members.cache.filter((member) => !member.user.bot).size;
+    const bots = ctx.message.guild.members.cache.filter((member) => member.user.bot).size;
+    await ctx.message.reply([
+      `**Member Count**`,
+      `Total: **${ctx.message.guild.memberCount}**`,
+      `Humans: **${humans}**`,
+      `Bots: **${bots}**`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "servericon",
+  aliases: ["guildicon", "icon"],
+  category: "Info",
+  description: "Show the server icon link.",
+  async run(ctx) {
+    const iconUrl = ctx.message.guild.iconURL({ size: 1024 });
+    await ctx.message.reply(iconUrl ? `Server icon: ${iconUrl}` : "This server does not have an icon set.");
+  }
+});
+
+define({
+  name: "roleinfo",
+  aliases: ["role", "roledata"],
+  category: "Info",
+  description: "Show details about a mentioned role.",
+  usage: "roleinfo @role",
+  async run(ctx) {
+    const role = mentionRole(ctx.message);
+    if (!role) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    await ctx.message.reply([
+      `**Role Info: ${role.name}**`,
+      `ID: \`${role.id}\``,
+      `Members: **${role.members.size}**`,
+      `Color: \`${role.hexColor}\``,
+      `Mentionable: **${role.mentionable ? "Yes" : "No"}**`,
+      `Hoisted: **${role.hoist ? "Yes" : "No"}**`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "channelinfo",
+  aliases: ["channel", "channeldata"],
+  category: "Info",
+  description: "Show details about a channel.",
+  usage: "channelinfo [#channel]",
+  async run(ctx) {
+    const channel = targetTextChannel(ctx.message);
+    await ctx.message.reply([
+      `**Channel Info: #${channel.name}**`,
+      `ID: \`${channel.id}\``,
+      `Type: **${channel.type}**`,
+      `NSFW: **${channel.nsfw ? "Yes" : "No"}**`,
+      `Topic: ${channel.topic || "No topic set."}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "joined",
+  aliases: ["joindate", "joinedat"],
+  category: "Info",
+  description: "Show when someone joined the server.",
+  usage: "joined [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const joinedAt = member.joinedAt ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:F>` : "Unknown";
+    await ctx.message.reply(`**${member.displayName}** joined this server on ${joinedAt}.`);
+  }
+});
+
+define({
+  name: "dailystatus",
+  aliases: ["dailycheck", "dailyinfo"],
+  category: "Gambling",
+  description: "Check whether your daily bread is ready.",
+  async run(ctx) {
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const lastClaim = new Date(economy.dailyClaims[ctx.message.author.id] || 0).getTime();
+    const remaining = DAILY_COOLDOWN_MS - (Date.now() - lastClaim);
+    if (remaining > 0) {
+      await ctx.message.reply(`Daily bread is on cooldown. You can claim again in **${formatCooldown(remaining)}**.`);
+      return;
+    }
+    await ctx.message.reply("Daily bread is ready right now.");
+  }
+});
+
+define({
+  name: "breadcompare",
+  aliases: ["comparebread", "walletcompare"],
+  category: "Gambling",
+  description: "Compare two members' bread balances.",
+  usage: "breadcompare @user @user",
+  async run(ctx) {
+    const members = [...ctx.message.mentions.members.values()];
+    if (members.length < 2) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const [first, second] = members.slice(0, 2);
+    const firstBalance = breadBalance(economy, first.id);
+    const secondBalance = breadBalance(economy, second.id);
+    const diff = Math.abs(firstBalance - secondBalance);
+    const winner = firstBalance === secondBalance ? null : firstBalance > secondBalance ? first : second;
+    await ctx.message.reply([
+      `**Bread Comparison**`,
+      `${first.displayName}: **${formatBread(firstBalance)}**`,
+      `${second.displayName}: **${formatBread(secondBalance)}**`,
+      winner ? `Lead: **${winner.displayName}** by **${formatBread(diff)}**` : "They are perfectly tied."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "shopsearch",
+  aliases: ["finditem", "catalogsearch"],
+  category: "Gambling",
+  description: "Search the shop catalog by name or description.",
+  usage: "shopsearch keyword",
+  async run(ctx) {
+    const query = ctx.rest.trim().toLowerCase();
+    if (!query) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const matches = shopCatalog()
+      .filter((item) =>
+        [item.id, item.name, item.description, item.type]
+          .some((field) => String(field || "").toLowerCase().includes(query))
+      )
+      .slice(0, 8);
+    if (!matches.length) {
+      await ctx.message.reply(`No shop items matched **${ctx.rest.trim()}**.`);
+      return;
+    }
+    await ctx.message.reply(matches.map((item) => `• **${item.name}** (\`${item.id}\`) - ${item.cost} bread\n  ${item.description}`).join("\n"));
+  }
+});
+
+define({
+  name: "itemowners",
+  aliases: ["whohasitem", "ownersof"],
+  category: "Chipkittle",
+  description: "Show who owns a given shop item.",
+  usage: "itemowners item-id",
+  async run(ctx) {
+    const itemId = cleanText(ctx.rest || ctx.args[0], 60).toLowerCase();
+    if (!itemId) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const item = shopCatalog().find((entry) => entry.id === itemId);
+    if (!item) {
+      await ctx.message.reply(`No shop item matches **${itemId}**.`);
+      return;
+    }
+    const owners = Object.values(ctx.config.community?.profiles || {})
+      .map((profile) => ({
+        name: profile.displayName || "Unknown Chipkittle",
+        amount: Math.max(Number(profile.inventory?.[item.id]) || 0, 0)
+      }))
+      .filter((entry) => entry.amount > 0)
+      .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name))
+      .slice(0, 10);
+    await ctx.message.reply([
+      `**Owners of ${item.name}**`,
+      owners.length
+        ? owners.map((entry, index) => `${index + 1}. **${entry.name}** - ${entry.amount}`).join("\n")
+        : "Nobody owns that item yet."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "vouchesfor",
+  aliases: ["whoivouched", "myvouches"],
+  category: "Chipkittle",
+  description: "Show who a member has vouched for.",
+  usage: "vouchesfor [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const profiles = Object.values(ctx.config.community?.profiles || {});
+    const targets = profiles
+      .filter((profile) => (profile.vouches || []).some((entry) => entry.userId === member.id))
+      .map((profile) => profile.displayName || "Unknown Chipkittle")
+      .slice(0, 12);
+    await ctx.message.reply([
+      `**Vouches By ${member.displayName}**`,
+      targets.length ? targets.map((name) => `• ${name}`).join("\n") : "No recorded vouches."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "whovouched",
+  aliases: ["vouchers", "vouchedby"],
+  category: "Chipkittle",
+  description: "Show who vouched for a member.",
+  usage: "whovouched [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const profile = profileFor(ctx.config, member.id, member.displayName);
+    await ctx.message.reply([
+      `**Vouched By: ${member.displayName}**`,
+      profile.vouches.length
+        ? profile.vouches.map((entry) => `• ${entry.name || "Unknown"}${entry.reason ? ` - ${entry.reason}` : ""}`).join("\n")
+        : "No one has vouched for this member yet."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "topvouched",
+  aliases: ["vouchleaderboard", "vouchtop"],
+  category: "Chipkittle",
+  description: "Show the members with the most vouches.",
+  async run(ctx) {
+    const profiles = Object.values(ctx.config.community?.profiles || {})
+      .map((profile) => ({
+        name: profile.displayName || "Unknown Chipkittle",
+        vouches: Array.isArray(profile.vouches) ? profile.vouches.length : 0
+      }))
+      .filter((entry) => entry.vouches > 0)
+      .sort((a, b) => b.vouches - a.vouches || a.name.localeCompare(b.name))
+      .slice(0, 10);
+    await ctx.message.reply([
+      `**Top Vouched Members**`,
+      profiles.length
+        ? profiles.map((entry, index) => `${index + 1}. **${entry.name}** - ${entry.vouches} vouch${entry.vouches === 1 ? "" : "es"}`).join("\n")
+        : "No vouches have been recorded yet."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "questfor",
+  aliases: ["questuser", "memberquest"],
+  category: "Chipkittle",
+  description: "Show the daily and weekly quests for a member.",
+  usage: "questfor [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    await ctx.message.reply([
+      `**Quests For ${member.displayName}**`,
+      `Daily: ${dailyQuestFor(member.id)}`,
+      `Weekly: ${weeklyQuestFor(member.id)}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "gamelist",
+  aliases: ["games", "browsergames"],
+  category: "Games",
+  description: "List the public Chipkittle browser games.",
+  async run(ctx) {
+    await ctx.message.reply([
+      `**Chipkittle Browser Games**`,
+      PUBLIC_GAME_IDS.map((gameId) => `• **${publicGameLabel(gameId)}** — use \`${ctx.config.prefix}gameinfo ${gameId}\``).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "leaderboardall",
+  aliases: ["allleaderboards", "gameboards"],
+  category: "Games",
+  description: "Show the current top score for every public game.",
+  async run(ctx) {
+    const entries = readPublicLeaderboardEntries();
+    await ctx.message.reply([
+      `**All Public Game Leaders**`,
+      PUBLIC_GAME_IDS.map((gameId) => {
+        const top = publicGameEntries(entries, gameId, 1)[0];
+        return top
+          ? `• **${publicGameLabel(gameId)}** — ${top.name} (${top.score.toLocaleString()})`
+          : `• **${publicGameLabel(gameId)}** — no scores yet`;
+      }).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "modlogstatus",
+  aliases: ["logstatus", "moderationlog"],
+  category: "Moderation",
+  description: "Show where moderation logs are being sent.",
+  async run(ctx) {
+    const channelId = ctx.config.moderation?.logChannelId;
+    await ctx.message.reply(channelId ? `Moderation logs go to <#${channelId}>.` : "No moderation log channel is configured.");
+  }
+});
+
+define({
+  name: "applicationquestions",
+  aliases: ["appquestions", "applyquestions"],
+  category: "Applications",
+  description: "Show the current application form questions.",
+  async run(ctx) {
+    await ctx.message.reply([
+      `**Application Questions**`,
+      applicationQuestions().map((question, index) => `${index + 1}. ${question}`).join("\n")
+    ].join("\n"));
   }
 });
 
