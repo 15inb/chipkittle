@@ -711,6 +711,12 @@ function gameRecordChannelId(config = {}) {
   return String(config.publicSite?.games?.recordAlertChannelId || "");
 }
 
+function rankForBalance(economy, userId) {
+  return Object.entries(economy.balances || {})
+    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+    .findIndex(([id]) => id === userId) + 1;
+}
+
 function parseBreadAmount(input, balance) {
   const raw = String(input || "").trim().toLowerCase();
   if (raw === "all" || raw === "max") return Math.min(balance, MAX_BREAD_BET);
@@ -2332,6 +2338,27 @@ define({
 });
 
 define({
+  name: "breadstats",
+  aliases: ["breadinfo", "walletstats"],
+  category: "Gambling",
+  description: "Show deeper bread stats for yourself or another member.",
+  usage: "breadstats [@user]",
+  async run(ctx) {
+    const economy = normalizeEconomy(ctx.store.getGuild(ctx.message.guild.id).economy);
+    const target = ctx.message.mentions.users.first?.() || ctx.message.author;
+    const balance = breadBalance(economy, target.id);
+    const rank = rankForBalance(economy, target.id);
+    const lastClaim = economy.dailyClaims?.[target.id];
+    await ctx.message.reply([
+      `**${target.username || target.tag}'s Bread Stats**`,
+      `Balance: **${formatBread(balance)}**`,
+      `Leaderboard rank: ${rank > 0 ? `#${rank}` : "Unranked"}`,
+      `Daily bread: ${lastClaim ? `Last claimed <t:${Math.floor(new Date(lastClaim).getTime() / 1000)}:R>` : "Not claimed yet"}`
+    ].join("\n"));
+  }
+});
+
+define({
   name: "warnings",
   category: "Moderation",
   description: "Show warnings for a user.",
@@ -3554,6 +3581,32 @@ define({
 });
 
 define({
+  name: "repboard",
+  aliases: ["repleaderboard", "vouchboard"],
+  category: "Chipkittle",
+  description: "Show the highest reputation members in the server.",
+  async run(ctx) {
+    const profiles = Object.entries(ctx.config.community?.profiles || {})
+      .map(([userId, profile]) => ({
+        userId,
+        displayName: profile.displayName || userId,
+        reputation: Math.max(Number(profile.reputation) || 0, 0)
+      }))
+      .filter((entry) => entry.reputation > 0)
+      .sort((a, b) => b.reputation - a.reputation || a.displayName.localeCompare(b.displayName))
+      .slice(0, 10);
+    if (!profiles.length) {
+      await ctx.message.reply("No reputation has been recorded yet.");
+      return;
+    }
+    await ctx.message.reply([
+      `**Reputation Leaderboard**`,
+      profiles.map((entry, index) => `${index + 1}. **${entry.displayName}** - ${entry.reputation} rep`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
   name: "achievements",
   category: "Chipkittle",
   description: "Show a member's unlocked achievements.",
@@ -3564,6 +3617,22 @@ define({
     await ctx.message.reply([
       `**${member.displayName}'s Achievements**`,
       formatAchievementLines(achievements)
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "badges",
+  aliases: ["profilebadges"],
+  category: "Chipkittle",
+  description: "Show a member's public badges.",
+  usage: "badges [@user]",
+  async run(ctx) {
+    const member = mentionTargetUser(ctx.message);
+    const profile = profileFor(ctx.config, member.id, member.displayName);
+    await ctx.message.reply([
+      `**${member.displayName}'s Badges**`,
+      profile.badges.length ? profile.badges.map((badge) => `• ${badge}`).join("\n") : "No badges yet."
     ].join("\n"));
   }
 });
@@ -3605,6 +3674,33 @@ define({
       .map((item) => `• **${item.name}** - ${item.cost} bread\n  ${item.description}`)
       .join("\n");
     await ctx.message.reply(`**Chipkittle Shop**\n${lines}\n\nUse \`${ctx.config.prefix}buy item-id\` to buy something.`);
+  }
+});
+
+define({
+  name: "shopitem",
+  aliases: ["iteminfo", "catalogitem"],
+  category: "Gambling",
+  description: "Show details for one item in the Chipkittle shop.",
+  usage: "shopitem item-id",
+  async run(ctx) {
+    const itemId = cleanText(ctx.args[0], 60).toLowerCase();
+    if (!itemId) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const item = shopCatalog().find((entry) => entry.id === itemId);
+    if (!item) {
+      await ctx.message.reply(`No shop item matches **${itemId}**.`);
+      return;
+    }
+    await ctx.message.reply([
+      `**${item.name}**`,
+      `ID: \`${item.id}\``,
+      `Cost: **${item.cost} bread**`,
+      `Type: ${item.type || "unknown"}`,
+      item.description || "No description."
+    ].join("\n"));
   }
 });
 
@@ -3674,6 +3770,27 @@ define({
     }
     await ctx.message.reply([
       `**Artifact of the Day: ${artifact.name}**`,
+      `Rarity: ${artifact.rarity}`,
+      `Keeper: ${artifact.keeper}`,
+      artifact.summary
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "artifactrandom",
+  aliases: ["randomartifact", "artifactroll"],
+  category: "Chipkittle",
+  description: "Reveal a random artifact from the registry.",
+  async run(ctx) {
+    const artifacts = ctx.config.community?.artifacts || [];
+    if (!artifacts.length) {
+      await ctx.message.reply("No artifacts are registered yet.");
+      return;
+    }
+    const artifact = artifacts[Math.floor(Math.random() * artifacts.length)];
+    await ctx.message.reply([
+      `**Random Artifact: ${artifact.name}**`,
       `Rarity: ${artifact.rarity}`,
       `Keeper: ${artifact.keeper}`,
       artifact.summary
@@ -3780,6 +3897,37 @@ define({
     await ctx.message.reply(notes.length
       ? `**Staff notes for ${member.displayName}**\n${notes.slice(0, 8).map((entry) => `• ${entry.author}: ${entry.note}`).join("\n")}`
       : `No staff notes for ${member.displayName}.`);
+  }
+});
+
+define({
+  name: "clearnotes",
+  aliases: ["clearstaffnotes", "noteclear"],
+  category: "Moderation",
+  description: "Clear private staff notes for a member.",
+  usage: "clearnotes @user",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const member = ctx.message.mentions.members.first();
+    if (!member) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const nextNotes = { ...(ctx.config.community?.staffNotes || {}) };
+    delete nextNotes[member.id];
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      community: {
+        ...ctx.config.community,
+        staffNotes: nextNotes
+      }
+    });
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "staff-note",
+      label: "Staff notes cleared",
+      details: `Cleared staff notes for ${member.user.tag}.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+    await ctx.message.reply(`Cleared staff notes for ${member}.`);
   }
 });
 
