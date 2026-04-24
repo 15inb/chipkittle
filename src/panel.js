@@ -173,7 +173,7 @@ function isHiddenCommitMessage(message = "") {
   return normalized.includes("silent") || normalized.startsWith("merge branch 'main'");
 }
 
-function updateControls() {
+function updateControls(guildId = "") {
   const status = readUpdateStatus();
   return `
     <section class="panel-section update-panel server-update-card">
@@ -364,6 +364,31 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open") {
             `).join("")}</div>`
           : '<p class="muted">No active warnings to review.</p>'
       }
+    </section>
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Restore Center</h2>
+        <p>Paste one of the exported JSON snapshots here and restore only the scope you intend to replace.</p>
+      </div>
+      <form method="post" action="/admin/restore" class="stack">
+        <input type="hidden" name="guildId" value="${escapeHtml(guildId)}">
+        <label>
+          Restore scope
+          <select name="restoreScope">
+            <option value="config">Full guild config</option>
+            <option value="community">Community data</option>
+            <option value="moderation">Moderation data</option>
+            <option value="applications">Application data</option>
+            <option value="public">Public site data</option>
+          </select>
+        </label>
+        <label>
+          JSON snapshot
+          <textarea name="restorePayload" rows="12" placeholder='Paste a JSON export here'></textarea>
+        </label>
+        <p class="field-help">This merges into the current guild config instead of blanking unrelated sections.</p>
+        <button type="submit" class="secondary-button">Restore selected scope</button>
+      </form>
     </section>
   `;
 }
@@ -1061,6 +1086,52 @@ function parseConfigForm(body, section = "general") {
       };
     default:
       return {};
+  }
+}
+
+function resolveRestoreGuildPayload(payload, guildId) {
+  if (!payload || typeof payload !== "object") return payload;
+  if (payload.guilds && typeof payload.guilds === "object") {
+    return payload.guilds[guildId] || Object.values(payload.guilds)[0] || {};
+  }
+  if (payload[guildId] && typeof payload[guildId] === "object") {
+    return payload[guildId];
+  }
+  return payload;
+}
+
+function definedEntries(object = {}) {
+  return Object.fromEntries(Object.entries(object).filter(([, value]) => value !== undefined));
+}
+
+function restorePartialForScope(scope, payload, guildId) {
+  const source = resolveRestoreGuildPayload(payload, guildId) || {};
+  switch (String(scope || "").toLowerCase()) {
+    case "config":
+      return source;
+    case "community":
+      return {
+        community: source.community || source
+      };
+    case "moderation":
+      return definedEntries({
+        moderation: source.moderation || source,
+        community: source.community ? { ...(source.community || {}) } : undefined
+      });
+    case "applications":
+      return {
+        applications: source.applications || source
+      };
+    case "public":
+      return definedEntries({
+        publicSite: source.publicSite || source,
+        community: definedEntries({
+          artifacts: source.artifacts || source.community?.artifacts,
+          rituals: source.rituals || source.community?.rituals
+        })
+      });
+    default:
+      return null;
   }
 }
 
@@ -1774,7 +1845,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
           </section>
 
           <section class="${sectionClass("server", currentSection)}">
-            ${updateControls()}
+            ${updateControls(guild.id)}
           </section>
         </div>
       </div>${panelClientScript}
@@ -2280,6 +2351,50 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       generatedAt: new Date().toISOString(),
       guilds: store.data?.guilds || {}
     });
+  });
+
+  app.post("/admin/restore", requireAuth, async (request, response, next) => {
+    try {
+      const targetGuildId = String(request.body?.guildId || guildId || client.guilds.cache.first()?.id || "");
+      const discordGuild = client.guilds.cache.get(targetGuildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+
+      const scope = String(request.body?.restoreScope || "config").toLowerCase();
+      const payloadText = String(request.body?.restorePayload || "").trim();
+      if (!payloadText) {
+        response.redirect(`/guilds/${discordGuild.id}?section=server&update=${encodeURIComponent("restore-empty")}`);
+        return;
+      }
+
+      const parsed = JSON.parse(payloadText);
+      const partial = restorePartialForScope(scope, parsed, discordGuild.id);
+      if (!partial || typeof partial !== "object") {
+        response.redirect(`/guilds/${discordGuild.id}?section=server&update=${encodeURIComponent("restore-invalid")}`);
+        return;
+      }
+
+      const mergedConfig = await store.updateGuild(discordGuild.id, partial);
+      if (partial.publicSite || partial.community?.artifacts || partial.community?.rituals) {
+        writePublicMembersFile(mergedConfig.publicSite?.members || []);
+      }
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel",
+        label: "Snapshot restored",
+        details: `Restored ${scope} data from the web panel.`,
+        actor: "Panel"
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=server`);
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        const targetGuildId = String(request.body?.guildId || guildId || client.guilds.cache.first()?.id || "");
+        response.redirect(`/guilds/${encodeURIComponent(targetGuildId)}?section=server&update=${encodeURIComponent("restore-json-error")}`);
+        return;
+      }
+      next(error);
+    }
   });
 
   app.post("/guilds/:guildId/cases/:caseId/close", requireAuth, async (request, response, next) => {
