@@ -60,6 +60,7 @@ CLIENT_ID=your_discord_application_id
 PORT=3000
 PUBLIC_URL=https://panel.yourdomain.com
 PANEL_PASSWORD=your_panel_password
+ALLOW_LEGACY_PANEL_PASSWORD_LOGIN=false
 SESSION_SECRET=make_this_long_and_random
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-5.2

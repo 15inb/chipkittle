@@ -46,6 +46,8 @@ const execFileAsync = promisify(execFile);
 const UPDATE_STALE_MS = 10 * 60 * 1000;
 const ACTIVE_UPDATE_STATUSES = new Set(["running", "updating", "restarting"]);
 const MOD_MEMBER_PAGE_SIZE = 20;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 8;
 const PANEL_SECTION_MIN_LEVEL = {
   dashboard: "round_table",
   commands: "round_table",
@@ -1067,6 +1069,64 @@ function downloadJson(response, filename, payload) {
   response.send(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
+function cloneForExport(value) {
+  return structuredClone(value);
+}
+
+function sanitizePanelAccessForExport(panelAccess = {}) {
+  const users = Object.fromEntries(
+    Object.entries(panelAccess?.users || {}).map(([userId, entry]) => [
+      userId,
+      {
+        ...entry,
+        passwordHash: undefined,
+        hasPassword: Boolean(entry?.passwordHash),
+        passwordResetRequired: true
+      }
+    ])
+  );
+
+  return {
+    ...panelAccess,
+    users
+  };
+}
+
+function sanitizeConfigForExport(config = {}) {
+  return {
+    ...cloneForExport(config),
+    panelAccess: sanitizePanelAccessForExport(config.panelAccess || {})
+  };
+}
+
+function sanitizeStoreDataForExport(data = {}) {
+  return {
+    ...cloneForExport(data),
+    guilds: Object.fromEntries(
+      Object.entries(data?.guilds || {}).map(([guildEntryId, config]) => [
+        guildEntryId,
+        sanitizeConfigForExport(config)
+      ])
+    )
+  };
+}
+
+function sanitizeConfigForRestore(config = {}) {
+  const nextConfig = cloneForExport(config);
+  const users = Object.fromEntries(
+    Object.entries(nextConfig?.panelAccess?.users || {}).filter(([, entry]) => Boolean(entry?.passwordHash))
+  );
+
+  if (nextConfig.panelAccess) {
+    nextConfig.panelAccess = {
+      ...nextConfig.panelAccess,
+      users
+    };
+  }
+
+  return nextConfig;
+}
+
 function cleanGameId(value = "") {
   const gameId = String(value || "dash").toLowerCase().replace(/[^a-z0-9-]/g, "");
   return ["dash", "runner", "mines", "catch", "loaf", "blitz"].includes(gameId) ? gameId : "dash";
@@ -1415,7 +1475,7 @@ function definedEntries(object = {}) {
 }
 
 function restorePartialForScope(scope, payload, guildId) {
-  const source = resolveRestoreGuildPayload(payload, guildId) || {};
+  const source = sanitizeConfigForRestore(resolveRestoreGuildPayload(payload, guildId) || {});
   switch (String(scope || "").toLowerCase()) {
     case "config":
       return source;
@@ -1524,7 +1584,7 @@ function loginPage(error = "") {
         <div>
           <p class="eyebrow">Admin access</p>
           <h1>Sign in to configure your bot.</h1>
-          <p class="muted">Use the password from <code>PANEL_PASSWORD</code> in your environment file.</p>
+          <p class="muted">Use the panel username and password that were granted to you. Passwords are delivered once by Discord DM.</p>
         </div>
         <form method="post" action="/login" class="stack">
           ${error ? `<p class="form-error">${escapeHtml(error)}</p>` : ""}
@@ -1772,7 +1832,7 @@ function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
         ${
           users.length
             ? users.map(([userId, entry]) => panelAccessUserRow(guildId, userId, entry, actorLevel)).join("")
-            : '<p class="muted">No panel users have been granted yet. The legacy password can still sign in as root.</p>'
+            : '<p class="muted">No panel users have been granted yet. Create one from Discord before exposing the panel publicly.</p>'
         }
       </div>
     </section>
@@ -2454,11 +2514,28 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
   });
 }
 
-export function createPanel({ client, store, panelPassword, sessionSecret, clientId, guildId, ai, defaultAiModel, commandList }) {
+export function createPanel({
+  client,
+  store,
+  panelPassword,
+  allowLegacyPanelPasswordLogin,
+  sessionSecret,
+  clientId,
+  guildId,
+  ai,
+  publicUrl,
+  defaultAiModel,
+  commandList
+}) {
   const app = express();
   const panelStatic = express.static("public", { index: false });
+  const useSecureCookies = String(publicUrl || "").startsWith("https://");
+  const loginAttempts = new Map();
 
   app.disable("x-powered-by");
+  if (useSecureCookies) {
+    app.set("trust proxy", 1);
+  }
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json());
   app.use((request, response, next) => {
@@ -2478,6 +2555,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       cookie: {
         httpOnly: true,
         sameSite: "lax",
+        secure: useSecureCookies,
         maxAge: 1000 * 60 * 60 * 12
       }
     })
@@ -2538,6 +2616,38 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       }
     }
     return null;
+  }
+
+  function loginThrottleKey(request, username = "") {
+    return `${request.ip}:${String(username || "").trim().toLowerCase()}`;
+  }
+
+  function readLoginThrottle(request, username = "") {
+    const key = loginThrottleKey(request, username);
+    const now = Date.now();
+    const entry = loginAttempts.get(key);
+    if (!entry) return { key, attempts: 0, limited: false };
+    if (entry.expiresAt <= now) {
+      loginAttempts.delete(key);
+      return { key, attempts: 0, limited: false };
+    }
+    return {
+      key,
+      attempts: entry.attempts,
+      limited: entry.attempts >= LOGIN_MAX_ATTEMPTS
+    };
+  }
+
+  function recordFailedLogin(request, username = "") {
+    const { key, attempts } = readLoginThrottle(request, username);
+    loginAttempts.set(key, {
+      attempts: attempts + 1,
+      expiresAt: Date.now() + LOGIN_WINDOW_MS
+    });
+  }
+
+  function clearFailedLogins(request, username = "") {
+    loginAttempts.delete(loginThrottleKey(request, username));
   }
 
   function updateRedirectTarget(request) {
@@ -2813,8 +2923,15 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   app.post("/login", (request, response) => {
     const username = String(request.body.username || "").trim();
     const password = String(request.body.password || "");
+    const throttle = readLoginThrottle(request, username);
+    if (throttle.limited) {
+      response.status(429).send(loginPage("Too many sign-in attempts. Please wait 15 minutes and try again."));
+      return;
+    }
+
     const panelUser = authenticatePanelUser(username, password);
     if (panelUser) {
+      clearFailedLogins(request, username);
       request.session.authenticated = true;
       request.session.panelUserId = panelUser.userId;
       request.session.panelGuildId = panelUser.guildId;
@@ -2823,7 +2940,8 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       return;
     }
 
-    if (!username && panelPassword && safeEquals(password, panelPassword)) {
+    if (allowLegacyPanelPasswordLogin && !username && panelPassword && safeEquals(password, panelPassword)) {
+      clearFailedLogins(request, username);
       request.session.authenticated = true;
       request.session.panelUserId = "";
       request.session.panelLegacyRoot = true;
@@ -2831,6 +2949,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       return;
     }
 
+    recordFailedLogin(request, username);
     response.status(401).send(loginPage("That username or password did not match."));
   });
 
@@ -2951,7 +3070,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   });
 
   app.get("/admin/export/config", requireAuth, requirePanelLevel("root"), (_request, response) => {
-    downloadJson(response, "chipkittle-config.json", store.data || { guilds: {} });
+    downloadJson(response, "chipkittle-config.json", sanitizeStoreDataForExport(store.data || { guilds: {} }));
   });
 
   app.get("/admin/export/community", requireAuth, requirePanelLevel("root"), (_request, response) => {
@@ -3031,7 +3150,7 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   app.get("/admin/export/full", requireAuth, requirePanelLevel("root"), (_request, response) => {
     downloadJson(response, "chipkittle-backup-snapshot.json", {
       generatedAt: new Date().toISOString(),
-      guilds: store.data?.guilds || {}
+      guilds: sanitizeStoreDataForExport({ guilds: store.data?.guilds || {} }).guilds
     });
   });
 

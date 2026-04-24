@@ -76,7 +76,6 @@ export function panelAccessUser(config = {}, userId = "") {
     userId: String(userId),
     username: String(entry.username || ""),
     level: normalizePanelAccessLevel(entry.level),
-    passwordHash: String(entry.passwordHash || ""),
     grantedBy: String(entry.grantedBy || ""),
     grantedAt: String(entry.grantedAt || "")
   };

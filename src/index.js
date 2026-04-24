@@ -12,10 +12,15 @@ const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
 const defaultAiModel = process.env.OPENAI_MODEL || "gpt-5.2";
-const panelPassword = process.env.PANEL_PASSWORD || "changeme";
+const panelPassword = process.env.PANEL_PASSWORD || "";
+const allowLegacyPanelPasswordLogin = String(process.env.ALLOW_LEGACY_PANEL_PASSWORD_LOGIN || "").toLowerCase() === "true";
 const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
-if (panelPassword === "changeme") {
+if (allowLegacyPanelPasswordLogin && !panelPassword) {
+  console.warn("Legacy panel password login is enabled, but PANEL_PASSWORD is not set.");
+}
+
+if (allowLegacyPanelPasswordLogin && panelPassword === "changeme") {
   console.warn("PANEL_PASSWORD is using the default value. Change it before exposing this panel.");
 }
 
@@ -35,10 +40,12 @@ const app = createPanel({
   client,
   store,
   panelPassword,
+  allowLegacyPanelPasswordLogin,
   sessionSecret,
   clientId,
   guildId,
   ai,
+  publicUrl,
   defaultAiModel,
   commandList
 });

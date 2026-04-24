@@ -4,7 +4,7 @@ This project runs a Discord bot and a password-protected web panel in one Node.j
 
 ## Features
 
-- Web panel login with `PANEL_PASSWORD`
+- Web panel login with per-user credentials granted through Discord
 - Per-server config stored in `data/config.json`
 - Slash commands: `/help`, `/ping`, `/config`
 - Legacy prefix commands: `help`, `ping`, `config`
@@ -56,7 +56,7 @@ This project runs a Discord bot and a password-protected web panel in one Node.j
    npm.cmd start
    ```
 
-6. Open `http://localhost:3000` and log in with `PANEL_PASSWORD`.
+6. Open `http://localhost:3000` and log in with a granted panel username and password.
 
 ## Commands
 
@@ -140,6 +140,6 @@ You can use these in the panel:
 
 ## Notes
 
-- Keep `.env` private. It contains your Discord token and admin password.
+- Keep `.env` private. It contains your Discord token and session settings.
 - If you deploy this publicly, put it behind HTTPS and use a strong `SESSION_SECRET`.
 - See [DEPLOYMENT.md](DEPLOYMENT.md) for Vercel and production hosting steps.
