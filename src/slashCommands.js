@@ -1,6 +1,6 @@
 import { Collection, REST, Routes, SlashCommandBuilder } from "discord.js";
 
-const SLOW_COMMANDS = new Set(["ask", "chipify"]);
+const SLOW_COMMANDS = new Set(["ask", "chipify", "caption", "gif"]);
 
 function slashDescription(command) {
   return String(command.description || "Run a Chipkittle command.").slice(0, 100);
@@ -67,6 +67,126 @@ function addTtsSubcommands(builder) {
     );
 }
 
+function addCaptionOptions(builder) {
+  return builder
+    .addAttachmentOption((option) =>
+      option
+        .setName("file")
+        .setDescription("Image or GIF to caption.")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("text")
+        .setDescription("Caption text. If bottom_text is set, this becomes the top caption.")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("bottom_text")
+        .setDescription("Optional bottom caption.")
+        .setRequired(false)
+    );
+}
+
+function addGifSubcommands(builder) {
+  return builder
+    .addSubcommand((subcommand) =>
+      addCaptionOptions(
+        subcommand
+          .setName("caption")
+          .setDescription("Turn an image or GIF into a captioned GIF.")
+      )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("speed")
+        .setDescription("Speed up or slow down a GIF.")
+        .addAttachmentOption((option) =>
+          option
+            .setName("file")
+            .setDescription("GIF to speed up or slow down.")
+            .setRequired(true)
+        )
+        .addNumberOption((option) =>
+          option
+            .setName("factor")
+            .setDescription("2 makes it twice as fast, 0.5 makes it slower.")
+            .setMinValue(0.25)
+            .setMaxValue(4)
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("reverse")
+        .setDescription("Reverse a GIF.")
+        .addAttachmentOption((option) =>
+          option
+            .setName("file")
+            .setDescription("GIF to reverse.")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("boomerang")
+        .setDescription("Play a GIF forward and back.")
+        .addAttachmentOption((option) =>
+          option
+            .setName("file")
+            .setDescription("GIF to boomerang.")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("resize")
+        .setDescription("Resize a GIF.")
+        .addAttachmentOption((option) =>
+          option
+            .setName("file")
+            .setDescription("GIF to resize.")
+            .setRequired(true)
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName("width")
+            .setDescription("Target width in pixels.")
+            .setMinValue(64)
+            .setMaxValue(800)
+            .setRequired(true)
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName("height")
+            .setDescription("Optional target height in pixels.")
+            .setMinValue(64)
+            .setMaxValue(800)
+            .setRequired(false)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("wiggle")
+        .setDescription("Add a simple animated wiggle to an image or GIF.")
+        .addAttachmentOption((option) =>
+          option
+            .setName("file")
+            .setDescription("Image or GIF to animate.")
+            .setRequired(true)
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName("seconds")
+            .setDescription("Animation length for still images.")
+            .setMinValue(2)
+            .setMaxValue(6)
+            .setRequired(false)
+        )
+    );
+}
+
 export function buildSlashCommands(commandList) {
   return commandList.map((command) => {
     const builder = new SlashCommandBuilder()
@@ -79,6 +199,14 @@ export function buildSlashCommands(commandList) {
 
     if (command.name === "tts") {
       return addTtsSubcommands(builder).toJSON();
+    }
+
+    if (command.name === "caption") {
+      return addCaptionOptions(builder).toJSON();
+    }
+
+    if (command.name === "gif") {
+      return addGifSubcommands(builder).toJSON();
     }
 
     if (commandAcceptsInput(command)) {
@@ -204,15 +332,15 @@ function reminderInput(interaction) {
 function inputForInteraction(interaction) {
   if (interaction.commandName === "remind") return reminderInput(interaction);
   if (interaction.commandName === "tts") return interaction.options.getSubcommand();
+  if (interaction.commandName === "gif") return interaction.options.getSubcommand();
+  if (interaction.commandName === "caption") return interaction.options.getString("text") || "";
   return interaction.options.getString("input") || "";
 }
 
 function createInteractionMessage(interaction, input) {
   const content = `/${interaction.commandName}${input ? ` ${input}` : ""}`;
   const mentions = parseMentions(input, interaction.guild);
-  const attachments = new Collection();
-  const image = interaction.options.getAttachment("image");
-  if (image) attachments.set(image.id, image);
+  const attachments = new Collection(interaction.options.resolved?.attachments || []);
   let firstReplySent = false;
 
   async function reply(payload) {
@@ -244,6 +372,7 @@ function createInteractionMessage(interaction, input) {
     attachments,
     mentions,
     reference: null,
+    slashOptions: interaction.options,
     reply,
     hasSlashReply: () => firstReplySent,
     delete: async () => {},

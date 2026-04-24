@@ -58,6 +58,14 @@ import {
   panelAccessUsers,
   randomPanelPassword
 } from "./panelAccess.js";
+import {
+  captionMedia,
+  gifBoomerang,
+  gifResize,
+  gifReverse,
+  gifSpeed,
+  gifWiggle
+} from "./mediaEditing.js";
 
 const eightBallAnswers = [
   "The artifact says yes.",
@@ -70,8 +78,11 @@ const eightBallAnswers = [
   "Signs point to a deeply weird maybe."
 ];
 const IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+const GIF_CONTENT_TYPES = new Set(["image/gif"]);
+const MEDIA_CONTENT_TYPES = new Set([...IMAGE_CONTENT_TYPES, ...GIF_CONTENT_TYPES]);
 const MAX_CHIPIFY_IMAGE_BYTES = 20 * 1024 * 1024;
-const PLAIN_OUTPUT_COMMANDS = new Set(["ask", "chipify"]);
+const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
+const PLAIN_OUTPUT_COMMANDS = new Set(["ask", "chipify", "gif", "caption"]);
 const MAX_REMINDER_TIMEOUT_MS = 2_147_000_000;
 const PROFILE_BIO_MAX = 220;
 
@@ -775,15 +786,38 @@ function isSupportedImageAttachment(attachment) {
   );
 }
 
-async function findImageAttachment(message) {
-  const directAttachment = message.attachments.find(isSupportedImageAttachment);
+function isSupportedMediaAttachment(attachment) {
+  const contentType = attachment.contentType?.toLowerCase() || "";
+  const extension = attachment.name?.split(".").pop()?.toLowerCase();
+  return (
+    MEDIA_CONTENT_TYPES.has(contentType) ||
+    ["png", "jpg", "jpeg", "webp", "gif"].includes(extension)
+  );
+}
+
+function isGifAttachment(attachment) {
+  const contentType = attachment.contentType?.toLowerCase() || "";
+  const extension = attachment.name?.split(".").pop()?.toLowerCase();
+  return GIF_CONTENT_TYPES.has(contentType) || extension === "gif";
+}
+
+async function findAttachmentBy(message, predicate) {
+  const directAttachment = message.attachments.find(predicate);
   if (directAttachment) return directAttachment;
 
   const referencedMessageId = message.reference?.messageId;
   if (!referencedMessageId) return null;
 
   const referencedMessage = await message.channel.messages.fetch(referencedMessageId).catch(() => null);
-  return referencedMessage?.attachments.find(isSupportedImageAttachment) || null;
+  return referencedMessage?.attachments.find(predicate) || null;
+}
+
+async function findImageAttachment(message) {
+  return findAttachmentBy(message, isSupportedImageAttachment);
+}
+
+async function findMediaAttachment(message) {
+  return findAttachmentBy(message, isSupportedMediaAttachment);
 }
 
 async function downloadAttachment(attachment) {
@@ -811,6 +845,87 @@ async function downloadAttachment(attachment) {
     mimeType: contentType.split(";")[0],
     filename: attachment.name || "chipify.png"
   };
+}
+
+async function downloadMediaAttachment(attachment) {
+  if (attachment.size && attachment.size > MAX_MEDIA_BYTES) {
+    throw new Error("That file is too large. Please use media under 25 MB.");
+  }
+
+  const response = await fetch(attachment.url);
+  if (!response.ok) {
+    throw new Error("I could not download that file from Discord.");
+  }
+
+  const contentType = (response.headers.get("content-type") || attachment.contentType || "").split(";")[0].toLowerCase();
+  if (!isSupportedMediaAttachment({ contentType, name: attachment.name })) {
+    throw new Error("Please use a PNG, JPG, WebP, or GIF.");
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  if (arrayBuffer.byteLength > MAX_MEDIA_BYTES) {
+    throw new Error("That file is too large. Please use media under 25 MB.");
+  }
+
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    mimeType: contentType || "image/png",
+    filename: attachment.name || "media.png"
+  };
+}
+
+function splitCaptionText(text) {
+  const value = String(text || "").trim();
+  if (!value) return { topText: "", bottomText: "" };
+  const [topText, bottomText] = value.split("|").map((part) => part.trim());
+  return { topText: topText || "", bottomText: bottomText || "" };
+}
+
+function slashGifOptions(ctx) {
+  const slashOptions = ctx.message.slashOptions;
+  if (!slashOptions) return null;
+
+  const subcommand = slashOptions.getSubcommand();
+  const attachment = slashOptions.getAttachment("file");
+  return {
+    subcommand,
+    attachment,
+    text: slashOptions.getString("text") || "",
+    bottomText: slashOptions.getString("bottom_text") || "",
+    factor: slashOptions.getNumber("factor") || 0,
+    width: slashOptions.getInteger("width") || 0,
+    height: slashOptions.getInteger("height") || 0,
+    seconds: slashOptions.getInteger("seconds") || 0
+  };
+}
+
+function prefixGifOptions(ctx) {
+  const subcommand = (ctx.args[0] || "").toLowerCase();
+  if (!subcommand) return null;
+  const rest = ctx.args.slice(1).join(" ").trim();
+  const { topText, bottomText } = splitCaptionText(rest);
+  const firstNumber = Number(ctx.args[1]);
+  return {
+    subcommand,
+    attachment: null,
+    text: topText || rest,
+    bottomText,
+    factor: Number.isFinite(firstNumber) ? firstNumber : 0,
+    width: Number.isInteger(Number(ctx.args[1])) ? Number(ctx.args[1]) : 0,
+    height: Number.isInteger(Number(ctx.args[2])) ? Number(ctx.args[2]) : 0,
+    seconds: Number.isInteger(Number(ctx.args[1])) ? Number(ctx.args[1]) : 0
+  };
+}
+
+function gifUsageText(config) {
+  return [
+    `\`${config.prefix}gif caption some text\` + attach or reply to an image/GIF`,
+    `\`${config.prefix}gif speed 2\` + attach or reply to a GIF`,
+    `\`${config.prefix}gif reverse\` + attach or reply to a GIF`,
+    `\`${config.prefix}gif boomerang\` + attach or reply to a GIF`,
+    `\`${config.prefix}gif resize 320 320\` + attach or reply to a GIF`,
+    `\`${config.prefix}gif wiggle 3\` + attach or reply to an image/GIF`
+  ].join("\n");
 }
 
 function channelMentionList(ids) {
@@ -2425,6 +2540,126 @@ define({
     } catch (error) {
       console.error("Chipify failed:", error);
       await status.edit(error.message || "The artifact failed to chipify that image.").catch(() => {});
+    }
+  }
+});
+
+define({
+  name: "caption",
+  aliases: ["meme", "captionimage"],
+  category: "Utility",
+  description: "Caption an attached image or GIF like an esmBot-style media tool.",
+  usage: "caption text or top text | bottom text",
+  async run(ctx) {
+    const slashOptions = ctx.message.slashOptions;
+    const attachment = slashOptions?.getAttachment("file") || await findMediaAttachment(ctx.message);
+    if (!attachment) {
+      await ctx.message.reply("Attach an image or GIF, or reply to one, and give me some caption text.");
+      return;
+    }
+
+    const parsedCaption = splitCaptionText(ctx.rest || "");
+    let topText = slashOptions ? (slashOptions.getString("text") || "") : parsedCaption.topText;
+    let bottomText = slashOptions ? (slashOptions.getString("bottom_text") || "") : parsedCaption.bottomText;
+
+    if (!bottomText.trim()) {
+      bottomText = topText;
+      topText = "";
+    }
+
+    if (!String(topText || "").trim() && !String(bottomText || "").trim()) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\`\nUse \`top | bottom\` if you want two caption lines.`);
+      return;
+    }
+
+    const status = await ctx.message.reply("Captioning media...");
+    try {
+      const media = await downloadMediaAttachment(attachment);
+      const output = await captionMedia(media, { topText, bottomText });
+      const file = new AttachmentBuilder(output.buffer, { name: output.filename });
+      await status.edit({
+        content: `${ctx.message.author}, done.`,
+        files: [file],
+        allowedMentions: NO_MENTIONS
+      });
+    } catch (error) {
+      console.error("Caption command failed:", error);
+      await status.edit(error.message || "I could not caption that media.").catch(() => {});
+    }
+  }
+});
+
+define({
+  name: "gif",
+  aliases: ["gifedit"],
+  category: "Utility",
+  description: "esmBot-style GIF editing with caption, speed, reverse, boomerang, resize, and wiggle.",
+  usage: "gif caption|speed|reverse|boomerang|resize|wiggle",
+  async run(ctx) {
+    const options = slashGifOptions(ctx) || prefixGifOptions(ctx);
+    const subcommand = options?.subcommand || "";
+    if (!subcommand) {
+      await ctx.message.reply(gifUsageText(ctx.config));
+      return;
+    }
+
+    const attachment = options.attachment || await findMediaAttachment(ctx.message);
+    if (!attachment) {
+      await ctx.message.reply("Attach or reply to an image/GIF first.\n\n" + gifUsageText(ctx.config));
+      return;
+    }
+
+    const status = await ctx.message.reply(`Running \`${subcommand}\` on that media...`);
+
+    try {
+      const media = await downloadMediaAttachment(attachment);
+      let output;
+
+      if (subcommand === "caption") {
+        const topText = options.bottomText ? options.text : "";
+        const bottomText = options.bottomText || options.text;
+        if (!String(topText || bottomText || "").trim()) {
+          throw new Error("Give me caption text for `/gif caption`.");
+        }
+        output = await captionMedia(media, {
+          topText,
+          bottomText,
+          forceGif: true
+        });
+      } else if (subcommand === "speed") {
+        if (!options.factor) {
+          throw new Error("Give me a speed factor, like `2` or `0.5`.");
+        }
+        output = await gifSpeed(media, options.factor);
+      } else if (subcommand === "reverse") {
+        output = await gifReverse(media);
+      } else if (subcommand === "boomerang") {
+        output = await gifBoomerang(media);
+      } else if (subcommand === "resize") {
+        if (!options.width && !options.height) {
+          throw new Error("Give me a width, or a width and height, for `/gif resize`.");
+        }
+        output = await gifResize(media, {
+          width: options.width || 0,
+          height: options.height || 0
+        });
+      } else if (subcommand === "wiggle") {
+        output = await gifWiggle(media, {
+          seconds: options.seconds || 3
+        });
+      } else {
+        throw new Error(`Unknown gif subcommand \`${subcommand}\`.`);
+      }
+
+      const file = new AttachmentBuilder(output.buffer, { name: output.filename });
+      await status.edit({
+        content: `${ctx.message.author}, done.`,
+        files: [file],
+        allowedMentions: NO_MENTIONS
+      });
+    } catch (error) {
+      console.error("GIF command failed:", error);
+      await status.edit(error.message || "I could not edit that GIF.").catch(() => {});
     }
   }
 });
