@@ -268,9 +268,19 @@ function writeGameLeaderboard(entries = []) {
   fs.renameSync(`${filePath}.tmp`, filePath);
 }
 
-function deleteGameLeaderboardEntry(index) {
+function gameLabel(gameId = "") {
+  const labels = {
+    dash: "Chipkittle Dash",
+    runner: "Ritual Runner",
+    mines: "Bread Mines",
+    catch: "Bread Catch"
+  };
+  return labels[cleanGameId(gameId)] || "Chipkittle Dash";
+}
+
+function deleteGameLeaderboardEntry(index, gameId = "dash") {
   const entries = publicLeaderboardFileEntries(readGameLeaderboard());
-  const target = publicLeaderboardEntries(entries)[index];
+  const target = publicLeaderboardEntries(entries, gameId)[index];
   if (!target) return entries;
   const targetIndex = entries.findIndex((entry) =>
     entry.game === target.game &&
@@ -285,32 +295,44 @@ function deleteGameLeaderboardEntry(index) {
 }
 
 function gameLeaderboardControls(guildId = "") {
-  const entries = publicLeaderboardEntries(readGameLeaderboard());
+  const fileEntries = publicLeaderboardFileEntries(readGameLeaderboard());
+  const gameIds = ["dash", "runner", "mines", "catch"];
   return `
     <section class="panel-section leaderboard-admin">
       <div class="section-heading">
         <h2>Dash Leaderboard</h2>
-        <p>Remove saved Chipkittle Dash scores from the public leaderboard.</p>
+        <p>Remove saved scores from each public game leaderboard.</p>
       </div>
       ${
-        entries.length
-          ? `<div class="leaderboard-admin-list">
-              ${entries
-                .map(
-                  (entry, index) => `
-                    <div class="leaderboard-admin-row">
-                      <div>
-                        <strong>${escapeHtml(entry.name)}</strong>
-                        <small>Score ${escapeHtml(entry.score)} / Bread ${escapeHtml(entry.bread)}</small>
-                      </div>
-                      <form method="post" action="/admin/game-leaderboard/delete?guildId=${encodeURIComponent(guildId)}" class="inline-form">
-                        <input type="hidden" name="index" value="${index}">
-                        <button type="submit" class="danger-button">Remove</button>
-                      </form>
-                    </div>`
-                )
-                .join("")}
-            </div>`
+        fileEntries.length
+          ? gameIds
+              .map((gameId) => {
+                const entries = publicLeaderboardEntries(fileEntries, gameId);
+                if (!entries.length) return "";
+                return `
+                  <div class="leaderboard-admin-group">
+                    <h3>${escapeHtml(gameLabel(gameId))}</h3>
+                    <div class="leaderboard-admin-list">
+                      ${entries
+                        .map(
+                          (entry, index) => `
+                            <div class="leaderboard-admin-row">
+                              <div>
+                                <strong>${escapeHtml(entry.name)}</strong>
+                                <small>Score ${escapeHtml(entry.score)} / Bread ${escapeHtml(entry.bread)}</small>
+                              </div>
+                              <form method="post" action="/admin/game-leaderboard/delete?guildId=${encodeURIComponent(guildId)}&game=${encodeURIComponent(gameId)}" class="inline-form">
+                                <input type="hidden" name="index" value="${index}">
+                                <button type="submit" class="danger-button">Remove</button>
+                              </form>
+                            </div>`
+                        )
+                        .join("")}
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")
           : '<p class="muted">No Dash scores are saved yet.</p>'
       }
     </section>
@@ -1260,8 +1282,9 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
 
   app.post("/admin/game-leaderboard/delete", requireAuth, (request, response) => {
     const index = Math.floor(Number(request.body?.index));
+    const gameId = cleanGameId(request.query.game);
     if (Number.isInteger(index) && index >= 0) {
-      deleteGameLeaderboardEntry(index);
+      deleteGameLeaderboardEntry(index, gameId);
     }
     const targetGuildId = String(request.query.guildId || "");
     response.redirect(targetGuildId ? `/guilds/${encodeURIComponent(targetGuildId)}?section=server&saved=1` : "/?section=server");

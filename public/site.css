@@ -783,13 +783,14 @@ a {
 
 .mines-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
   align-content: center;
-  min-height: 540px;
+  min-height: 420px;
+  max-width: 520px;
   border: 1px solid rgba(255, 255, 255, 0.46);
   border-radius: 14px;
-  padding: clamp(16px, 3vw, 28px);
+  padding: clamp(14px, 2.5vw, 22px);
   background: var(--card-bg);
   box-shadow: 0 30px 86px rgba(16, 25, 21, 0.16);
   backdrop-filter: blur(18px);
@@ -799,11 +800,11 @@ a {
   aspect-ratio: 1;
   min-height: 0;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--green-soft);
   color: var(--green-dark);
   font: inherit;
-  font-size: clamp(22px, 5vw, 42px);
+  font-size: clamp(18px, 3.4vw, 30px);
   font-weight: 950;
   cursor: pointer;
 }

@@ -82,7 +82,7 @@
     const leaderboardList = document.querySelector("#leaderboardList");
     const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
 
-    const basket = { x: 480, y: 468, width: 126, height: 34 };
+    const basket = { x: 480, y: 468, width: 104, height: 30 };
     let drops = [];
     let running = false;
     let ended = false;
@@ -90,7 +90,7 @@
     let spawnTimer = 0;
     let score = 0;
     let bread = 0;
-    let timeLeft = 45;
+    let timeLeft = 35;
     let claimRequested = false;
     const keys = new Set();
 
@@ -183,7 +183,7 @@
       spawnTimer = 0;
       score = 0;
       bread = 0;
-      timeLeft = 45;
+      timeLeft = 35;
       claimRequested = false;
       basket.x = 480;
       setClaimCard("Catch bread until the round ends to get a claim code.");
@@ -192,13 +192,13 @@
     }
 
     function spawnDrop() {
-      const bad = Math.random() < 0.28;
+      const bad = Math.random() < 0.46;
       drops.push({
         x: 45 + Math.random() * (canvas.width - 90),
         y: -35,
-        speed: 180 + Math.random() * 140,
+        speed: 240 + Math.random() * 180,
         type: bad ? "stone" : "bread",
-        size: bad ? 34 : 28
+        size: bad ? 36 : 24
       });
     }
 
@@ -211,25 +211,25 @@
         updateStats();
         return;
       }
-      if (keys.has("ArrowLeft") || keys.has("a")) basket.x -= 520 * dt;
-      if (keys.has("ArrowRight") || keys.has("d")) basket.x += 520 * dt;
+      if (keys.has("ArrowLeft") || keys.has("a")) basket.x -= 480 * dt;
+      if (keys.has("ArrowRight") || keys.has("d")) basket.x += 480 * dt;
       basket.x = Math.max(basket.width / 2, Math.min(canvas.width - basket.width / 2, basket.x));
       spawnTimer -= dt;
       if (spawnTimer <= 0) {
         spawnDrop();
-        spawnTimer = Math.max(0.22, 0.62 - score * 0.002) + Math.random() * 0.34;
+        spawnTimer = Math.max(0.16, 0.42 - score * 0.0015) + Math.random() * 0.18;
       }
       drops.forEach((drop) => { drop.y += drop.speed * dt; });
       drops = drops.filter((drop) => {
         const caught = drop.y + drop.size / 2 >= basket.y && Math.abs(drop.x - basket.x) < basket.width / 2;
         if (caught && drop.type === "bread") {
           bread += 1;
-          score += 10;
+          score += 7;
           return false;
         }
         if (caught && drop.type === "stone") {
-          score = Math.max(score - 20, 0);
-          timeLeft = Math.max(timeLeft - 5, 0);
+          score = Math.max(score - 28, 0);
+          timeLeft = Math.max(timeLeft - 8, 0);
           return false;
         }
         return drop.y < canvas.height + 50;
