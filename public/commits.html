@@ -68,10 +68,10 @@
           return;
         }
 
-        // Filter out silent commits
+        // Filter out quiet housekeeping commits
         const visibleCommits = commits.filter((item) => {
           const message = item.commit?.message?.toLowerCase() || "";
-          return !message.includes("silent");
+          return !message.includes("silent") && !message.startsWith("merge branch 'main'");
         });
 
         list.innerHTML = visibleCommits.map((item) => {

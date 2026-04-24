@@ -103,7 +103,7 @@ async function recentCommits(limit = 25) {
       const [hash, shortHash, author, date, subject] = entry.split("\x1f");
       return { hash, shortHash, author, date, subject };
     })
-    .filter((commit) => !commit.subject.toLowerCase().includes("silent"));
+    .filter((commit) => !isHiddenCommitMessage(commit.subject));
 }
 
 function displayCommitAuthor(author) {
@@ -113,6 +113,11 @@ function displayCommitAuthor(author) {
 
 function commitUrl(hash) {
   return `https://github.com/15inb/chipkittle/commit/${encodeURIComponent(hash)}`;
+}
+
+function isHiddenCommitMessage(message = "") {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("silent") || normalized.startsWith("merge branch 'main'");
 }
 
 function updateControls() {
