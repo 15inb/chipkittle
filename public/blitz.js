@@ -25,7 +25,7 @@ const services = createGameServices("blitz", {
 });
 
 const keys = new Set();
-const pointer = { active: false, x: canvas.width / 2, y: canvas.height / 2 };
+const pointer = { seen: false, x: canvas.width * 0.72, y: canvas.height / 2 };
 let canvasRect = null;
 
 const player = {
@@ -196,11 +196,15 @@ function findTarget() {
 }
 
 function fireBolt() {
-  const targetIndex = findTarget();
-  if (targetIndex < 0) return;
-  const enemy = enemies[targetIndex];
-  const dx = enemy.x - player.x;
-  const dy = enemy.y - player.y;
+  let dx = pointer.x - player.x;
+  let dy = pointer.y - player.y;
+  if (!pointer.seen || Math.hypot(dx, dy) < 8) {
+    const targetIndex = findTarget();
+    if (targetIndex < 0) return;
+    const enemy = enemies[targetIndex];
+    dx = enemy.x - player.x;
+    dy = enemy.y - player.y;
+  }
   const length = Math.hypot(dx, dy) || 1;
   bolts.push({
     x: player.x,
@@ -280,6 +284,7 @@ function setPointer(event) {
   const point = event.touches?.[0] || event;
   pointer.x = (point.clientX - canvasRect.left) * (canvas.width / canvasRect.width);
   pointer.y = (point.clientY - canvasRect.top) * (canvas.height / canvasRect.height);
+  pointer.seen = true;
 }
 
 function update(dt) {
@@ -295,19 +300,10 @@ function update(dt) {
 
   let moveX = 0;
   let moveY = 0;
-  if (keys.has("arrowleft") || keys.has("a")) moveX -= 1;
-  if (keys.has("arrowright") || keys.has("d")) moveX += 1;
-  if (keys.has("arrowup") || keys.has("w")) moveY -= 1;
-  if (keys.has("arrowdown") || keys.has("s")) moveY += 1;
-  if (pointer.active) {
-    const dx = pointer.x - player.x;
-    const dy = pointer.y - player.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist > 10) {
-      moveX += dx / dist;
-      moveY += dy / dist;
-    }
-  }
+  if (keys.has("a")) moveX -= 1;
+  if (keys.has("d")) moveX += 1;
+  if (keys.has("w")) moveY -= 1;
+  if (keys.has("s")) moveY += 1;
 
   const moveLength = Math.hypot(moveX, moveY) || 1;
   player.x += (moveX / moveLength) * player.speed * dt;
@@ -429,6 +425,11 @@ function update(dt) {
 
 function drawPlayer() {
   if (player.hitCooldown > 0 && Math.floor(player.hitCooldown * 18) % 2 === 0) return;
+  const aimDx = pointer.x - player.x;
+  const aimDy = pointer.y - player.y;
+  const aimLength = Math.hypot(aimDx, aimDy) || 1;
+  const aimX = aimDx / aimLength;
+  const aimY = aimDy / aimLength;
   ctx.save();
   ctx.translate(player.x, player.y);
   ctx.fillStyle = "#f7faf5";
@@ -444,6 +445,12 @@ function drawPlayer() {
   ctx.beginPath();
   ctx.ellipse(0, 10, 12, 8, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = "#1a8a38";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(aimX * 10, aimY * 10);
+  ctx.lineTo(aimX * 30, aimY * 30);
+  ctx.stroke();
   if (player.ward > 0) {
     ctx.strokeStyle = "rgba(106, 198, 255, 0.82)";
     ctx.lineWidth = 4;
@@ -560,6 +567,20 @@ function draw() {
     ctx.globalAlpha = 1;
   }
 
+  if (pointer.seen) {
+    ctx.strokeStyle = "rgba(26, 138, 56, 0.7)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pointer.x, pointer.y, 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(pointer.x - 18, pointer.y);
+    ctx.lineTo(pointer.x + 18, pointer.y);
+    ctx.moveTo(pointer.x, pointer.y - 18);
+    ctx.lineTo(pointer.x, pointer.y + 18);
+    ctx.stroke();
+  }
+
   drawPlayer();
 
   if (!running && !ended) {
@@ -570,7 +591,7 @@ function draw() {
     ctx.textAlign = "center";
     ctx.fillText("Bread Blitz", canvas.width / 2, canvas.height / 2 - 10);
     ctx.font = "800 22px system-ui";
-    ctx.fillText("Move with WASD, arrows, or drag", canvas.width / 2, canvas.height / 2 + 34);
+    ctx.fillText("Move with WASD and aim with the mouse", canvas.width / 2, canvas.height / 2 + 34);
   }
 
   if (ended) {
@@ -605,7 +626,7 @@ refreshLeaderboard.addEventListener("click", () => services.loadLeaderboard());
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   keys.add(key);
-  if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", " "].includes(key)) {
+  if (["w", "a", "s", "d", " "].includes(key)) {
     event.preventDefault();
   }
   if (key === " " && ensurePlayerReady()) running = true;
@@ -618,19 +639,11 @@ window.addEventListener("keyup", (event) => {
 canvas.addEventListener("pointerdown", (event) => {
   if (!ensurePlayerReady()) return;
   canvasRect = canvas.getBoundingClientRect();
-  pointer.active = true;
   setPointer(event);
   running = true;
 });
 canvas.addEventListener("pointermove", (event) => {
-  if (!pointer.active) return;
   setPointer(event);
-});
-canvas.addEventListener("pointerup", () => {
-  pointer.active = false;
-});
-canvas.addEventListener("pointerleave", () => {
-  pointer.active = false;
 });
 window.addEventListener("resize", () => {
   canvasRect = null;

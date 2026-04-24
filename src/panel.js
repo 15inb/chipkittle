@@ -490,7 +490,7 @@ function publicSiteWorkspace(config = {}, commandList = []) {
   const artifacts = config.community?.artifacts || [];
   const rituals = config.community?.rituals || {};
   const leaderboardEntries = publicLeaderboardFileEntries(readGameLeaderboard(), publicGameSettings(config));
-  const gameCounts = ["dash", "runner", "mines", "catch"].map((gameId) => ({
+  const gameCounts = ["dash", "runner", "mines", "catch", "loaf", "blitz"].map((gameId) => ({
     gameId,
     label: gameLabel(gameId),
     count: publicLeaderboardEntries(leaderboardEntries, gameId, publicGameSettings(config)).length
@@ -520,8 +520,10 @@ function publicSiteWorkspace(config = {}, commandList = []) {
             <a class="primary-link secondary-link" href="https://chipkittle.com/archive" target="_blank" rel="noreferrer">Archive</a>
             <a class="primary-link secondary-link" href="https://chipkittle.com/commits" target="_blank" rel="noreferrer">Commits</a>
             <a class="primary-link secondary-link" href="https://chipkittle.com/status" target="_blank" rel="noreferrer">Status</a>
-            <a class="primary-link secondary-link" href="https://chipkittle.com/game" target="_blank" rel="noreferrer">Dash</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/game" target="_blank" rel="noreferrer">Games</a>
             <a class="primary-link secondary-link" href="https://chipkittle.com/8ball" target="_blank" rel="noreferrer">8 Ball</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/loaf" target="_blank" rel="noreferrer">Loaf Hopper</a>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/blitz" target="_blank" rel="noreferrer">Bread Blitz</a>
           </div>
         </div>
         <div class="sub-panel">
@@ -804,7 +806,7 @@ function downloadJson(response, filename, payload) {
 
 function cleanGameId(value = "") {
   const gameId = String(value || "dash").toLowerCase().replace(/[^a-z0-9-]/g, "");
-  return ["dash", "runner", "mines", "catch"].includes(gameId) ? gameId : "dash";
+  return ["dash", "runner", "mines", "catch", "loaf", "blitz"].includes(gameId) ? gameId : "dash";
 }
 
 function cleanLeaderboardName(value = "") {
@@ -954,7 +956,9 @@ function gameLabel(gameId = "") {
     dash: "Chipkittle Dash",
     runner: "Ritual Runner",
     mines: "Bread Mines",
-    catch: "Bread Catch"
+    catch: "Bread Catch",
+    loaf: "Loaf Hopper",
+    blitz: "Bread Blitz"
   };
   return labels[cleanGameId(gameId)] || "Chipkittle Dash";
 }
@@ -977,7 +981,7 @@ function deleteGameLeaderboardEntry(index, gameId = "dash", settings = DEFAULT_P
 
 function gameLeaderboardControls(guildId = "", settings = DEFAULT_PUBLIC_GAME_SETTINGS) {
   const fileEntries = publicLeaderboardFileEntries(readGameLeaderboard(), settings);
-  const gameIds = ["dash", "runner", "mines", "catch"];
+  const gameIds = ["dash", "runner", "mines", "catch", "loaf", "blitz"];
   return `
     <section class="panel-section leaderboard-admin">
       <div class="section-heading">
