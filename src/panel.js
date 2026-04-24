@@ -23,9 +23,39 @@ const SETTINGS_SECTIONS = [
   { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
   { id: "ai", label: "AI", description: "Chipkittle AI channels, model, cooldowns, and personality." },
   { id: "applications", label: "Applications", description: "DM questions, review threads, roles, and cooldowns." },
+  { id: "games", label: "Games", description: "Leaderboard moderation, claim limits, and public game tools." },
   { id: "permissions", label: "Permissions", description: "Command role access overrides." },
   { id: "commands", label: "Commands", description: "Browse the command catalog." },
   { id: "server", label: "Server", description: "Pull GitHub changes and restart the VPS bot." }
+];
+
+const DEFAULT_PUBLIC_GAME_SETTINGS = {
+  blockedLeaderboardWords: [],
+  maxLeaderboardEntriesPerGame: 10,
+  maxLeaderboardScore: 100000,
+  maxLeaderboardBread: 100000,
+  maxClaimBreadPerRun: 100000
+};
+
+const BUILT_IN_BLOCKED_LEADERBOARD_TERMS = [
+  "fuck",
+  "shit",
+  "bitch",
+  "asshole",
+  "bastard",
+  "cunt",
+  "dick",
+  "pussy",
+  "whore",
+  "slut",
+  "motherfucker",
+  "nigger",
+  "faggot",
+  "retard",
+  "chink",
+  "spic",
+  "kike",
+  "tranny"
 ];
 
 function escapeHtml(value = "") {
@@ -221,6 +251,61 @@ function cleanLeaderboardName(value = "") {
     .slice(0, 24) || "Anonymous Chipkittle";
 }
 
+function normalizeBlockedWordList(value = "") {
+  return String(value || "")
+    .split(/[\n,]+/)
+    .map((word) => word.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 100);
+}
+
+function blockedWordListText(words = []) {
+  return (Array.isArray(words) ? words : []).join(", ");
+}
+
+function publicGameSettings(config = {}) {
+  const games = config?.publicSite?.games || {};
+  const blockedLeaderboardWords = Array.isArray(games.blockedLeaderboardWords)
+    ? games.blockedLeaderboardWords.map((word) => String(word || "").trim().toLowerCase()).filter(Boolean).slice(0, 100)
+    : normalizeBlockedWordList(games.blockedLeaderboardWords);
+  return {
+    blockedLeaderboardWords,
+    maxLeaderboardEntriesPerGame: Math.min(Math.max(Number(games.maxLeaderboardEntriesPerGame) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardEntriesPerGame, 1), 50),
+    maxLeaderboardScore: Math.min(Math.max(Number(games.maxLeaderboardScore) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardScore, 1), 1000000),
+    maxLeaderboardBread: Math.min(Math.max(Number(games.maxLeaderboardBread) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardBread, 0), 1000000),
+    maxClaimBreadPerRun: Math.min(Math.max(Number(games.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000)
+  };
+}
+
+function normalizeNameModerationText(value = "") {
+  const substitutions = {
+    "0": "o",
+    "1": "i",
+    "!": "i",
+    "3": "e",
+    "4": "a",
+    "@": "a",
+    "5": "s",
+    "$": "s",
+    "7": "t"
+  };
+
+  return String(value || "")
+    .toLowerCase()
+    .split("")
+    .map((character) => substitutions[character] || character)
+    .join("")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function blockedLeaderboardTerm(name = "", config = {}) {
+  const normalized = normalizeNameModerationText(name);
+  if (!normalized) return "";
+  const settings = publicGameSettings(config);
+  const blockedTerms = [...BUILT_IN_BLOCKED_LEADERBOARD_TERMS, ...settings.blockedLeaderboardWords];
+  return blockedTerms.find((term) => normalized.includes(normalizeNameModerationText(term))) || "";
+}
+
 function readGameLeaderboard() {
   try {
     const parsed = JSON.parse(fs.readFileSync(leaderboardPath(), "utf8"));
@@ -249,22 +334,23 @@ function allPublicLeaderboardEntries(entries = []) {
     }, grouped);
 }
 
-function publicLeaderboardEntries(entries = [], gameId = "dash") {
+function publicLeaderboardEntries(entries = [], gameId = "dash", settings = DEFAULT_PUBLIC_GAME_SETTINGS) {
   const grouped = allPublicLeaderboardEntries(entries);
   return (grouped.get(cleanGameId(gameId)) || [])
     .sort((a, b) => b.score - a.score || b.bread - a.bread)
-    .slice(0, 10);
+    .slice(0, publicGameSettings({ publicSite: { games: settings } }).maxLeaderboardEntriesPerGame);
 }
 
-function publicLeaderboardFileEntries(entries = []) {
+function publicLeaderboardFileEntries(entries = [], settings = DEFAULT_PUBLIC_GAME_SETTINGS) {
+  const normalizedSettings = publicGameSettings({ publicSite: { games: settings } });
   return [...allPublicLeaderboardEntries(entries).values()]
-    .flatMap((bucket) => bucket.sort((a, b) => b.score - a.score || b.bread - a.bread).slice(0, 10));
+    .flatMap((bucket) => bucket.sort((a, b) => b.score - a.score || b.bread - a.bread).slice(0, normalizedSettings.maxLeaderboardEntriesPerGame));
 }
 
-function writeGameLeaderboard(entries = []) {
+function writeGameLeaderboard(entries = [], settings = DEFAULT_PUBLIC_GAME_SETTINGS) {
   const filePath = leaderboardPath();
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(`${filePath}.tmp`, `${JSON.stringify(publicLeaderboardFileEntries(entries), null, 2)}\n`, "utf8");
+  fs.writeFileSync(`${filePath}.tmp`, `${JSON.stringify(publicLeaderboardFileEntries(entries, settings), null, 2)}\n`, "utf8");
   fs.renameSync(`${filePath}.tmp`, filePath);
 }
 
@@ -278,9 +364,9 @@ function gameLabel(gameId = "") {
   return labels[cleanGameId(gameId)] || "Chipkittle Dash";
 }
 
-function deleteGameLeaderboardEntry(index, gameId = "dash") {
-  const entries = publicLeaderboardFileEntries(readGameLeaderboard());
-  const target = publicLeaderboardEntries(entries, gameId)[index];
+function deleteGameLeaderboardEntry(index, gameId = "dash", settings = DEFAULT_PUBLIC_GAME_SETTINGS) {
+  const entries = publicLeaderboardFileEntries(readGameLeaderboard(), settings);
+  const target = publicLeaderboardEntries(entries, gameId, settings)[index];
   if (!target) return entries;
   const targetIndex = entries.findIndex((entry) =>
     entry.game === target.game &&
@@ -290,24 +376,24 @@ function deleteGameLeaderboardEntry(index, gameId = "dash") {
     entry.createdAt === target.createdAt
   );
   if (targetIndex >= 0) entries.splice(targetIndex, 1);
-  writeGameLeaderboard(entries);
+  writeGameLeaderboard(entries, settings);
   return entries;
 }
 
-function gameLeaderboardControls(guildId = "") {
-  const fileEntries = publicLeaderboardFileEntries(readGameLeaderboard());
+function gameLeaderboardControls(guildId = "", settings = DEFAULT_PUBLIC_GAME_SETTINGS) {
+  const fileEntries = publicLeaderboardFileEntries(readGameLeaderboard(), settings);
   const gameIds = ["dash", "runner", "mines", "catch"];
   return `
     <section class="panel-section leaderboard-admin">
       <div class="section-heading">
-        <h2>Dash Leaderboard</h2>
+        <h2>Game Leaderboards</h2>
         <p>Remove saved scores from each public game leaderboard.</p>
       </div>
       ${
         fileEntries.length
           ? gameIds
               .map((gameId) => {
-                const entries = publicLeaderboardEntries(fileEntries, gameId);
+                const entries = publicLeaderboardEntries(fileEntries, gameId, settings);
                 if (!entries.length) return "";
                 return `
                   <div class="leaderboard-admin-group">
@@ -333,7 +419,7 @@ function gameLeaderboardControls(guildId = "") {
                 `;
               })
               .join("")
-          : '<p class="muted">No Dash scores are saved yet.</p>'
+          : '<p class="muted">No game scores are saved yet.</p>'
       }
     </section>
   `;
@@ -376,7 +462,14 @@ function parseConfigForm(body) {
       overrides: commandOverrides
     },
     publicSite: {
-      members: parseMemberDirectory(body.publicMembers)
+      members: parseMemberDirectory(body.publicMembers),
+      games: {
+        blockedLeaderboardWords: normalizeBlockedWordList(body.blockedLeaderboardWords),
+        maxLeaderboardEntriesPerGame: Math.min(Math.max(Number(body.maxLeaderboardEntriesPerGame) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardEntriesPerGame, 1), 50),
+        maxLeaderboardScore: Math.min(Math.max(Number(body.maxLeaderboardScore) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardScore, 1), 1000000),
+        maxLeaderboardBread: Math.min(Math.max(Number(body.maxLeaderboardBread) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardBread, 0), 1000000),
+        maxClaimBreadPerRun: Math.min(Math.max(Number(body.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000)
+      }
     },
     ai: {
       enabled: body.aiEnabled === "on",
@@ -675,6 +768,7 @@ function settingsNav(guildId, activeSection) {
 function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general" }) {
   const currentSection = normalizeSettingsSection(activeSection);
   const currentMeta = activeSectionMeta(currentSection);
+  const gameSettings = publicGameSettings(config);
   return layout({
     title: guild.name,
     user: true,
@@ -908,6 +1002,40 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               </section>
             </section>
 
+            <section class="${sectionClass("games", currentSection)}">
+              <div class="settings-stack">
+                <section class="panel-section">
+                  <div class="section-heading">
+                    <h2>Game Moderation</h2>
+                    <p>Filter public game names and tune how much each run can save or claim.</p>
+                  </div>
+                  <label>
+                    Blocked leaderboard words or names
+                    <textarea name="blockedLeaderboardWords" rows="4" placeholder="comma, separated, words">${escapeHtml(blockedWordListText(gameSettings.blockedLeaderboardWords))}</textarea>
+                  </label>
+                  <p class="field-help">Built-in slur and profanity blocking is always on. Add extra names or words here.</p>
+                  <div class="field-pair">
+                    <label>
+                      Max leaderboard entries per game
+                      <input type="number" name="maxLeaderboardEntriesPerGame" min="1" max="50" value="${escapeHtml(gameSettings.maxLeaderboardEntriesPerGame)}">
+                    </label>
+                    <label>
+                      Max saved score per run
+                      <input type="number" name="maxLeaderboardScore" min="1" max="1000000" value="${escapeHtml(gameSettings.maxLeaderboardScore)}">
+                    </label>
+                    <label>
+                      Max saved bread per run
+                      <input type="number" name="maxLeaderboardBread" min="0" max="1000000" value="${escapeHtml(gameSettings.maxLeaderboardBread)}">
+                    </label>
+                    <label>
+                      Max claim bread per run
+                      <input type="number" name="maxClaimBreadPerRun" min="0" max="1000000" value="${escapeHtml(gameSettings.maxClaimBreadPerRun)}">
+                    </label>
+                  </div>
+                </section>
+              </div>
+            </section>
+
             <section class="${sectionClass("permissions", currentSection)}">
               <section class="panel-section">
                 <div class="section-heading">
@@ -926,6 +1054,10 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
             </div>
           </form>
 
+          <section class="${sectionClass("games", currentSection)}">
+            ${gameLeaderboardControls(guild.id, gameSettings)}
+          </section>
+
           <section class="${sectionClass("commands", currentSection)}">
             <section class="panel-section command-catalog">
               <div class="section-heading">
@@ -938,7 +1070,6 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
 
           <section class="${sectionClass("server", currentSection)}">
             ${updateControls()}
-            ${gameLeaderboardControls(guild.id)}
           </section>
         </div>
       </div>
@@ -1051,42 +1182,59 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
 
   app.get("/api/public/game-leaderboard", (request, response) => {
     setPublicApiHeaders(response);
+    const config = getPublicGuildConfig();
     response.json({
-      scores: publicLeaderboardEntries(readGameLeaderboard(), request.query.game),
+      scores: publicLeaderboardEntries(readGameLeaderboard(), request.query.game, publicGameSettings(config)),
       updatedAt: new Date().toISOString()
     });
   });
 
   app.post("/api/public/game-leaderboard", (request, response) => {
     setPublicApiHeaders(response);
+    const config = getPublicGuildConfig();
+    const settings = publicGameSettings(config);
+    const blockedTerm = blockedLeaderboardTerm(request.body?.name, config);
     const entry = {
       game: cleanGameId(request.body?.game),
       name: cleanLeaderboardName(request.body?.name),
-      score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), 100000),
-      bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), 100000),
+      score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), settings.maxLeaderboardScore),
+      bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), settings.maxLeaderboardBread),
       createdAt: new Date().toISOString()
     };
+
+    if (blockedTerm) {
+      response.status(400).json({ error: "That player name is blocked on this leaderboard." });
+      return;
+    }
 
     if (entry.score <= 0) {
       response.status(400).json({ error: "Score must be greater than zero." });
       return;
     }
 
-    writeGameLeaderboard([...readGameLeaderboard(), entry]);
+    writeGameLeaderboard([...readGameLeaderboard(), entry], settings);
     response.json({
-      scores: publicLeaderboardEntries(readGameLeaderboard(), entry.game),
+      scores: publicLeaderboardEntries(readGameLeaderboard(), entry.game, settings),
       updatedAt: new Date().toISOString()
     });
   });
 
   app.post("/api/public/dash-claim", (request, response) => {
     setPublicApiHeaders(response);
+    const config = getPublicGuildConfig();
+    const settings = publicGameSettings(config);
+    const blockedTerm = blockedLeaderboardTerm(request.body?.name, config);
     const entry = {
       game: cleanGameId(request.body?.game),
       name: cleanLeaderboardName(request.body?.name),
-      score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), 100000),
-      bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), 100000)
+      score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), settings.maxLeaderboardScore),
+      bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), settings.maxClaimBreadPerRun)
     };
+
+    if (blockedTerm) {
+      response.status(400).json({ error: "That player name is blocked for game claims." });
+      return;
+    }
 
     if (entry.bread <= 0) {
       response.status(400).json({ error: "Bread must be greater than zero." });
@@ -1283,11 +1431,12 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
   app.post("/admin/game-leaderboard/delete", requireAuth, (request, response) => {
     const index = Math.floor(Number(request.body?.index));
     const gameId = cleanGameId(request.query.game);
-    if (Number.isInteger(index) && index >= 0) {
-      deleteGameLeaderboardEntry(index, gameId);
-    }
     const targetGuildId = String(request.query.guildId || "");
-    response.redirect(targetGuildId ? `/guilds/${encodeURIComponent(targetGuildId)}?section=server&saved=1` : "/?section=server");
+    const settings = publicGameSettings(targetGuildId ? store.getGuild(targetGuildId) : getPublicGuildConfig());
+    if (Number.isInteger(index) && index >= 0) {
+      deleteGameLeaderboardEntry(index, gameId, settings);
+    }
+    response.redirect(targetGuildId ? `/guilds/${encodeURIComponent(targetGuildId)}?section=games&saved=1` : "/?section=games");
   });
 
   app.post("/guilds/:guildId/config", requireAuth, async (request, response, next) => {

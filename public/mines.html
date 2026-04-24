@@ -138,11 +138,12 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ game: gameId, name: safeName(playerName.value), score, bread })
         });
-        const payload = response.ok ? await response.json() : {};
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || "The claim code request failed.");
         if (!payload.claimCode) throw new Error("No claim code.");
         setClaimCard("", payload.claimCode, payload.claimBread);
-      } catch {
-        setClaimCard("The claim code request failed. Try again after the panel updates.");
+      } catch (error) {
+        setClaimCard(error?.message || "The claim code request failed. Try again after the panel updates.");
       }
     }
 

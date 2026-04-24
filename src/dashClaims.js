@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-const CLAIM_COOLDOWN_MS = 60_000;
 const CLAIM_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function claimStorePath() {
@@ -13,11 +12,10 @@ function readClaimStore() {
   try {
     const parsed = JSON.parse(fs.readFileSync(claimStorePath(), "utf8"));
     return {
-      claims: { ...(parsed.claims || {}) },
-      cooldowns: { ...(parsed.cooldowns || {}) }
+      claims: { ...(parsed.claims || {}) }
     };
   } catch {
-    return { claims: {}, cooldowns: {} };
+    return { claims: {} };
   }
 }
 
@@ -83,18 +81,7 @@ export function redeemDashClaim({ code, guildId, userId } = {}) {
   const claim = store.claims[normalizedCode];
   if (!claim) return { ok: false, error: "That Dash claim code is invalid or expired." };
 
-  const cooldownKey = `${guildId}:${userId}`;
-  const lastClaimedAt = Date.parse(store.cooldowns[cooldownKey] || "");
-  const remaining = CLAIM_COOLDOWN_MS - (Date.now() - lastClaimedAt);
-  if (Number.isFinite(lastClaimedAt) && remaining > 0) {
-    return {
-      ok: false,
-      error: `You can claim Chipkittle Dash bread again in ${Math.ceil(remaining / 1000)}s.`
-    };
-  }
-
   delete store.claims[normalizedCode];
-  store.cooldowns[cooldownKey] = new Date().toISOString();
   writeClaimStore(store);
 
   return {

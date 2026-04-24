@@ -377,6 +377,8 @@
 
     function setClaimCard(message, code = "", amount = 0) {
       claimCard.hidden = false;
+      claimCard.dataset.code = code || "";
+      claimCard.dataset.amount = String(Number(amount) || 0);
       claimCard.innerHTML = code
         ? `
           <span>Discord claim</span>
@@ -410,13 +412,13 @@
             bread
           })
         });
-        if (!response.ok) throw new Error("Claim request failed.");
         const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Claim request failed.");
         if (!payload.claimCode || Number(payload.claimBread) <= 0) throw new Error("Claim response was invalid.");
         setClaimCard("", payload.claimCode, payload.claimBread);
-      } catch {
+      } catch (error) {
         claimRequested = false;
-        setClaimCard("The claim code request failed. Press Reset and try another run.");
+        setClaimCard(error?.message || "The claim code request failed. Press Reset and try another run.");
       }
     }
 
@@ -453,13 +455,14 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(entry)
         });
-        if (!response.ok) throw new Error("Leaderboard save failed.");
         const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Leaderboard save failed.");
         if (Array.isArray(payload.scores)) {
           saveLocalLeaderboard(payload.scores);
           renderLeaderboard(payload.scores);
         }
-      } catch {
+      } catch (error) {
+        if (error?.message) setClaimCard(error.message, claimCard.dataset.code || "", claimCard.dataset.amount || 0);
         renderLeaderboard(localScores);
       }
     }

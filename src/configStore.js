@@ -39,7 +39,14 @@ const DEFAULT_CONFIG = {
         role: "Round Table",
         bio: "The people who keep the Discord moving and the bread economy unstable."
       }
-    ]
+    ],
+    games: {
+      blockedLeaderboardWords: [],
+      maxLeaderboardEntriesPerGame: 10,
+      maxLeaderboardScore: 100000,
+      maxLeaderboardBread: 100000,
+      maxClaimBreadPerRun: 100000
+    }
   },
   ai: {
     enabled: false,
