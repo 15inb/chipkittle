@@ -29,19 +29,19 @@
   --soft-ink: rgba(237, 248, 238, 0.72);
   --quiet: rgba(237, 248, 238, 0.54);
   --line: rgba(205, 255, 205, 0.16);
-  --panel: rgba(10, 19, 15, 0.72);
-  --page-bg: #07100d;
-  --section-bg: #0c1712;
-  --about-bg: #101d16;
-  --card-bg: rgba(11, 19, 15, 0.74);
-  --card-hover: rgba(16, 31, 23, 0.92);
-  --hero-radial: rgba(75, 230, 73, 0.3);
-  --hero-radial-soft: rgba(75, 230, 73, 0.14);
-  --hero-wash-start: rgba(5, 12, 10, 0.96);
-  --hero-wash-mid: rgba(5, 12, 10, 0.82);
-  --hero-wash-glass: rgba(5, 12, 10, 0.28);
-  --hero-wash-end: rgba(5, 12, 10, 0.1);
-  --interior-wash: linear-gradient(90deg, rgba(5, 12, 10, 0.98), rgba(5, 12, 10, 0.88) 52%, rgba(5, 12, 10, 0.76));
+  --panel: rgba(9, 15, 13, 0.76);
+  --page-bg: #06100c;
+  --section-bg: #0a1511;
+  --about-bg: #0d1914;
+  --card-bg: rgba(9, 16, 13, 0.78);
+  --card-hover: rgba(13, 24, 19, 0.94);
+  --hero-radial: rgba(87, 228, 105, 0.18);
+  --hero-radial-soft: rgba(87, 228, 105, 0.08);
+  --hero-wash-start: rgba(7, 12, 10, 0.84);
+  --hero-wash-mid: rgba(7, 12, 10, 0.5);
+  --hero-wash-glass: rgba(7, 12, 10, 0.14);
+  --hero-wash-end: rgba(7, 12, 10, 0.02);
+  --interior-wash: linear-gradient(90deg, rgba(7, 12, 10, 0.96), rgba(7, 12, 10, 0.84) 52%, rgba(7, 12, 10, 0.68));
   --green: #52d765;
   --green-dark: #89f27e;
   --green-soft: rgba(82, 215, 101, 0.18);
@@ -98,15 +98,16 @@ a {
 
 :root[data-theme="dark"] .hero-bg {
   background-image:
-    radial-gradient(circle at 51% 42%, var(--hero-radial) 0 10%, var(--hero-radial-soft) 19%, transparent 34%),
-    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 34%, var(--hero-wash-glass) 63%, var(--hero-wash-end) 100%),
-    url("/assets/chipkittle-hero.png");
+    radial-gradient(circle at 60% 48%, var(--hero-radial) 0 12%, var(--hero-radial-soft) 24%, transparent 46%),
+    linear-gradient(90deg, rgba(5, 10, 8, 0.94) 0%, rgba(5, 10, 8, 0.88) 18%, rgba(5, 10, 8, 0.66) 34%, rgba(5, 10, 8, 0.28) 52%, rgba(5, 10, 8, 0.04) 72%),
+    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 28%, var(--hero-wash-glass) 52%, var(--hero-wash-end) 76%),
+    url("/assets/ckwebsitebg3.png");
 }
 
 .hero-logo-overlay {
   position: absolute;
-  left: clamp(60%, 65vw, 70%);
-  top: clamp(49%, 54vh, 57%);
+  left: clamp(64%, 68vw, 73%);
+  top: clamp(62%, 68vh, 72%);
   z-index: -1;
   width: clamp(250px, 20vw, 360px);
   transform: translate(-50%, -50%);
@@ -140,7 +141,31 @@ a {
 
 :root[data-theme="dark"] .hero-bg,
 :root[data-theme="dark"] .interior {
-  filter: saturate(1.06) brightness(0.92);
+  filter: saturate(0.92) brightness(0.72);
+}
+
+:root[data-theme="dark"] .nav-actions {
+  border-color: rgba(228, 246, 232, 0.14);
+  background: rgba(6, 10, 8, 0.42);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+:root[data-theme="dark"] .theme-toggle {
+  background: rgba(18, 25, 21, 0.88);
+  border-color: rgba(228, 246, 232, 0.12);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
+}
+
+:root[data-theme="dark"] .button.secondary {
+  border-color: rgba(228, 246, 232, 0.12);
+  background: rgba(18, 25, 21, 0.78);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .feature-card {
+  border-color: rgba(228, 246, 232, 0.16);
+  background: rgba(8, 14, 11, 0.74);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.28);
 }
 
 .topbar {
@@ -1449,8 +1474,8 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 67%;
-    top: 59%;
+    left: 70%;
+    top: 67%;
     width: clamp(190px, 22vw, 270px);
   }
 
@@ -1555,8 +1580,8 @@ a {
   }
 
   .hero-logo-overlay {
-    left: 69%;
-    top: 60%;
+    left: 71%;
+    top: 68%;
     width: 152px;
   }
 
