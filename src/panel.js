@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import express from "express";
 import session from "express-session";
 import { serializeGuild } from "./bot.js";
+import { createDashClaim } from "./dashClaims.js";
 
 const execFileAsync = promisify(execFile);
 const UPDATE_STALE_MS = 10 * 60 * 1000;
@@ -955,8 +956,11 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
 
     const scores = publicLeaderboardEntries([...readGameLeaderboard(), entry]);
     writeGameLeaderboard(scores);
+    const claim = createDashClaim(entry);
     response.json({
       scores,
+      claimCode: claim?.code || "",
+      claimBread: claim?.bread || 0,
       updatedAt: new Date().toISOString()
     });
   });

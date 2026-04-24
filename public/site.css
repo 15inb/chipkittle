@@ -743,7 +743,8 @@ a {
   padding-top: 12px;
 }
 
-.score-form[hidden] {
+.score-form[hidden],
+.claim-card[hidden] {
   display: none;
 }
 
@@ -765,6 +766,34 @@ a {
   color: var(--ink);
   font: inherit;
   font-weight: 800;
+}
+
+.claim-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--green-soft);
+}
+
+.claim-card span,
+.claim-card small {
+  color: var(--soft-ink);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.claim-card strong {
+  color: var(--green-dark);
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.claim-card code {
+  color: var(--green-dark);
+  font-weight: 950;
 }
 
 .leaderboard {
@@ -952,6 +981,7 @@ a {
 
   .game-controls,
   .score-form,
+  .claim-card,
   .leaderboard {
     grid-column: 1 / -1;
   }

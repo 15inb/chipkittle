@@ -24,6 +24,7 @@ import {
   randomChipkittleName
 } from "./chipkittleLore.js";
 import { NO_MENTIONS } from "./discordSafety.js";
+import { redeemDashClaim } from "./dashClaims.js";
 import {
   buildPrettyEmbed,
   commandEmbedMeta,
@@ -1540,6 +1541,38 @@ define({
       economy.dailyClaims[userId] = new Date().toISOString();
       setBreadBalance(economy, userId, nextBalance);
       return `You claimed **${formatBread(amount)}**.\nBalance: **${formatBread(nextBalance)}**.`;
+    });
+
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "claimdash",
+  aliases: ["dashclaim", "claimbread"],
+  category: "Gambling",
+  description: "Claim bread collected in Chipkittle Dash.",
+  usage: "claimdash CK123ABC",
+  async run(ctx) {
+    const code = ctx.args[0];
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const claim = redeemDashClaim({
+        code,
+        guildId: ctx.message.guild.id,
+        userId: ctx.message.author.id
+      });
+
+      if (!claim.ok) return claim.error;
+
+      const userId = ctx.message.author.id;
+      const nextBalance = breadBalance(economy, userId) + claim.bread;
+      setBreadBalance(economy, userId, nextBalance);
+
+      return [
+        `Claimed **${formatBread(claim.bread)}** from Chipkittle Dash.`,
+        `Run score: **${claim.score.toLocaleString()}**.`,
+        `Balance: **${formatBread(nextBalance)}**.`
+      ].join("\n");
     });
 
     await ctx.message.reply(output);

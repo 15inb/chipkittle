@@ -66,6 +66,7 @@
           </label>
           <button class="button primary" type="submit">Save Score</button>
         </form>
+        <div class="claim-card" id="claimCard" hidden></div>
         <div class="leaderboard">
           <div class="leaderboard-head">
             <span>Leaderboard</span>
@@ -89,6 +90,7 @@
     const resetButton = document.querySelector("#resetGame");
     const scoreForm = document.querySelector("#scoreForm");
     const playerName = document.querySelector("#playerName");
+    const claimCard = document.querySelector("#claimCard");
     const leaderboardList = document.querySelector("#leaderboardList");
     const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
     const leaderboardUrl = "https://panel.chipkittle.com/api/public/game-leaderboard";
@@ -407,6 +409,14 @@
           saveLocalLeaderboard(payload.scores);
           renderLeaderboard(payload.scores);
         }
+        if (payload.claimCode && Number(payload.claimBread) > 0) {
+          claimCard.hidden = false;
+          claimCard.innerHTML = `
+            <span>Discord claim</span>
+            <strong>${escapeHtml(payload.claimCode)}</strong>
+            <small>Use <code>!claimdash ${escapeHtml(payload.claimCode)}</code> for ${Number(payload.claimBread) || 0} bread.</small>
+          `;
+        }
       } catch {
         renderLeaderboard(localScores);
       }
@@ -432,6 +442,8 @@
       gameOver = false;
       scorePrompted = false;
       scoreForm.hidden = true;
+      claimCard.hidden = true;
+      claimCard.innerHTML = "";
       updateStats();
       draw();
     }
