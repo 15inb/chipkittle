@@ -29,8 +29,13 @@ let bread = 0;
 let safe = 0;
 let safeStreak = 0;
 let boon = null;
+let lastStatsText = "";
+let lastBoonText = "";
 
 function updateStats() {
+  const next = `${score}:${bread}:${safe}`;
+  if (next === lastStatsText) return;
+  lastStatsText = next;
   scoreValue.textContent = String(score);
   breadValue.textContent = String(bread);
   safeValue.textContent = String(safe);
@@ -38,16 +43,22 @@ function updateStats() {
 
 function updateBoonStatus() {
   if (!boon) {
-    boonStatus.textContent = "Boon: None";
+    setBoonText("Boon: None");
     return;
   }
   if (boon.type === "ward") {
-    boonStatus.textContent = "Boon: Ward (blocks the next mine)";
+    setBoonText("Boon: Ward (blocks the next mine)");
   } else if (boon.type === "scout") {
-    boonStatus.textContent = "Boon: Scout (reveals a safe tile)";
+    setBoonText("Boon: Scout (reveals a safe tile)");
   } else {
-    boonStatus.textContent = "Boon: Multiplier (next safe tile is doubled)";
+    setBoonText("Boon: Multiplier (next safe tile is doubled)");
   }
+}
+
+function setBoonText(text) {
+  if (text === lastBoonText) return;
+  lastBoonText = text;
+  boonStatus.textContent = text;
 }
 
 function setBoon(nextBoon) {
@@ -122,6 +133,7 @@ function revealSafeTile(index, button, fromScout = false) {
   safeStreak += 1;
   score += scoreGain;
   button.classList.add("is-safe");
+  button.classList.add(fromScout ? "is-scouted" : "is-revealed");
   button.textContent = String(found);
   updateStats();
   updateBoonStatus();
@@ -138,6 +150,7 @@ function handleMine(index, button) {
     tiles[index].revealed = true;
     button.disabled = true;
     button.classList.add("is-safe");
+    button.classList.add("is-warded");
     button.textContent = "Ward";
     safeStreak = 0;
     updateBoonStatus();
@@ -145,6 +158,7 @@ function handleMine(index, button) {
   }
 
   button.classList.add("is-mine");
+  button.classList.add("is-revealed");
   button.textContent = "X";
   score = Math.max(score - 25, 0);
   safeStreak = 0;

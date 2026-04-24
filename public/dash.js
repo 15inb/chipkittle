@@ -66,6 +66,9 @@ let stoneTimer = 0;
 let bonusTimer = 7;
 let powerupTimer = 6;
 let elapsedTime = 0;
+let lastStatsText = "";
+let lastPowerupText = "";
+let particles = [];
 
 bestValue.textContent = String(best);
 
@@ -126,6 +129,9 @@ function timeMultiplier() {
 }
 
 function updateStats() {
+  const next = `${Math.floor(score)}:${bread}:${best}`;
+  if (next === lastStatsText) return;
+  lastStatsText = next;
   scoreValue.textContent = String(Math.floor(score));
   breadValue.textContent = String(bread);
   bestValue.textContent = String(best);
@@ -137,7 +143,25 @@ function activePowerupText() {
   if (player.speedBoost > 0) labels.push(`Haste ${Math.ceil(player.speedBoost)}s`);
   if (player.magnet > 0) labels.push(`Magnet ${Math.ceil(player.magnet)}s`);
   if (player.stasis > 0) labels.push(`Stasis ${Math.ceil(player.stasis)}s`);
-  powerupStatus.textContent = `Power-up: ${labels.join(" | ") || "None"}`;
+  const next = `Power-up: ${labels.join(" | ") || "None"}`;
+  if (next === lastPowerupText) return;
+  lastPowerupText = next;
+  powerupStatus.textContent = next;
+}
+
+function burst(x, y, color, count = 8) {
+  for (let i = 0; i < count; i += 1) {
+    particles.push({
+      x,
+      y,
+      vx: rand(-90, 90),
+      vy: rand(-110, 70),
+      life: rand(0.28, 0.58),
+      maxLife: 0.58,
+      color,
+      radius: rand(2, 5)
+    });
+  }
 }
 
 function spawnArtifact(forceBonus = false) {
@@ -220,6 +244,7 @@ function resetGame() {
   artifacts = [];
   stones = [];
   powerups = [];
+  particles = [];
   score = 0;
   bread = 0;
   running = false;
@@ -330,11 +355,14 @@ function update(dt) {
       if (item.type === "bread") {
         bread += 1;
         score += 6;
+        burst(item.x, item.y, "#d69a3c", 5);
       } else if (item.type === "star") {
         bread += 2;
         score += 24;
+        burst(item.x, item.y, "#f7d25a", 12);
       } else {
         score += 10;
+        burst(item.x, item.y, "#66dc62", 8);
       }
       if (score > best) {
         best = score;
@@ -350,6 +378,7 @@ function update(dt) {
     const combined = player.radius + item.radius;
     if (distanceSq(player, item) < combined * combined) {
       applyPowerup(item.type);
+      burst(item.x, item.y, "#b6f6ff", 10);
       return false;
     }
     return item.x > -60;
@@ -369,6 +398,13 @@ function update(dt) {
     }
   }
   stones = stones.filter((stone) => stone.x > -70);
+  particles.forEach((particle) => {
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.vy += 180 * dt;
+    particle.life -= dt;
+  });
+  particles = particles.filter((particle) => particle.life > 0);
   updatePowerups(dt);
 }
 
@@ -559,12 +595,21 @@ function drawOverlay() {
 }
 
 function draw() {
+  if (document.hidden) return;
   const background = drawBackground(currentPresetIndex());
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(background, 0, 0);
   artifacts.forEach(drawArtifact);
   powerups.forEach(drawPowerup);
   stones.forEach(drawStone);
+  particles.forEach((particle) => {
+    ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife);
+    ctx.fillStyle = particle.color;
+    ctx.beginPath();
+    ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
   drawPlayer();
   drawOverlay();
 }
@@ -628,6 +673,11 @@ canvas.addEventListener("pointerup", () => {
 
 canvas.addEventListener("pointerleave", () => {
   pointer.active = false;
+});
+
+document.addEventListener("visibilitychange", () => {
+  lastTime = performance.now();
+  if (!document.hidden) draw();
 });
 
 resetGame();

@@ -4,7 +4,7 @@ const ROOM_TTL_MS = 1000 * 60 * 60 * 4;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MAX_TRACE_FRAMES = 64;
 const TRACE_SAMPLE_STEPS = 4;
-const MAX_SIMULATION_STEPS = 540;
+const MAX_SIMULATION_STEPS = 500;
 const FRICTION = 0.992;
 const WALL_BOUNCE = 0.94;
 const TABLE = {
@@ -550,12 +550,17 @@ function maybePocket(ball) {
 function resolveBallCollision(first, second) {
   if (first.pocketed || second.pocketed) return false;
 
-  const dx = second.x - first.x;
-  const dy = second.y - first.y;
-  const distance = Math.hypot(dx, dy);
+  let dx = second.x - first.x;
+  let dy = second.y - first.y;
+  let distance = Math.hypot(dx, dy);
   const minimumDistance = TABLE.ballRadius * 2;
 
-  if (!distance || distance >= minimumDistance) return false;
+  if (distance >= minimumDistance) return false;
+  if (!distance) {
+    dx = second.number > first.number ? 0.01 : -0.01;
+    dy = 0;
+    distance = Math.hypot(dx, dy);
+  }
 
   const nx = dx / distance;
   const ny = dy / distance;
@@ -566,6 +571,9 @@ function resolveBallCollision(first, second) {
   first.y -= ny * overlap * 0.5;
   second.x += nx * overlap * 0.5;
   second.y += ny * overlap * 0.5;
+
+  const closingSpeed = (first.vx - second.vx) * nx + (first.vy - second.vy) * ny;
+  if (closingSpeed <= 0) return false;
 
   const firstNormal = first.vx * nx + first.vy * ny;
   const firstTangent = first.vx * tx + first.vy * ty;
@@ -676,7 +684,7 @@ function simulateShot(room, shot) {
   for (let step = 0; step < MAX_SIMULATION_STEPS; step += 1) {
     const movingBalls = activeBalls(balls);
     const maxSpeed = movingBalls.reduce((largest, ball) => Math.max(largest, Math.hypot(ball.vx, ball.vy)), 0);
-    const substeps = Math.min(Math.max(Math.ceil(maxSpeed / (TABLE.ballRadius * 0.52)), 1), 4);
+    const substeps = Math.min(Math.max(Math.ceil(maxSpeed / (TABLE.ballRadius * 0.45)), 1), 6);
     const subFriction = FRICTION ** (1 / substeps);
 
     for (let substep = 0; substep < substeps; substep += 1) {

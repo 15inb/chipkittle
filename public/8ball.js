@@ -105,6 +105,7 @@
   let lastRackMarkup = "";
   let lastStatusClass = "";
   let lastShotPreview = "";
+  let lastCanvasMode = "";
   const textCache = new WeakMap();
 
   playerNameInput.value = localStorage.getItem(storageKeys.name) || "";
@@ -191,6 +192,13 @@
       nx: dx / safeLength,
       ny: dy / safeLength
     };
+  }
+
+  function setCanvasMode(mode = "") {
+    if (mode === lastCanvasMode) return;
+    lastCanvasMode = mode;
+    canvas.classList.toggle("is-placing", mode === "placing");
+    canvas.classList.toggle("is-aiming", mode === "aiming");
   }
 
   function pocketsForTable(table) {
@@ -658,9 +666,10 @@
       const cue = cueBallForDraw();
       const metrics = cueMetrics(pointer, cue, currentTable());
       const prediction = cue ? firstAimCollision(cue, metrics, currentTable()) : null;
+      const percent = Math.round(metrics.power * 100);
       next = prediction
-        ? `Likely first contact: ${ballLabel(prediction.ball.number)}`
-        : "Open lane ahead";
+        ? `${percent}% - first contact: ${ballLabel(prediction.ball.number)}`
+        : `${percent}% - open lane ahead`;
     } else if (myTurn()) {
       next = "Aim preview ready";
     } else if (state?.status === "active") {
@@ -780,6 +789,7 @@
     requestAnimationFrame(() => {
       drawQueued = false;
       updatePowerIndicator();
+      updateShotPreviewLabel();
       if (document.hidden) return;
       if (!animating) {
         draw();
@@ -1086,6 +1096,7 @@
     const { nx, ny } = metrics;
     const cueStickDistance = 18 + metrics.normalized * 116;
     const prediction = firstAimCollision(cue, metrics, table);
+    const guideEnd = prediction || railPreviewPoint(cue, metrics, table);
 
     ctx.save();
     ctx.lineCap = "round";
@@ -1095,8 +1106,8 @@
     ctx.beginPath();
     ctx.moveTo(cue.x, cue.y);
     ctx.lineTo(
-      prediction?.contactX ?? cue.x + nx * 280,
-      prediction?.contactY ?? cue.y + ny * 280
+      guideEnd.contactX,
+      guideEnd.contactY
     );
     ctx.stroke();
     ctx.setLineDash([]);
@@ -1119,6 +1130,17 @@
       ctx.arc(prediction.contactX, prediction.contactY, table.ballRadius, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+    }
+
+    if (!prediction && guideEnd.bounce) {
+      ctx.strokeStyle = `rgba(160, 240, 204, ${0.18 + metrics.normalized * 0.16})`;
+      ctx.lineWidth = 1.3;
+      ctx.setLineDash([6, 9]);
+      ctx.beginPath();
+      ctx.moveTo(guideEnd.contactX, guideEnd.contactY);
+      ctx.lineTo(guideEnd.bounce.x, guideEnd.bounce.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     const cueStick = ctx.createLinearGradient(cue.x - nx * 190, cue.y - ny * 190, cue.x - nx * 20, cue.y - ny * 20);
@@ -1164,6 +1186,56 @@
     return nearest;
   }
 
+  function railPreviewPoint(cue, metrics, table) {
+    const minX = table.rail + table.ballRadius;
+    const maxX = table.width - table.rail - table.ballRadius;
+    const minY = table.rail + table.ballRadius;
+    const maxY = table.height - table.rail - table.ballRadius;
+    let contactDistance = 320;
+    let hitAxis = "";
+
+    if (metrics.nx > 0.001) {
+      const distance = (maxX - cue.x) / metrics.nx;
+      if (distance > 0 && distance < contactDistance) {
+        contactDistance = distance;
+        hitAxis = "x";
+      }
+    } else if (metrics.nx < -0.001) {
+      const distance = (minX - cue.x) / metrics.nx;
+      if (distance > 0 && distance < contactDistance) {
+        contactDistance = distance;
+        hitAxis = "x";
+      }
+    }
+
+    if (metrics.ny > 0.001) {
+      const distance = (maxY - cue.y) / metrics.ny;
+      if (distance > 0 && distance < contactDistance) {
+        contactDistance = distance;
+        hitAxis = "y";
+      }
+    } else if (metrics.ny < -0.001) {
+      const distance = (minY - cue.y) / metrics.ny;
+      if (distance > 0 && distance < contactDistance) {
+        contactDistance = distance;
+        hitAxis = "y";
+      }
+    }
+
+    const contactX = cue.x + metrics.nx * contactDistance;
+    const contactY = cue.y + metrics.ny * contactDistance;
+    if (!hitAxis) return { contactX, contactY };
+
+    return {
+      contactX,
+      contactY,
+      bounce: {
+        x: contactX + (hitAxis === "x" ? -metrics.nx : metrics.nx) * 90,
+        y: contactY + (hitAxis === "y" ? -metrics.ny : metrics.ny) * 90
+      }
+    };
+  }
+
   function drawCuePlacementHighlight(table) {
     if (!state || !hasBallInHand() || animating) return;
     const cue = cueBallForDraw();
@@ -1190,6 +1262,7 @@
   }
 
   function draw() {
+    if (document.hidden) return;
     ensureCanvasResolution();
     const table = currentTable();
     drawBackground(table);
@@ -1486,12 +1559,14 @@
       placingCue = true;
       cuePlacementValid = true;
       aiming = false;
+      setCanvasMode("placing");
       requestDraw();
       return;
     }
 
     aiming = true;
     placingCue = false;
+    setCanvasMode("aiming");
     requestDraw();
   }
 
@@ -1536,6 +1611,7 @@
     pointerRect = null;
     lastPointerDrawX = NaN;
     lastPointerDrawY = NaN;
+    setCanvasMode("");
   }
 
   function onPointerUp(event) {
@@ -1650,6 +1726,7 @@
   });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
+      requestDraw();
       refreshState({ silent: true, animate: false });
     }
   });

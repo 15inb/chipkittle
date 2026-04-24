@@ -54,6 +54,9 @@ let powerupTimer = 5.5;
 let obstacles = [];
 let breads = [];
 let powerups = [];
+let dust = [];
+let lastStatsText = "";
+let lastPowerupText = "";
 
 const drawBackground = createBackgroundCache(canvas, (cacheCtx, targetCanvas, key) => {
   const palettes = [
@@ -87,6 +90,9 @@ const drawBackground = createBackgroundCache(canvas, (cacheCtx, targetCanvas, ke
 });
 
 function updateStats() {
+  const next = `${Math.floor(score)}:${bread}`;
+  if (next === lastStatsText) return;
+  lastStatsText = next;
   scoreValue.textContent = String(Math.floor(score));
   breadValue.textContent = String(bread);
 }
@@ -96,7 +102,25 @@ function updatePowerupStatus() {
   if (player.shield > 0) labels.push(`Shield ${Math.ceil(player.shield)}s`);
   if (player.feather > 0) labels.push(`Feather ${Math.ceil(player.feather)}s`);
   if (player.magnet > 0) labels.push(`Magnet ${Math.ceil(player.magnet)}s`);
-  powerupStatus.textContent = `Power-up: ${labels.join(" | ") || "None"}`;
+  const next = `Power-up: ${labels.join(" | ") || "None"}`;
+  if (next === lastPowerupText) return;
+  lastPowerupText = next;
+  powerupStatus.textContent = next;
+}
+
+function puff(x, y, color = "rgba(255,255,255,0.55)", count = 5) {
+  for (let index = 0; index < count; index += 1) {
+    dust.push({
+      x,
+      y,
+      vx: rand(-60, 25),
+      vy: rand(-44, 8),
+      life: rand(0.22, 0.5),
+      maxLife: 0.5,
+      radius: rand(3, 7),
+      color
+    });
+  }
 }
 
 function resetGame() {
@@ -113,6 +137,7 @@ function resetGame() {
   obstacles = [];
   breads = [];
   powerups = [];
+  dust = [];
   Object.assign(player, {
     y: groundY,
     vy: 0,
@@ -235,6 +260,9 @@ function update(dt) {
   player.vy += 1820 * dt;
   player.y += player.vy * dt;
   if (player.y >= groundY) {
+    if (!player.grounded && player.vy > 260) {
+      puff(player.x - 18, groundY + 20, "rgba(238,246,233,0.55)", 6);
+    }
     player.y = groundY;
     player.vy = 0;
     player.grounded = true;
@@ -295,6 +323,7 @@ function update(dt) {
     if (distanceSq({ x: player.x, y: player.y - 18 }, item) < combined * combined) {
       bread += 1;
       score += 12;
+      puff(item.x, item.y, "rgba(216,154,60,0.7)", 4);
       updateStats();
       return false;
     }
@@ -305,6 +334,7 @@ function update(dt) {
     const combined = 26 + item.radius;
     if (distanceSq({ x: player.x, y: player.y - 18 }, item) < combined * combined) {
       applyPowerup(item.type);
+      puff(item.x, item.y, "rgba(128,255,180,0.7)", 7);
       return false;
     }
     return item.x > -40;
@@ -327,6 +357,12 @@ function update(dt) {
     }
   }
   obstacles = obstacles.filter((item) => item.x > -90);
+  dust.forEach((particle) => {
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.life -= dt;
+  });
+  dust = dust.filter((particle) => particle.life > 0);
   updateStats();
   updatePowerupStatus();
 }
@@ -438,12 +474,21 @@ function drawOverlay() {
 }
 
 function draw() {
+  if (document.hidden) return;
   const background = drawBackground(Math.floor(score / 550));
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(background, 0, 0);
   breads.forEach(drawBread);
   powerups.forEach(drawPowerup);
   obstacles.forEach(drawObstacle);
+  dust.forEach((particle) => {
+    ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife);
+    ctx.fillStyle = particle.color;
+    ctx.beginPath();
+    ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
   drawPlayer();
   drawOverlay();
 }
@@ -477,6 +522,11 @@ window.addEventListener("keydown", (event) => {
 
 window.addEventListener("keyup", (event) => {
   keys.delete(event.key);
+});
+
+document.addEventListener("visibilitychange", () => {
+  lastTime = performance.now();
+  if (!document.hidden) draw();
 });
 
 resetGame();

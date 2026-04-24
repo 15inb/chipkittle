@@ -67,8 +67,14 @@ let timeLeft = 45;
 let wideTimer = 0;
 let slowTimer = 0;
 let magnetTimer = 0;
+let sparks = [];
+let lastStatsText = "";
+let lastPowerupText = "";
 
 function updateStats() {
+  const next = `${Math.floor(score)}:${bread}:${Math.ceil(timeLeft)}`;
+  if (next === lastStatsText) return;
+  lastStatsText = next;
   scoreValue.textContent = String(Math.floor(score));
   breadValue.textContent = String(bread);
   timeValue.textContent = String(Math.max(Math.ceil(timeLeft), 0));
@@ -79,7 +85,25 @@ function updatePowerupStatus() {
   if (wideTimer > 0) labels.push(`Wide ${Math.ceil(wideTimer)}s`);
   if (slowTimer > 0) labels.push(`Slow ${Math.ceil(slowTimer)}s`);
   if (magnetTimer > 0) labels.push(`Magnet ${Math.ceil(magnetTimer)}s`);
-  powerupStatus.textContent = `Power-up: ${labels.join(" | ") || "None"}`;
+  const next = `Power-up: ${labels.join(" | ") || "None"}`;
+  if (next === lastPowerupText) return;
+  lastPowerupText = next;
+  powerupStatus.textContent = next;
+}
+
+function sparkle(x, y, color, count = 6) {
+  for (let index = 0; index < count; index += 1) {
+    sparks.push({
+      x,
+      y,
+      vx: rand(-80, 80),
+      vy: rand(-120, -20),
+      life: rand(0.22, 0.48),
+      maxLife: 0.48,
+      radius: rand(2, 5),
+      color
+    });
+  }
 }
 
 function syncBasketWidth() {
@@ -130,6 +154,7 @@ function applyPowerup(type) {
 
 function resetGame() {
   drops = [];
+  sparks = [];
   running = false;
   ended = false;
   scoreSaved = false;
@@ -223,14 +248,18 @@ function update(dt) {
       if (drop.type === "bread") {
         bread += 1;
         score += 7;
+        sparkle(drop.x, basket.y, "#d99a3b", 5);
       } else if (drop.type === "gold") {
         bread += 2;
         score += 20;
+        sparkle(drop.x, basket.y, "#f3d463", 9);
       } else if (drop.type === "stone") {
         score = Math.max(score - 28, 0);
         timeLeft = Math.max(timeLeft - 7, 0);
+        sparkle(drop.x, basket.y, "#1a211f", 7);
       } else {
         applyPowerup(drop.type);
+        sparkle(drop.x, basket.y, "#8fffa0", 8);
       }
       updateStats();
       return false;
@@ -240,6 +269,13 @@ function update(dt) {
 
   updateStats();
   updatePowerupStatus();
+  sparks.forEach((spark) => {
+    spark.x += spark.vx * dt;
+    spark.y += spark.vy * dt;
+    spark.vy += 240 * dt;
+    spark.life -= dt;
+  });
+  sparks = sparks.filter((spark) => spark.life > 0);
 }
 
 function drawDrop(drop) {
@@ -288,6 +324,7 @@ function drawDrop(drop) {
 }
 
 function draw() {
+  if (document.hidden) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(backgroundImage("base"), 0, 0);
   drops.forEach(drawDrop);
@@ -297,6 +334,14 @@ function draw() {
   ctx.fill();
   ctx.fillStyle = "rgba(255,255,255,0.6)";
   ctx.fillRect(basket.x - basket.width * 0.36, basket.y + 8, basket.width * 0.72, 6);
+  sparks.forEach((spark) => {
+    ctx.globalAlpha = Math.max(0, spark.life / spark.maxLife);
+    ctx.fillStyle = spark.color;
+    ctx.beginPath();
+    ctx.arc(spark.x, spark.y, spark.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
   if (!running) {
     ctx.fillStyle = "rgba(5,12,10,0.48)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -349,6 +394,11 @@ window.addEventListener("keydown", (event) => {
 });
 window.addEventListener("keyup", (event) => {
   keys.delete(event.key);
+});
+
+document.addEventListener("visibilitychange", () => {
+  lastTime = performance.now();
+  if (!document.hidden) draw();
 });
 
 resetGame();

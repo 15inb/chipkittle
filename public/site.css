@@ -876,6 +876,7 @@ a {
   height: auto;
   cursor: crosshair;
   touch-action: none;
+  user-select: none;
 }
 
 .mines-shell {
@@ -922,6 +923,20 @@ a {
 
 .mine-tile.is-safe {
   background: rgba(214, 154, 60, 0.22);
+}
+
+.mine-tile.is-revealed {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 12px 28px rgba(16, 25, 21, 0.10);
+}
+
+.mine-tile.is-scouted {
+  background: rgba(116, 239, 112, 0.18);
+  color: var(--green-dark);
+}
+
+.mine-tile.is-warded {
+  background: rgba(79, 145, 242, 0.18);
+  color: #4f91f2;
 }
 
 .mine-tile.is-mine {
@@ -1335,6 +1350,17 @@ a {
   z-index: 1;
   background: transparent;
   aspect-ratio: 1180 / 680;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.pool-stage canvas.is-placing {
+  cursor: grab;
+}
+
+.pool-stage canvas.is-aiming {
+  cursor: grabbing;
 }
 
 .pool-stage-message {
