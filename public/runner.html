@@ -60,6 +60,7 @@
             <button type="button" id="refreshLeaderboard">Refresh</button>
           </div>
           <ol id="leaderboardList"></ol>
+          <small class="game-status" id="leaderboardStatus" hidden></small>
         </div>
       </aside>
     </section>
@@ -78,6 +79,7 @@
     const resetButton = document.querySelector("#resetGame");
     const claimCard = document.querySelector("#claimCard");
     const leaderboardList = document.querySelector("#leaderboardList");
+    const leaderboardStatus = document.querySelector("#leaderboardStatus");
     const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
 
     let running = false;
@@ -105,6 +107,11 @@
         : `<span>Discord claim</span><small>${escapeHtml(message)}</small>`;
     }
 
+    function setLeaderboardStatus(message = "") {
+      leaderboardStatus.hidden = !message;
+      leaderboardStatus.textContent = message;
+    }
+
     function updateStats() {
       scoreValue.textContent = Math.floor(score);
       breadValue.textContent = bread;
@@ -121,6 +128,7 @@
         const response = await fetch(leaderboardUrl, { cache: "no-store" });
         const payload = response.ok ? await response.json() : { scores: [] };
         renderLeaderboard(Array.isArray(payload.scores) ? payload.scores : []);
+        setLeaderboardStatus("");
       } catch {
         renderLeaderboard([]);
       }
@@ -157,10 +165,12 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ game: gameId, name: safeName(playerName.value), score: Math.floor(score), bread })
         });
-        const payload = response.ok ? await response.json() : { scores: [] };
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || "Leaderboard save failed.");
         if (Array.isArray(payload.scores)) renderLeaderboard(payload.scores);
-      } catch {
-        // Leaderboard is optional; claims are separate.
+        setLeaderboardStatus("Saved to the leaderboard.");
+      } catch (error) {
+        setLeaderboardStatus(error?.message || "The leaderboard save failed.");
       }
     }
 
@@ -186,6 +196,7 @@
       player.grounded = true;
       objects = [];
       setClaimCard("Collect bread, then crash or finish to get a claim code.");
+      setLeaderboardStatus("");
       updateStats();
       draw();
     }

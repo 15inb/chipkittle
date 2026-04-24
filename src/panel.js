@@ -342,9 +342,8 @@ function publicLeaderboardEntries(entries = [], gameId = "dash", settings = DEFA
 }
 
 function publicLeaderboardFileEntries(entries = [], settings = DEFAULT_PUBLIC_GAME_SETTINGS) {
-  const normalizedSettings = publicGameSettings({ publicSite: { games: settings } });
   return [...allPublicLeaderboardEntries(entries).values()]
-    .flatMap((bucket) => bucket.sort((a, b) => b.score - a.score || b.bread - a.bread).slice(0, normalizedSettings.maxLeaderboardEntriesPerGame));
+    .flatMap((bucket) => bucket.sort((a, b) => b.score - a.score || b.bread - a.bread));
 }
 
 function writeGameLeaderboard(entries = [], settings = DEFAULT_PUBLIC_GAME_SETTINGS) {

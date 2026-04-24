@@ -75,6 +75,7 @@
             <button type="button" id="refreshLeaderboard">Refresh</button>
           </div>
           <ol id="leaderboardList"></ol>
+          <small class="game-status" id="leaderboardStatus" hidden></small>
         </div>
       </aside>
     </section>
@@ -94,6 +95,7 @@
     const playerName = document.querySelector("#playerName");
     const claimCard = document.querySelector("#claimCard");
     const leaderboardList = document.querySelector("#leaderboardList");
+    const leaderboardStatus = document.querySelector("#leaderboardStatus");
     const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
     const leaderboardUrl = "https://panel.chipkittle.com/api/public/game-leaderboard?game=dash";
     const claimUrl = "https://panel.chipkittle.com/api/public/dash-claim";
@@ -391,6 +393,11 @@
         `;
     }
 
+    function setLeaderboardStatus(message = "") {
+      leaderboardStatus.hidden = !message;
+      leaderboardStatus.textContent = message;
+    }
+
     async function createClaimCode() {
       if (claimRequested) return;
       claimRequested = true;
@@ -430,6 +437,7 @@
         if (!Array.isArray(payload.scores)) throw new Error("Leaderboard response was invalid.");
         saveLocalLeaderboard(payload.scores);
         renderLeaderboard(payload.scores);
+        setLeaderboardStatus("");
       } catch {
         renderLeaderboard();
       }
@@ -461,8 +469,10 @@
           saveLocalLeaderboard(payload.scores);
           renderLeaderboard(payload.scores);
         }
+        setLeaderboardStatus("Saved to the leaderboard.");
       } catch (error) {
         if (error?.message) setClaimCard(error.message, claimCard.dataset.code || "", claimCard.dataset.amount || 0);
+        setLeaderboardStatus(error?.message || "The leaderboard save failed.");
         renderLeaderboard(localScores);
       }
     }
@@ -489,6 +499,7 @@
       scorePrompted = false;
       scoreForm.hidden = true;
       setClaimCard("Collect bread, then finish the run to get a Discord claim code automatically.");
+      setLeaderboardStatus("");
       updateStats();
       draw();
     }
