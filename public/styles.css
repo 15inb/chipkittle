@@ -1183,6 +1183,49 @@ code {
   flex-wrap: wrap;
 }
 
+.punishment-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  place-items: center;
+  padding: 24px;
+}
+
+.punishment-modal:target {
+  display: grid;
+}
+
+.punishment-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.punishment-modal-card {
+  position: relative;
+  z-index: 1;
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(15, 18, 25, 0.98), rgba(17, 22, 30, 0.96));
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+  padding: 20px;
+}
+
+.punishment-modal-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.punishment-modal h2 {
+  margin: 0 0 6px;
+}
+
 .member-action-details summary {
   cursor: pointer;
   padding: 12px 14px;

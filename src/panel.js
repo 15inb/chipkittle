@@ -12,12 +12,10 @@ import {
   artifactOfTheDay,
   artifactDirectoryText,
   communitySnapshot,
-  createCase,
   deleteAuditLog,
   parseArtifactDirectory,
   publicMemberCards,
   topCommands,
-  updateCase
 } from "./communityFeatures.js";
 import { CHIPKITTLE_LORE } from "./chipkittleLore.js";
 import { createDashClaim } from "./dashClaims.js";
@@ -265,22 +263,6 @@ function updateControls(guildId = "") {
   `;
 }
 
-function shortDurationLabel(value) {
-  const ms = Math.max(Number(value) || 0, 0);
-  if (!ms) return "";
-  const minutes = Math.round(ms / 60000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours}h`;
-  const days = Math.round(hours / 24);
-  return `${days}d`;
-}
-
-function normalizeCaseStatusFilter(value = "") {
-  const normalized = String(value || "").toLowerCase();
-  return ["open", "closed", "all"].includes(normalized) ? normalized : "open";
-}
-
 function parsePanelDuration(input = "") {
   const match = String(input || "").trim().match(/^(\d+)(s|m|h|d|w)$/i);
   if (!match) return null;
@@ -310,7 +292,6 @@ function formatPanelDuration(ms = 0) {
 }
 
 function serializeModerationMember(member, config = {}) {
-  const cases = Array.isArray(config.community?.cases) ? config.community.cases : [];
   return {
     id: member.id,
     tag: member.user?.tag || member.user?.username || member.id,
@@ -321,7 +302,6 @@ function serializeModerationMember(member, config = {}) {
     joinedAt: member.joinedAt?.toISOString?.() || "",
     highestRole: member.roles?.highest?.name || "",
     warningCount: (config.moderation?.warnings?.[member.id] || []).length,
-    caseCount: cases.filter((entry) => String(entry.targetId || "") === member.id).length,
     timedOutUntil: member.communicationDisabledUntil?.toISOString?.() || ""
   };
 }
@@ -499,9 +479,9 @@ function warningReasonText(warning) {
 function warningUserLabel(config = {}, userId = "", labels = {}) {
   const fromLabels = labels[userId];
   if (fromLabels) return fromLabels;
-  const caseMatch = (Array.isArray(config.community?.cases) ? config.community.cases : [])
+  const auditMatch = (Array.isArray(config.community?.auditLog) ? config.community.auditLog : [])
     .find((entry) => String(entry.targetId || "") === String(userId) && entry.targetTag);
-  if (caseMatch?.targetTag) return caseMatch.targetTag;
+  if (auditMatch?.targetTag) return auditMatch.targetTag;
   const profile = config.community?.profiles?.[userId];
   if (profile?.displayName) return profile.displayName;
   return "Unknown member";
@@ -509,19 +489,18 @@ function warningUserLabel(config = {}, userId = "", labels = {}) {
 
 function punishmentHistoryFor(config = {}, userId = "") {
   const warnings = Array.isArray(config.moderation?.warnings?.[userId]) ? config.moderation.warnings[userId] : [];
-  const cases = (Array.isArray(config.community?.cases) ? config.community.cases : [])
+  const moderationLogs = (Array.isArray(config.community?.auditLog) ? config.community.auditLog : [])
     .filter((entry) => String(entry.targetId || "") === String(userId))
+    .filter((entry) => String(entry.type || "") === "moderation" || ["warn", "timeout", "untimeout", "kick", "ban"].includes(String(entry.action || "")))
     .slice(0, 30);
-  return { warnings, cases };
+  return { warnings, moderationLogs };
 }
 
 function moderationCenter(config = {}) {
   const warnings = Object.entries(config.moderation?.warnings || {});
   const warningTotals = warnings.reduce((sum, [, entries]) => sum + (Array.isArray(entries) ? entries.length : 0), 0);
   const warnedMembers = warnings.filter(([, entries]) => Array.isArray(entries) && entries.length).length;
-  const cases = Array.isArray(config.community?.cases) ? config.community.cases : [];
-  const openCases = cases.filter((entry) => String(entry.status || "open").toLowerCase() !== "closed");
-  const closedCases = Math.max(cases.length - openCases.length, 0);
+  const punishments = (config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").length;
   const warningHotlist = warnings
     .map(([userId, entries]) => ({
       userId,
@@ -535,25 +514,23 @@ function moderationCenter(config = {}) {
     <section class="panel-section">
       <div class="section-heading">
         <h2>Moderation Center</h2>
-        <p>Quick visibility into warnings, open cases, and who is generating the most staff action.</p>
+        <p>Quick visibility into warnings, punishments, and who is generating the most staff action.</p>
       </div>
       <div class="stats-grid">
-        <article class="stat-card"><strong>${escapeHtml(cases.length)}</strong><span>Total Cases</span></article>
-        <article class="stat-card"><strong>${escapeHtml(openCases.length)}</strong><span>Open Cases</span></article>
-        <article class="stat-card"><strong>${escapeHtml(closedCases)}</strong><span>Closed Cases</span></article>
+        <article class="stat-card"><strong>${escapeHtml(punishments)}</strong><span>Punishments</span></article>
         <article class="stat-card"><strong>${escapeHtml(warningTotals)}</strong><span>Total Warnings</span></article>
         <article class="stat-card"><strong>${escapeHtml(warnedMembers)}</strong><span>Warned Members</span></article>
       </div>
       <div class="dashboard-grid">
         <div class="sub-panel">
           <div class="section-heading">
-            <h2>Open Cases</h2>
-            <p>Newest active cases that still need attention.</p>
+            <h2>Recent Punishments</h2>
+            <p>Newest moderation actions recorded by the panel and bot.</p>
           </div>
           ${
-            openCases.length
-              ? `<div class="stack-list">${openCases.slice(0, 8).map((entry) => `<div class="audit-row"><strong>Case #${escapeHtml(entry.id)} &middot; ${escapeHtml(entry.action)}</strong><small>${escapeHtml(entry.targetTag || entry.targetId || "Unknown target")} &middot; ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.reason || "No reason recorded.")}</p>${entry.updates?.length ? `<small>${escapeHtml(entry.updates.length)} note${entry.updates.length === 1 ? "" : "s"}</small>` : ""}</div>`).join("")}</div>`
-              : '<p class="muted">No open moderation cases right now.</p>'
+            punishments
+              ? `<div class="stack-list">${(config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").slice(0, 8).map((entry) => `<div class="audit-row"><strong>${escapeHtml(entry.label || entry.action || "Moderation action")}</strong><small>${escapeHtml(entry.targetTag || entry.targetId || "Unknown target")} &middot; ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.details || "No details recorded.")}</p></div>`).join("")}</div>`
+              : '<p class="muted">No moderation actions recorded yet.</p>'
           }
         </div>
         <div class="sub-panel">
@@ -572,7 +549,7 @@ function moderationCenter(config = {}) {
   `;
 }
 
-function moderationMemberBrowser(guildId, memberPage = { members: [] }, panelUser = null) {
+function moderationMemberBrowser(guildId, memberPage = { members: [] }, config = {}, warningMemberLabels = {}, panelUser = null) {
   memberPage = memberPage || { members: [] };
   const members = Array.isArray(memberPage.members) ? memberPage.members : [];
   const search = memberPage.search || "";
@@ -598,7 +575,7 @@ function moderationMemberBrowser(guildId, memberPage = { members: [] }, panelUse
       <div class="member-action-list">
         ${
           members.length
-            ? members.map((member) => moderationMemberRow(guildId, member, search, after, panelUser)).join("")
+            ? members.map((member) => moderationMemberRow(guildId, member, search, after, config, warningMemberLabels, panelUser)).join("")
             : '<p class="muted">No members matched that search.</p>'
         }
       </div>
@@ -614,7 +591,7 @@ function moderationMemberBrowser(guildId, memberPage = { members: [] }, panelUse
   `;
 }
 
-function moderationMemberRow(guildId, member, search = "", after = "", panelUser = null) {
+function moderationMemberRow(guildId, member, search = "", after = "", config = {}, warningMemberLabels = {}, panelUser = null) {
   const userLabel = `${member.displayName} (${member.tag})`;
   const timeoutLabel = member.timedOutUntil ? `<span class="case-status is-open">Timed out</span>` : "";
   const canAdvanced = panelAccessAtLeast(panelUser?.level || "root", "keeper");
@@ -627,7 +604,6 @@ function moderationMemberRow(guildId, member, search = "", after = "", panelUser
           <small>${escapeHtml(member.tag)} &middot; ${escapeHtml(member.id)}</small>
           <div class="mini-stats">
             <span>${escapeHtml(member.warningCount)} warnings</span>
-            <span>${escapeHtml(member.caseCount)} cases</span>
             ${member.highestRole ? `<span>${escapeHtml(member.highestRole)}</span>` : ""}
             ${timeoutLabel}
           </div>
@@ -635,7 +611,7 @@ function moderationMemberRow(guildId, member, search = "", after = "", panelUser
       </div>
       <div class="member-action-controls">
         <div class="member-action-buttons">
-          <a class="primary-link secondary-link" href="/guilds/${guildId}?section=moderation&punishmentUser=${encodeURIComponent(member.id)}#punishments">View Punishments</a>
+          <a class="primary-link secondary-link" href="#punishments-member-${escapeHtml(member.id)}">View Punishments</a>
         </div>
         <details class="member-action-details">
           <summary>Moderate</summary>
@@ -664,49 +640,54 @@ function moderationMemberRow(guildId, member, search = "", after = "", panelUser
           </form>
         </details>
       </div>
+      ${punishmentHistoryModal(`member-${member.id}`, member.id, member.tag || member.displayName, config, warningMemberLabels)}
     </article>
   `;
 }
 
-function punishmentHistoryPanel(guildId, config = {}, punishmentUser = "", warningMemberLabels = {}) {
-  const userId = String(punishmentUser || "").trim();
+function punishmentHistoryModal(modalKey = "", userId = "", fallbackLabel = "", config = {}, warningMemberLabels = {}) {
+  modalKey = String(modalKey || userId || "").trim();
+  userId = String(userId || "").trim();
   if (!userId) return "";
   const history = punishmentHistoryFor(config, userId);
-  const userLabel = warningUserLabel(config, userId, warningMemberLabels);
+  const userLabel = warningUserLabel(config, userId, warningMemberLabels) || fallbackLabel || userId;
   return `
-    <section class="panel-section" id="punishments">
-      <div class="section-heading">
-        <h2>Punishments for ${escapeHtml(userLabel)}</h2>
-        <p>${escapeHtml(userId)} &middot; ${escapeHtml(history.warnings.length)} warning${history.warnings.length === 1 ? "" : "s"} &middot; ${escapeHtml(history.cases.length)} case${history.cases.length === 1 ? "" : "s"}</p>
-      </div>
-      ${history.warnings.length
-        ? `<div class="sub-panel"><strong>Warnings</strong><ul>${history.warnings.slice().reverse().map((warning) => `<li>${escapeHtml(warningReasonText(warning))}</li>`).join("")}</ul></div>`
-        : '<p class="muted">No warnings recorded for this member.</p>'}
-      ${history.cases.length
-        ? `<div class="case-table">${history.cases.map((entry) => `
-            <article class="case-row">
-              <div class="case-row-main">
-                <div class="case-row-head">
-                  <strong>Case #${escapeHtml(entry.id)} &middot; ${escapeHtml(entry.action || "action")}</strong>
-                  <span class="case-status ${String(entry.status || "open").toLowerCase() === "closed" ? "is-closed" : "is-open"}">${escapeHtml(entry.status || "open")}</span>
+    <div class="punishment-modal" id="punishments-${escapeHtml(modalKey)}" role="dialog" aria-modal="true" aria-labelledby="punishment-title-${escapeHtml(modalKey)}">
+      <a class="punishment-modal-backdrop" href="#" aria-label="Close punishment history"></a>
+      <section class="punishment-modal-card">
+        <div class="case-row-head">
+          <div>
+            <h2 id="punishment-title-${escapeHtml(modalKey)}">Punishments for ${escapeHtml(userLabel)}</h2>
+            <p class="muted">${escapeHtml(userId)} &middot; ${escapeHtml(history.warnings.length)} warning${history.warnings.length === 1 ? "" : "s"} &middot; ${escapeHtml(history.moderationLogs.length)} moderation action${history.moderationLogs.length === 1 ? "" : "s"}</p>
+          </div>
+          <a class="primary-link secondary-link" href="#">Close</a>
+        </div>
+        <div class="punishment-modal-body">
+          <section class="sub-panel">
+            <strong>Warnings</strong>
+            ${history.warnings.length
+              ? `<ul>${history.warnings.slice().reverse().map((warning) => `<li>${escapeHtml(warningReasonText(warning))}</li>`).join("")}</ul>`
+              : '<p class="muted">No warnings recorded for this member.</p>'}
+          </section>
+          <section class="sub-panel">
+            <strong>Moderation Actions</strong>
+            ${history.moderationLogs.length
+              ? `<div class="stack-list">${history.moderationLogs.map((entry) => `
+                <div class="audit-row">
+                  <strong>${escapeHtml(entry.label || entry.action || "Moderation action")}</strong>
+                  <small>${escapeHtml(entry.moderatorTag || entry.actor || "Unknown moderator")} &middot; ${escapeHtml(entry.createdAt || "")}</small>
+                  <p>${escapeHtml(entry.details || "No details recorded.")}</p>
                 </div>
-                <div class="case-meta">
-                  <span>Moderator: ${escapeHtml(entry.moderatorTag || entry.moderatorId || "Unknown")}</span>
-                  <span>${escapeHtml(entry.createdAt || "")}</span>
-                  ${entry.durationMs ? `<span>Duration: ${escapeHtml(shortDurationLabel(entry.durationMs))}</span>` : ""}
-                </div>
-                <p>${escapeHtml(entry.reason || "No reason recorded.")}</p>
-              </div>
-            </article>
-          `).join("")}</div>`
-        : '<p class="muted">No cases recorded for this member.</p>'}
-      <a class="primary-link secondary-link" href="/guilds/${guildId}?section=moderation">Back to moderation</a>
-    </section>
+              `).join("")}</div>`
+              : '<p class="muted">No moderation actions recorded for this member.</p>'}
+          </section>
+        </div>
+      </section>
+    </div>
   `;
 }
 
-function moderationWorkspace(guildId, config = {}, caseStatus = "open", punishmentUser = "", warningMemberLabels = {}) {
-  const filter = normalizeCaseStatusFilter(caseStatus);
+function moderationWorkspace(guildId, config = {}, warningMemberLabels = {}) {
   const warnings = Object.entries(config.moderation?.warnings || {})
     .map(([userId, entries]) => ({
       userId,
@@ -714,50 +695,7 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open", punishme
     }))
     .filter((entry) => entry.entries.length)
     .sort((a, b) => b.entries.length - a.entries.length || a.userId.localeCompare(b.userId));
-  const cases = (Array.isArray(config.community?.cases) ? config.community.cases : [])
-    .map((entry) => ({
-      ...entry,
-      isClosed: String(entry.status || "open").toLowerCase() === "closed"
-    }))
-    .filter((entry) => (filter === "all" ? true : filter === "closed" ? entry.isClosed : !entry.isClosed))
-    .slice(0, 18);
   return `
-    ${punishmentHistoryPanel(guildId, config, punishmentUser, warningMemberLabels)}
-    <section class="panel-section">
-      <div class="section-heading">
-        <h2>Case Queue</h2>
-        <p>Browse recorded moderation cases and close them from the panel when they are resolved.</p>
-      </div>
-      <div class="filter-pills">
-        ${["open", "closed", "all"].map((value) => `<a class="filter-pill ${filter === value ? "is-active" : ""}" href="/guilds/${guildId}?section=moderation&caseStatus=${value}">${escapeHtml(value[0].toUpperCase() + value.slice(1))}</a>`).join("")}
-      </div>
-      ${
-        cases.length
-          ? `<div class="case-table">${cases.map((entry) => `
-              <article class="case-row">
-                <div class="case-row-main">
-                  <div class="case-row-head">
-                    <strong>Case #${escapeHtml(entry.id)} &middot; ${escapeHtml(entry.action || "action")}</strong>
-                    <span class="case-status ${entry.isClosed ? "is-closed" : "is-open"}">${escapeHtml(entry.status || (entry.isClosed ? "closed" : "open"))}</span>
-                  </div>
-                  <div class="case-meta">
-                    <span>Target: ${escapeHtml(entry.targetTag || entry.targetId || "Unknown target")}</span>
-                    <span>Moderator: ${escapeHtml(entry.moderatorTag || entry.moderatorId || "Unknown")}</span>
-                    <span>${escapeHtml(entry.createdAt || "")}</span>
-                    ${entry.durationMs ? `<span>Duration: ${escapeHtml(shortDurationLabel(entry.durationMs))}</span>` : ""}
-                    ${entry.updates?.length ? `<span>${escapeHtml(entry.updates.length)} note${entry.updates.length === 1 ? "" : "s"}</span>` : ""}
-                  </div>
-                  <p>${escapeHtml(entry.reason || "No reason recorded.")}</p>
-                  ${entry.updates?.length ? `<details class="case-notes"><summary>Case notes</summary><div class="stack-list">${entry.updates.map((note) => `<div class="audit-row"><strong>${escapeHtml(note.authorTag || "Staff")}</strong><small>${escapeHtml(note.createdAt || "")}</small><p>${escapeHtml(note.note || "")}</p></div>`).join("")}</div></details>` : ""}
-                </div>
-                <div class="case-row-actions">
-                  ${entry.isClosed ? '<span class="muted">Closed</span>' : `<button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/cases/${entry.id}/close?section=moderation&caseStatus=${filter}">Mark closed</button>`}
-                </div>
-              </article>
-            `).join("")}</div>`
-          : '<p class="muted">No cases match this filter.</p>'
-      }
-    </section>
     <section class="panel-section">
       <div class="section-heading">
         <h2>Warning Ledger</h2>
@@ -774,9 +712,10 @@ function moderationWorkspace(guildId, config = {}, caseStatus = "open", punishme
                   <ul>${entry.entries.slice(-5).reverse().map((warning) => `<li>${escapeHtml(warningReasonText(warning))}</li>`).join("")}</ul>
                 </div>
                 <div class="case-row-actions">
-                  <a class="primary-link secondary-link" href="/guilds/${guildId}?section=moderation&punishmentUser=${encodeURIComponent(entry.userId)}#punishments">View Punishments</a>
+                  <a class="primary-link secondary-link" href="#punishments-warning-${escapeHtml(entry.userId)}">View Punishments</a>
                   <button type="button" class="secondary-button" data-post-action="/guilds/${guildId}/warnings/${entry.userId}/clear?section=moderation">Clear warnings</button>
                 </div>
+                ${punishmentHistoryModal(`warning-${entry.userId}`, entry.userId, "", config, warningMemberLabels)}
               </article>
             `).join("")}</div>`
           : '<p class="muted">No active warnings to review.</p>'
@@ -1042,7 +981,7 @@ function dashboardCards(guild, config = {}) {
   const snapshot = communitySnapshot(config);
   const top = topCommands(config, 5);
   const auditLog = (config.community?.auditLog || []).slice(0, 8);
-  const recentCases = (config.community?.cases || []).slice(0, 6);
+  const recentPunishments = (config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").slice(0, 6);
   return `
     <section class="panel-section">
       <div class="section-heading">
@@ -1054,7 +993,7 @@ function dashboardCards(guild, config = {}) {
         <article class="stat-card"><strong>${escapeHtml(snapshot.commandsRun)}</strong><span>Commands Run</span></article>
         <article class="stat-card"><strong>${escapeHtml(snapshot.aiReplies)}</strong><span>AI Replies</span></article>
         <article class="stat-card"><strong>${escapeHtml(snapshot.applicationsOpened)}</strong><span>Applications</span></article>
-        <article class="stat-card"><strong>${escapeHtml(snapshot.cases)}</strong><span>Case Files</span></article>
+        <article class="stat-card"><strong>${escapeHtml(recentPunishments.length)}</strong><span>Recent Punishments</span></article>
         <article class="stat-card"><strong>${escapeHtml(snapshot.artifacts)}</strong><span>Artifacts</span></article>
         <article class="stat-card"><strong>${escapeHtml(snapshot.shopPurchases)}</strong><span>Shop Purchases</span></article>
       </div>
@@ -1071,12 +1010,12 @@ function dashboardCards(guild, config = {}) {
       </section>
       <section class="panel-section">
         <div class="section-heading">
-          <h2>Recent Cases</h2>
-          <p>Newest moderation cases recorded by the bot.</p>
+          <h2>Recent Punishments</h2>
+          <p>Newest moderation actions recorded by the bot and panel.</p>
         </div>
-        ${recentCases.length
-          ? `<div class="stack-list">${recentCases.map((entry) => `<div class="audit-row"><strong>Case #${escapeHtml(entry.id)} &middot; ${escapeHtml(entry.action)}</strong><small>${escapeHtml(entry.targetTag || entry.targetId)} &middot; ${escapeHtml(entry.status)}</small><p>${escapeHtml(entry.reason || "No reason recorded.")}</p></div>`).join("")}</div>`
-          : '<p class="muted">No moderation cases yet.</p>'}
+        ${recentPunishments.length
+          ? `<div class="stack-list">${recentPunishments.map((entry) => `<div class="audit-row"><strong>${escapeHtml(entry.label || entry.action || "Moderation action")}</strong><small>${escapeHtml(entry.targetTag || entry.targetId || "Unknown target")} &middot; ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.details || "No details recorded.")}</p></div>`).join("")}</div>`
+          : '<p class="muted">No moderation actions yet.</p>'}
       </section>
       <section class="panel-section">
         <div class="section-heading">
@@ -2080,7 +2019,7 @@ function panelAccessUserRow(guildId, userId, entry, actorLevel = "root") {
 function panelTierDescription(level = "") {
   switch (normalizePanelAccessLevel(level)) {
     case "round_table":
-      return "Basic moderation access: dashboard, commands, warnings, timeouts, cases, and routine member actions.";
+      return "Basic moderation access: dashboard, commands, warnings, timeouts, punishment history, and routine member actions.";
     case "keeper":
       return "Advanced moderation access: includes kick, ban, applications, and higher-risk moderation actions.";
     case "artifact_contributor":
@@ -2139,7 +2078,7 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
         <div class="rail-mini-stats">
           <span><strong>${escapeHtml(community.commandsRun)}</strong> Commands</span>
           <span><strong>${escapeHtml(community.aiReplies)}</strong> AI replies</span>
-          <span><strong>${escapeHtml(community.cases)}</strong> Cases</span>
+          <span><strong>${escapeHtml((config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").length)}</strong> Punishments</span>
           <span><strong>${escapeHtml(community.applicationsOpened)}</strong> Apps</span>
         </div>
       </section>
@@ -2196,13 +2135,13 @@ function guildSummaryStrip(guild, config = {}) {
       <article class="summary-chip"><strong>${escapeHtml(snapshot.commandsRun)}</strong><span>Commands Run</span></article>
       <article class="summary-chip"><strong>${escapeHtml(snapshot.aiReplies)}</strong><span>AI Replies</span></article>
       <article class="summary-chip"><strong>${escapeHtml(snapshot.applicationsOpened)}</strong><span>Applications</span></article>
-      <article class="summary-chip"><strong>${escapeHtml(snapshot.cases)}</strong><span>Cases</span></article>
+      <article class="summary-chip"><strong>${escapeHtml((config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").length)}</strong><span>Punishments</span></article>
       <article class="summary-chip"><strong>${escapeHtml(snapshot.artifacts)}</strong><span>Artifacts</span></article>
     </section>
   `;
 }
 
-function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, currentSection, currentMeta, gameSettings, moderationCaseStatus, moderationMembers, punishmentUser, warningMemberLabels, panelUser }) {
+function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, currentSection, currentMeta, gameSettings, moderationMembers, warningMemberLabels, panelUser }) {
   switch (currentSection) {
     case "dashboard":
       return dashboardCards(guild, config);
@@ -2267,8 +2206,8 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
     case "moderation":
       return `
         ${moderationCenter(config)}
-        ${moderationMemberBrowser(guild.id, moderationMembers, panelUser)}
-        ${moderationWorkspace(guild.id, config, moderationCaseStatus, punishmentUser, warningMemberLabels)}
+        ${moderationMemberBrowser(guild.id, moderationMembers, config, warningMemberLabels, panelUser)}
+        ${moderationWorkspace(guild.id, config, warningMemberLabels)}
         ${panelAccessAtLeast(panelUser?.level || "root", "keeper")
           ? sectionForm(
               guild.id,
@@ -2564,11 +2503,10 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
   }
 }
 
-function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general", caseStatus = "open", moderationMembers = null, punishmentUser = "", warningMemberLabels = {}, panelUser = null }) {
+function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general", moderationMembers = null, warningMemberLabels = {}, panelUser = null }) {
   const currentSection = allowedPanelSection(activeSection, panelUser?.level || "root");
   const currentMeta = activeSectionMeta(currentSection);
   const gameSettings = publicGameSettings(config);
-  const moderationCaseStatus = normalizeCaseStatusFilter(caseStatus);
   const panelClientScript = `
     <script>
       (() => {
@@ -2716,9 +2654,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               currentSection,
               currentMeta,
               gameSettings,
-              moderationCaseStatus,
               moderationMembers,
-              punishmentUser,
               warningMemberLabels,
               panelUser
             })}
@@ -3230,9 +3166,7 @@ export function createPanel({
         ai,
         flash: flashFromQuery(request.query),
         activeSection,
-        caseStatus: normalizeCaseStatusFilter(String(request.query.caseStatus || "")),
         moderationMembers,
-        punishmentUser: String(request.query.punishmentUser || ""),
         warningMemberLabels: labels,
         panelUser
       }));
@@ -3318,7 +3252,6 @@ export function createPanel({
         guildEntryId,
         {
           warnings: config.moderation?.warnings || {},
-          cases: config.community?.cases || [],
           auditLog: config.community?.auditLog || [],
           exportedAt: new Date().toISOString()
         }
@@ -3412,42 +3345,6 @@ export function createPanel({
         response.redirect(`/guilds/${encodeURIComponent(targetGuildId)}?section=server&update=${encodeURIComponent("restore-json-error")}`);
         return;
       }
-      next(error);
-    }
-  });
-
-  app.post("/guilds/:guildId/cases/:caseId/close", requireAuth, requirePanelLevel("round_table"), async (request, response, next) => {
-    try {
-      const discordGuild = client.guilds.cache.get(request.params.guildId);
-      if (!discordGuild) {
-        response.status(404).send("Server not found.");
-        return;
-      }
-      const panelUser = currentPanelUser(request, discordGuild.id);
-      const actor = panelUserLabel(panelUser);
-      await updateCase(store, discordGuild.id, Number(request.params.caseId), (entry) => ({
-        ...entry,
-        status: "closed",
-        updates: [
-          {
-            authorTag: actor,
-            note: "Case closed from the web panel.",
-            createdAt: new Date().toISOString()
-          },
-          ...(entry.updates || [])
-        ].slice(0, 12)
-      }));
-      await addAuditLog(store, discordGuild.id, {
-        type: "case",
-        label: "Case closed from panel",
-        details: `Closed case #${request.params.caseId} from the web panel.`,
-        action: "case_closed",
-        actor,
-        moderatorId: panelUser?.userId || "panel",
-        moderatorTag: actor
-      }).catch(() => {});
-      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=moderation&caseStatus=${normalizeCaseStatusFilter(String(request.query.caseStatus || ""))}`);
-    } catch (error) {
       next(error);
     }
   });
@@ -3567,16 +3464,7 @@ export function createPanel({
         return;
       }
 
-      const createdCase = await createCase(store, discordGuild.id, {
-        action,
-        targetId: member.id,
-        targetTag: member.user.tag,
-        moderatorId: panelUser.userId || "panel",
-        moderatorTag,
-        reason,
-        durationMs
-      }).catch(() => null);
-      const logOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""} Moderator: ${moderatorTag}`;
+      const logOutput = `${output} Moderator: ${moderatorTag}`;
       await addAuditLog(store, discordGuild.id, {
         type: "moderation",
         label: `Panel ${action}`,

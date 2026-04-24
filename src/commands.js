@@ -31,20 +31,15 @@ import {
   addArtifact,
   addAuditLog,
   artifactOfTheDay,
-  casesForUser,
   communityState,
   communitySnapshot,
-  createCase,
   derivedAchievements,
-  getCase,
   incrementMetric,
-  normalizeCases,
   profileFor,
   purchaseShopItem,
   recordCommandUsage,
   shopCatalog,
   topCommands,
-  updateCase,
   updateProfile
 } from "./communityFeatures.js";
 import {
@@ -452,10 +447,6 @@ function profileEmbedFor(ctx, member) {
   });
 }
 
-function formatCaseSummary(entry) {
-  const duration = entry.durationMs ? ` for ${formatDuration(entry.durationMs)}` : "";
-  return `Case #${entry.id} • ${entry.action}${duration} • ${entry.targetTag || entry.targetId} • ${entry.status}\nReason: ${entry.reason || "No reason recorded."}`;
-}
 
 function hasPermission(member, permission) {
   return member?.permissions.has(permission);
@@ -756,12 +747,12 @@ async function sendPunishmentNotice(member, { guildName, action, reason, duratio
     .catch(() => false);
 }
 
-async function recordModerationAudit(ctx, { action, member, reason, durationMs = 0, details = "", caseId = null }) {
+async function recordModerationAudit(ctx, { action, member, reason, durationMs = 0, details = "" }) {
   await addAuditLog(ctx.store, ctx.message.guild.id, {
     type: "moderation",
     label: `${action.charAt(0).toUpperCase()}${action.slice(1)} issued`,
     action,
-    details: details || `${member.user.tag} received ${action}${caseId ? ` in case #${caseId}` : ""}.`,
+    details: details || `${member.user.tag} received ${action}.`,
     actor: ctx.message.author.tag,
     targetId: member.id,
     targetTag: member.user.tag,
@@ -2473,16 +2464,8 @@ define({
       moderatorId: ctx.message.author.id,
       createdAt: new Date().toISOString()
     });
-    const createdCase = await createCase(ctx.store, ctx.message.guild.id, {
-      action: "warn",
-      targetId: member.id,
-      targetTag: member.user.tag,
-      moderatorId: ctx.message.author.id,
-      moderatorTag: ctx.message.author.tag,
-      reason
-    }).catch(() => null);
     const output = `${member} was warned: ${reason}`;
-    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    const finalOutput = output;
     await sendPunishmentNotice(member, {
       guildName: ctx.message.guild.name,
       action: "warned",
@@ -2493,8 +2476,7 @@ define({
       action: "warn",
       member,
       reason,
-      details: finalOutput,
-      caseId: createdCase?.id
+      details: finalOutput
     });
     await ctx.message.reply(finalOutput);
     await sendModerationLog(ctx, finalOutput);
@@ -2574,16 +2556,7 @@ define({
     if (!completed) return;
 
     const output = `${member} timed out for ${formatDuration(duration)}. Reason: ${reason}`;
-    const createdCase = await createCase(ctx.store, ctx.message.guild.id, {
-      action: "timeout",
-      targetId: member.id,
-      targetTag: member.user.tag,
-      moderatorId: ctx.message.author.id,
-      moderatorTag: ctx.message.author.tag,
-      reason,
-      durationMs: timeoutDuration
-    }).catch(() => null);
-    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    const finalOutput = output;
     await sendPunishmentNotice(member, {
       guildName: ctx.message.guild.name,
       action: "timed out",
@@ -2596,8 +2569,7 @@ define({
       member,
       reason,
       durationMs: timeoutDuration,
-      details: finalOutput,
-      caseId: createdCase?.id
+      details: finalOutput
     });
     await ctx.message.reply(finalOutput);
     await sendModerationLog(ctx, finalOutput);
@@ -2629,15 +2601,7 @@ define({
     if (!completed) return;
 
     const output = `${member} is no longer timed out.`;
-    const createdCase = await createCase(ctx.store, ctx.message.guild.id, {
-      action: "untimeout",
-      targetId: member.id,
-      targetTag: member.user.tag,
-      moderatorId: ctx.message.author.id,
-      moderatorTag: ctx.message.author.tag,
-      reason: "Timeout removed."
-    }).catch(() => null);
-    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    const finalOutput = output;
     await sendPunishmentNotice(member, {
       guildName: ctx.message.guild.name,
       action: "removed from timeout",
@@ -2648,8 +2612,7 @@ define({
       action: "untimeout",
       member,
       reason: "Timeout removed.",
-      details: finalOutput,
-      caseId: createdCase?.id
+      details: finalOutput
     });
     await ctx.message.reply(finalOutput);
     await sendModerationLog(ctx, finalOutput);
@@ -2689,21 +2652,12 @@ define({
     if (!completed) return;
 
     const output = `${member.user.tag} was kicked. Reason: ${reason}`;
-    const createdCase = await createCase(ctx.store, ctx.message.guild.id, {
-      action: "kick",
-      targetId: member.id,
-      targetTag: member.user.tag,
-      moderatorId: ctx.message.author.id,
-      moderatorTag: ctx.message.author.tag,
-      reason
-    }).catch(() => null);
-    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    const finalOutput = output;
     await recordModerationAudit(ctx, {
       action: "kick",
       member,
       reason,
-      details: finalOutput,
-      caseId: createdCase?.id
+      details: finalOutput
     });
     await ctx.message.reply(finalOutput);
     await sendModerationLog(ctx, finalOutput);
@@ -2743,21 +2697,12 @@ define({
     if (!completed) return;
 
     const output = `${member.user.tag} was banned. Reason: ${reason}`;
-    const createdCase = await createCase(ctx.store, ctx.message.guild.id, {
-      action: "ban",
-      targetId: member.id,
-      targetTag: member.user.tag,
-      moderatorId: ctx.message.author.id,
-      moderatorTag: ctx.message.author.tag,
-      reason
-    }).catch(() => null);
-    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    const finalOutput = output;
     await recordModerationAudit(ctx, {
       action: "ban",
       member,
       reason,
-      details: finalOutput,
-      caseId: createdCase?.id
+      details: finalOutput
     });
     await ctx.message.reply(finalOutput);
     await sendModerationLog(ctx, finalOutput);
@@ -2802,140 +2747,6 @@ define({
     const output = "Channel unlocked.";
     await ctx.message.reply(output);
     await sendModerationLog(ctx, output);
-  }
-});
-
-define({
-  name: "cases",
-  aliases: ["case", "opencases", "casequeue", "caseboard"],
-  category: "Moderation",
-  description: "Show moderation cases, a single case, or the open case queue.",
-  usage: "cases [@user|case-id]",
-  async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
-    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
-    const caseId = Number(ctx.args[0]);
-    if (["case", "opencases", "casequeue", "caseboard"].includes(invoked) || caseId) {
-      if (["opencases", "casequeue", "caseboard"].includes(invoked)) {
-        const openCases = normalizeCases(communityState(ctx.config).cases)
-          .filter((entry) => entry.status !== "closed")
-          .slice(0, 10);
-        if (!openCases.length) {
-          await ctx.message.reply("There are no open cases right now.");
-          return;
-        }
-        await ctx.message.reply([
-          `**Open Cases**`,
-          openCases.map((entry) => `• #${entry.id} ${entry.action} - ${entry.targetTag || entry.targetId} - ${entry.reason || "No reason"}`).join("\n")
-        ].join("\n"));
-        return;
-      }
-      if (!caseId) {
-        await ctx.message.reply(`Usage: \`${ctx.config.prefix}case 12\``);
-        return;
-      }
-      const entry = getCase(ctx.config, caseId);
-      if (!entry) {
-        await ctx.message.reply(`Case #${caseId} was not found.`);
-        return;
-      }
-      const notes = entry.updates?.length
-        ? entry.updates.map((update) => `• ${update.authorTag}: ${update.note}`).join("\n")
-        : "No case notes yet.";
-      await ctx.message.reply([
-        formatCaseSummary(entry),
-        "",
-        `Moderator: ${entry.moderatorTag || entry.moderatorId}`,
-        `Opened: ${entry.createdAt || "Unknown"}`,
-        "",
-        `**Case Notes**`,
-        notes
-      ].join("\n"));
-      return;
-    }
-    const member = ctx.message.mentions.members.first() || ctx.message.member;
-    const entries = casesForUser(ctx.config, member.id).slice(0, 8);
-    if (!entries.length) {
-      await ctx.message.reply(`${member} has no recorded cases.`);
-      return;
-    }
-    await ctx.message.reply(`**Cases for ${member.displayName}**\n${entries.map(formatCaseSummary).join("\n\n")}`);
-  }
-});
-
-define({
-  name: "casenote",
-  category: "Moderation",
-  description: "Add a note to an existing moderation case.",
-  usage: "casenote 12 note text",
-  async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
-    const caseId = Number(ctx.args[0]);
-    const note = cleanText(ctx.args.slice(1).join(" "), 200);
-    if (!caseId || !note) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-    const updated = await updateCase(ctx.store, ctx.message.guild.id, caseId, (entry) => ({
-      ...entry,
-      updates: [
-        {
-          authorTag: ctx.message.author.tag,
-          note,
-          createdAt: new Date().toISOString()
-        },
-        ...(entry.updates || [])
-      ].slice(0, 20)
-    })).catch(() => null);
-    if (!updated) {
-      await ctx.message.reply(`Case #${caseId} was not found.`);
-      return;
-    }
-    await addAuditLog(ctx.store, ctx.message.guild.id, {
-      type: "case",
-      label: "Case note added",
-      details: `Added a note to case #${caseId}.`,
-      actor: ctx.message.author.tag
-    }).catch(() => {});
-    await ctx.message.reply(`Added a note to case #${caseId}.`);
-  }
-});
-
-define({
-  name: "closecase",
-  category: "Moderation",
-  description: "Close an open moderation case.",
-  usage: "closecase 12",
-  async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
-    const caseId = Number(ctx.args[0]);
-    if (!caseId) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
-    const updated = await updateCase(ctx.store, ctx.message.guild.id, caseId, (entry) => ({
-      ...entry,
-      status: "closed",
-      updates: [
-        {
-          authorTag: ctx.message.author.tag,
-          note: "Case closed.",
-          createdAt: new Date().toISOString()
-        },
-        ...(entry.updates || [])
-      ].slice(0, 20)
-    })).catch(() => null);
-    if (!updated) {
-      await ctx.message.reply(`Case #${caseId} was not found.`);
-      return;
-    }
-    await addAuditLog(ctx.store, ctx.message.guild.id, {
-      type: "case",
-      label: "Case closed",
-      details: `Closed case #${caseId}.`,
-      actor: ctx.message.author.tag
-    }).catch(() => {});
-    await ctx.message.reply(`Closed case #${caseId}.`);
   }
 });
 
@@ -4466,9 +4277,9 @@ define({
 
 define({
   name: "modsummary",
-  aliases: ["membermod", "usercases"],
+  aliases: ["membermod", "punishmentsummary"],
   category: "Moderation",
-  description: "Show warnings, cases, and staff notes for a member.",
+  description: "Show warnings, punishment history, and staff notes for a member.",
   usage: "modsummary @user",
   async run(ctx) {
     if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
@@ -4479,14 +4290,17 @@ define({
     }
     const warnings = ctx.config.moderation?.warnings?.[member.id] || [];
     const notes = ctx.config.community?.staffNotes?.[member.id] || [];
-    const cases = casesForUser(ctx.config, member.id).slice(0, 5);
+    const punishments = (ctx.config.community?.auditLog || [])
+      .filter((entry) => String(entry.targetId || "") === member.id)
+      .filter((entry) => String(entry.type || "") === "moderation" || ["warn", "timeout", "untimeout", "kick", "ban"].includes(String(entry.action || "")))
+      .slice(0, 5);
     await ctx.message.reply([
       `**Moderation Summary: ${member.displayName}**`,
       `Warnings: **${warnings.length}**`,
       `Staff notes: **${notes.length}**`,
-      `Cases: **${cases.length} shown / ${casesForUser(ctx.config, member.id).length} total**`,
+      `Punishments: **${punishments.length} shown**`,
       "",
-      cases.length ? cases.map((entry) => `• #${entry.id} ${entry.action} - ${entry.status} - ${entry.reason || "No reason"}`).join("\n") : "No recent cases."
+      punishments.length ? punishments.map((entry) => `- ${entry.label || entry.action || "Moderation action"} - ${entry.details || "No details"}`).join("\n") : "No recent punishments."
     ].join("\n"));
   }
 });
