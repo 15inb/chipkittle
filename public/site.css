@@ -89,10 +89,35 @@ a {
   background-image:
     radial-gradient(circle at 51% 42%, var(--hero-radial) 0 10%, var(--hero-radial-soft) 19%, transparent 34%),
     linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 34%, var(--hero-wash-glass) 63%, var(--hero-wash-end) 100%),
-    url("/assets/chipkittle-hero.png");
+    url("/assets/ckwebsitebg3.png");
   background-repeat: no-repeat;
   background-size: cover, cover, auto 100%;
   background-position: center, center, right center;
+}
+
+:root[data-theme="dark"] .hero-bg {
+  background-image:
+    radial-gradient(circle at 51% 42%, var(--hero-radial) 0 10%, var(--hero-radial-soft) 19%, transparent 34%),
+    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 34%, var(--hero-wash-glass) 63%, var(--hero-wash-end) 100%),
+    url("/assets/chipkittle-hero.png");
+}
+
+.hero-logo-overlay {
+  position: absolute;
+  left: clamp(49%, 53vw, 58%);
+  top: clamp(52%, 59vh, 62%);
+  z-index: -1;
+  width: clamp(110px, 12vw, 180px);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.hero-logo-overlay img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 24px 40px rgba(97, 216, 66, 0.28));
 }
 
 .hero::after {
@@ -692,6 +717,12 @@ a {
     background-position: center, center, 62% center;
   }
 
+  .hero-logo-overlay {
+    left: 57%;
+    top: 61%;
+    width: clamp(96px, 16vw, 150px);
+  }
+
   .hero-copy {
     width: 100%;
     max-width: 700px;
@@ -759,6 +790,12 @@ a {
 
   .hero-copy h1 {
     font-size: clamp(54px, 18vw, 76px);
+  }
+
+  .hero-logo-overlay {
+    left: 58%;
+    top: 64%;
+    width: 96px;
   }
 
   .trusted strong {
