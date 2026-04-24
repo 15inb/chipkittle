@@ -326,6 +326,7 @@ function layout({ title, body, user, flash = "" }) {
         ${user ? '<a href="/commits">Commits</a>' : ""}
         ${user ? '<a href="/logout">Sign out</a>' : '<a href="/login">Sign in</a>'}
       </nav>
+      <a class="sidebar-button" href="https://chipkittle.com/" aria-label="Open the Chipkittle homepage">Homepage</a>
       <div class="sidebar-note">
         <span class="status-dot"></span>
         Web panel active

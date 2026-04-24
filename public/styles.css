@@ -128,6 +128,23 @@ textarea {
   color: var(--text);
 }
 
+.sidebar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 900;
+  padding: 10px 14px;
+  text-align: center;
+}
+
+.sidebar-button:hover {
+  background: var(--accent-2);
+}
+
 .sidebar-note {
   margin-top: auto;
   display: flex;
