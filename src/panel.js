@@ -13,6 +13,7 @@ import {
   artifactDirectoryText,
   communitySnapshot,
   createCase,
+  deleteAuditLog,
   parseArtifactDirectory,
   publicMemberCards,
   topCommands,
@@ -50,6 +51,7 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const PANEL_SECTION_MIN_LEVEL = {
   dashboard: "round_table",
+  audit: "round_table",
   commands: "round_table",
   moderation: "round_table",
   applications: "keeper",
@@ -65,6 +67,7 @@ const PANEL_SECTION_MIN_LEVEL = {
 };
 const SETTINGS_SECTIONS = [
   { id: "dashboard", label: "Dashboard", description: "At-a-glance stats, audit activity, and quick links." },
+  { id: "audit", label: "Audit Log", description: "Searchable panel and moderation history for every access tier." },
   { id: "general", label: "General", description: "Slash commands, legacy prefix, welcome, and autorole." },
   { id: "members", label: "Members", description: "Edit the public member directory and review community profiles." },
   { id: "public", label: "Public Site", description: "Quick links, exports, and live public-facing content summaries." },
@@ -80,12 +83,12 @@ const SETTINGS_SECTIONS = [
 ];
 
 const SETTINGS_NAV_GROUPS = [
-  { label: "Overview", sections: ["dashboard", "public", "commands", "server"] },
+  { label: "Overview", sections: ["dashboard", "audit", "public", "commands", "server"] },
   { label: "Configuration", sections: ["general", "ai", "games", "permissions", "access"] },
   { label: "Community", sections: ["members", "applications", "community", "moderation"] }
 ];
 
-const NON_FORM_SECTIONS = new Set(["dashboard", "public", "commands", "server"]);
+const NON_FORM_SECTIONS = new Set(["dashboard", "audit", "public", "commands", "server"]);
 
 const DEFAULT_PUBLIC_GAME_SETTINGS = {
   blockedLeaderboardWords: [],
@@ -381,6 +384,23 @@ async function sendPanelModerationLog(discordGuild, config = {}, content = "") {
       })
     ]
   }).catch(() => {});
+}
+
+async function sendPanelPunishmentNotice(member, { guildName, action, reason, durationLabel = "", moderatorTag = "" }) {
+  const lines = [
+    `You have been ${action} in ${guildName}.`,
+    durationLabel ? `Duration: ${durationLabel}` : "",
+    `Reason: ${reason || "No reason provided."}`,
+    moderatorTag ? `Moderator: ${moderatorTag}` : ""
+  ].filter(Boolean);
+
+  return member
+    .send({
+      content: lines.join("\n"),
+      allowedMentions: { parse: [] }
+    })
+    .then(() => true)
+    .catch(() => false);
 }
 
 function moderationRedirect(discordGuild, request, status = "success") {
@@ -941,6 +961,62 @@ function dashboardCards(guild, config = {}) {
           : '<p class="muted">No audit activity yet.</p>'}
       </section>
     </div>
+  `;
+}
+
+function auditEntryKey(entry = {}, index = 0) {
+  return String(entry.id || `legacy-${index}`);
+}
+
+function auditActionLabel(entry = {}) {
+  return String(entry.action || entry.label || entry.type || "event")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function auditLogWorkspace(guildId, config = {}, panelUser = null) {
+  const auditLog = Array.isArray(config.community?.auditLog) ? config.community.auditLog : [];
+  const canDelete = panelAccessAtLeast(panelUser?.level || "root", "root");
+  const rows = auditLog
+    .map((entry, index) => {
+      const key = auditEntryKey(entry, index);
+      const actor = entry.moderatorTag || entry.actor || "System";
+      const target = entry.targetTag || entry.targetId || "No target";
+      const label = entry.label || auditActionLabel(entry);
+      return `
+        <article class="audit-log-row">
+          <div class="audit-log-main">
+            <div class="audit-log-title">
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(auditActionLabel(entry))}</strong>
+            </div>
+            <div class="audit-log-meta">
+              <span>By ${escapeHtml(actor)}</span>
+              <span>Target ${escapeHtml(target)}</span>
+              <span>${escapeHtml(entry.createdAt || "")}</span>
+            </div>
+            <p>${escapeHtml(entry.details || "No details recorded.")}</p>
+          </div>
+          ${canDelete
+            ? `<form method="post" action="/guilds/${guildId}/audit/${encodeURIComponent(key)}/delete" onsubmit="return confirm('Delete this audit log entry?');">
+                <button type="submit" class="danger-button compact-button">Delete</button>
+              </form>`
+            : ""}
+        </article>
+      `;
+    })
+    .join("");
+
+  return `
+    <section class="panel-section audit-log-panel">
+      <div class="section-heading">
+        <h2>Audit Log</h2>
+        <p>Every panel tier can review actions here. Root can remove stale or noisy entries.</p>
+      </div>
+      ${auditLog.length
+        ? `<div class="audit-log-list">${rows}</div>`
+        : '<p class="muted">No audit activity has been recorded yet.</p>'}
+    </section>
   `;
 }
 
@@ -1997,6 +2073,8 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
   switch (currentSection) {
     case "dashboard":
       return dashboardCards(guild, config);
+    case "audit":
+      return auditLogWorkspace(guild.id, config, panelUser);
     case "general":
       return sectionForm(
         guild.id,
@@ -3205,12 +3283,14 @@ export function createPanel({
         response.status(404).send("Server not found.");
         return;
       }
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      const actor = panelUserLabel(panelUser);
       await updateCase(store, discordGuild.id, Number(request.params.caseId), (entry) => ({
         ...entry,
         status: "closed",
         updates: [
           {
-            authorTag: "Panel",
+            authorTag: actor,
             note: "Case closed from the web panel.",
             createdAt: new Date().toISOString()
           },
@@ -3221,9 +3301,26 @@ export function createPanel({
         type: "case",
         label: "Case closed from panel",
         details: `Closed case #${request.params.caseId} from the web panel.`,
-        actor: "Panel"
+        action: "case_closed",
+        actor,
+        moderatorId: panelUser?.userId || "panel",
+        moderatorTag: actor
       }).catch(() => {});
       response.redirect(`/guilds/${discordGuild.id}?saved=1&section=moderation&caseStatus=${normalizeCaseStatusFilter(String(request.query.caseStatus || ""))}`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/audit/:logId/delete", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      await deleteAuditLog(store, discordGuild.id, request.params.logId);
+      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=audit`);
     } catch (error) {
       next(error);
     }
@@ -3256,6 +3353,7 @@ export function createPanel({
 
       let output = "";
       let durationMs = 0;
+      const moderatorTag = panelUserLabel(panelUser);
 
       if (action === "warn") {
         requireBotPermission(discordGuild, PermissionsBitField.Flags.ModerateMembers);
@@ -3263,6 +3361,12 @@ export function createPanel({
           reason,
           moderatorId: panelUser.userId || "panel",
           createdAt: new Date().toISOString()
+        });
+        await sendPanelPunishmentNotice(member, {
+          guildName: discordGuild.name,
+          action: "warned",
+          reason,
+          moderatorTag
         });
         output = `${member.user.tag} was warned from the panel. Reason: ${reason}`;
       } else if (action === "timeout") {
@@ -3275,20 +3379,45 @@ export function createPanel({
         durationMs = Math.min(durationMs, 28 * 86_400_000);
         assertModerationHierarchy(member, "moderatable");
         await member.timeout(durationMs, reason);
+        await sendPanelPunishmentNotice(member, {
+          guildName: discordGuild.name,
+          action: "timed out",
+          reason,
+          durationLabel: formatPanelDuration(durationMs),
+          moderatorTag
+        });
         output = `${member.user.tag} was timed out from the panel for ${formatPanelDuration(durationMs)}. Reason: ${reason}`;
       } else if (action === "untimeout") {
         requireBotPermission(discordGuild, PermissionsBitField.Flags.ModerateMembers);
         assertModerationHierarchy(member, "moderatable");
         await member.timeout(null, reason);
+        await sendPanelPunishmentNotice(member, {
+          guildName: discordGuild.name,
+          action: "removed from timeout",
+          reason,
+          moderatorTag
+        });
         output = `${member.user.tag}'s timeout was removed from the panel. Reason: ${reason}`;
       } else if (action === "kick") {
         requireBotPermission(discordGuild, PermissionsBitField.Flags.KickMembers);
         assertModerationHierarchy(member, "kickable");
+        await sendPanelPunishmentNotice(member, {
+          guildName: discordGuild.name,
+          action: "kicked",
+          reason,
+          moderatorTag
+        });
         await member.kick(reason);
         output = `${member.user.tag} was kicked from the panel. Reason: ${reason}`;
       } else if (action === "ban") {
         requireBotPermission(discordGuild, PermissionsBitField.Flags.BanMembers);
         assertModerationHierarchy(member, "bannable");
+        await sendPanelPunishmentNotice(member, {
+          guildName: discordGuild.name,
+          action: "banned",
+          reason,
+          moderatorTag
+        });
         await member.ban({ reason });
         output = `${member.user.tag} was banned from the panel. Reason: ${reason}`;
       } else {
@@ -3300,17 +3429,22 @@ export function createPanel({
         action,
         targetId: member.id,
         targetTag: member.user.tag,
-        moderatorId: "panel",
-        moderatorTag: panelUserLabel(panelUser),
+        moderatorId: panelUser.userId || "panel",
+        moderatorTag,
         reason,
         durationMs
       }).catch(() => null);
-      const logOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+      const logOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""} Moderator: ${moderatorTag}`;
       await addAuditLog(store, discordGuild.id, {
         type: "moderation",
         label: `Panel ${action}`,
+        action,
         details: logOutput,
-        actor: "Panel"
+        actor: moderatorTag,
+        targetId: member.id,
+        targetTag: member.user.tag,
+        moderatorId: panelUser.userId || "panel",
+        moderatorTag
       }).catch(() => {});
       await sendPanelModerationLog(discordGuild, store.getGuild(discordGuild.id), logOutput);
       response.redirect(moderationRedirect(discordGuild, request, "success"));
@@ -3335,12 +3469,18 @@ export function createPanel({
         response.status(404).send("Server not found.");
         return;
       }
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      const actor = panelUserLabel(panelUser);
       await store.clearWarnings(discordGuild.id, String(request.params.userId || ""));
       await addAuditLog(store, discordGuild.id, {
         type: "warning",
         label: "Warnings cleared from panel",
         details: `Cleared warnings for ${request.params.userId} from the web panel.`,
-        actor: "Panel"
+        action: "clear_warnings",
+        actor,
+        targetId: String(request.params.userId || ""),
+        moderatorId: panelUser?.userId || "panel",
+        moderatorTag: actor
       }).catch(() => {});
       response.redirect(`/guilds/${discordGuild.id}?saved=1&section=moderation`);
     } catch (error) {

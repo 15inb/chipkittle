@@ -219,14 +219,31 @@ export async function addAuditLog(store, guildId, entry) {
     ...community,
     auditLog: [
       {
+        id: String(entry.id || `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
         type: String(entry.type || "event").slice(0, 40),
         label: String(entry.label || "Community event").slice(0, 120),
+        action: String(entry.action || entry.type || "event").slice(0, 40),
         details: String(entry.details || "").slice(0, 260),
         actor: String(entry.actor || "").slice(0, 80),
+        targetId: String(entry.targetId || "").slice(0, 40),
+        targetTag: String(entry.targetTag || "").slice(0, 80),
+        moderatorId: String(entry.moderatorId || "").slice(0, 40),
+        moderatorTag: String(entry.moderatorTag || entry.actor || "").slice(0, 80),
         createdAt: new Date().toISOString()
       },
       ...(community.auditLog || [])
     ].slice(0, MAX_AUDIT_LOG)
+  }));
+}
+
+export async function deleteAuditLog(store, guildId, logId) {
+  const targetId = String(logId || "");
+  return updateCommunity(store, guildId, (community) => ({
+    ...community,
+    auditLog: (community.auditLog || []).filter((entry, index) => {
+      const entryId = String(entry.id || `legacy-${index}`);
+      return entryId !== targetId;
+    })
   }));
 }
 

@@ -739,6 +739,38 @@ async function sendModerationLog(ctx, content) {
     .catch(() => {});
 }
 
+async function sendPunishmentNotice(member, { guildName, action, reason, durationLabel = "", moderatorTag = "" }) {
+  const lines = [
+    `You have been ${action} in ${guildName}.`,
+    durationLabel ? `Duration: ${durationLabel}` : "",
+    `Reason: ${reason || "No reason provided."}`,
+    moderatorTag ? `Moderator: ${moderatorTag}` : ""
+  ].filter(Boolean);
+
+  return member
+    .send({
+      content: lines.join("\n"),
+      allowedMentions: NO_MENTIONS
+    })
+    .then(() => true)
+    .catch(() => false);
+}
+
+async function recordModerationAudit(ctx, { action, member, reason, durationMs = 0, details = "", caseId = null }) {
+  await addAuditLog(ctx.store, ctx.message.guild.id, {
+    type: "moderation",
+    label: `${action.charAt(0).toUpperCase()}${action.slice(1)} issued`,
+    action,
+    details: details || `${member.user.tag} received ${action}${caseId ? ` in case #${caseId}` : ""}.`,
+    actor: ctx.message.author.tag,
+    targetId: member.id,
+    targetTag: member.user.tag,
+    moderatorId: ctx.message.author.id,
+    moderatorTag: ctx.message.author.tag,
+    durationMs
+  }).catch(() => {});
+}
+
 function targetTextChannel(message) {
   return message.mentions.channels.first() || message.channel;
 }
@@ -2450,8 +2482,22 @@ define({
       reason
     }).catch(() => null);
     const output = `${member} was warned: ${reason}`;
-    await ctx.message.reply(`${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
-    await sendModerationLog(ctx, `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
+    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    await sendPunishmentNotice(member, {
+      guildName: ctx.message.guild.name,
+      action: "warned",
+      reason,
+      moderatorTag: ctx.message.author.tag
+    });
+    await recordModerationAudit(ctx, {
+      action: "warn",
+      member,
+      reason,
+      details: finalOutput,
+      caseId: createdCase?.id
+    });
+    await ctx.message.reply(finalOutput);
+    await sendModerationLog(ctx, finalOutput);
   }
 });
 
@@ -2537,8 +2583,24 @@ define({
       reason,
       durationMs: timeoutDuration
     }).catch(() => null);
-    await ctx.message.reply(`${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
-    await sendModerationLog(ctx, `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
+    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    await sendPunishmentNotice(member, {
+      guildName: ctx.message.guild.name,
+      action: "timed out",
+      reason,
+      durationLabel: formatDuration(timeoutDuration),
+      moderatorTag: ctx.message.author.tag
+    });
+    await recordModerationAudit(ctx, {
+      action: "timeout",
+      member,
+      reason,
+      durationMs: timeoutDuration,
+      details: finalOutput,
+      caseId: createdCase?.id
+    });
+    await ctx.message.reply(finalOutput);
+    await sendModerationLog(ctx, finalOutput);
   }
 });
 
@@ -2575,8 +2637,22 @@ define({
       moderatorTag: ctx.message.author.tag,
       reason: "Timeout removed."
     }).catch(() => null);
-    await ctx.message.reply(`${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
-    await sendModerationLog(ctx, `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
+    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    await sendPunishmentNotice(member, {
+      guildName: ctx.message.guild.name,
+      action: "removed from timeout",
+      reason: "Timeout removed.",
+      moderatorTag: ctx.message.author.tag
+    });
+    await recordModerationAudit(ctx, {
+      action: "untimeout",
+      member,
+      reason: "Timeout removed.",
+      details: finalOutput,
+      caseId: createdCase?.id
+    });
+    await ctx.message.reply(finalOutput);
+    await sendModerationLog(ctx, finalOutput);
   }
 });
 
@@ -2596,6 +2672,13 @@ define({
 
     if (!(await canModerateTarget(ctx, member, "kick", "kickable", "Kick Members"))) return;
 
+    await sendPunishmentNotice(member, {
+      guildName: ctx.message.guild.name,
+      action: "kicked",
+      reason,
+      moderatorTag: ctx.message.author.tag
+    });
+
     const completed = await runModerationAction(
       ctx,
       member,
@@ -2614,8 +2697,16 @@ define({
       moderatorTag: ctx.message.author.tag,
       reason
     }).catch(() => null);
-    await ctx.message.reply(`${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
-    await sendModerationLog(ctx, `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
+    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    await recordModerationAudit(ctx, {
+      action: "kick",
+      member,
+      reason,
+      details: finalOutput,
+      caseId: createdCase?.id
+    });
+    await ctx.message.reply(finalOutput);
+    await sendModerationLog(ctx, finalOutput);
   }
 });
 
@@ -2635,6 +2726,13 @@ define({
 
     if (!(await canModerateTarget(ctx, member, "ban", "bannable", "Ban Members"))) return;
 
+    await sendPunishmentNotice(member, {
+      guildName: ctx.message.guild.name,
+      action: "banned",
+      reason,
+      moderatorTag: ctx.message.author.tag
+    });
+
     const completed = await runModerationAction(
       ctx,
       member,
@@ -2653,8 +2751,16 @@ define({
       moderatorTag: ctx.message.author.tag,
       reason
     }).catch(() => null);
-    await ctx.message.reply(`${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
-    await sendModerationLog(ctx, `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`);
+    const finalOutput = `${output}${createdCase ? ` (Case #${createdCase.id})` : ""}`;
+    await recordModerationAudit(ctx, {
+      action: "ban",
+      member,
+      reason,
+      details: finalOutput,
+      caseId: createdCase?.id
+    });
+    await ctx.message.reply(finalOutput);
+    await sendModerationLog(ctx, finalOutput);
   }
 });
 
