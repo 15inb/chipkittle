@@ -1062,7 +1062,13 @@ export function createPanel({ client, store, panelPassword, sessionSecret, clien
       const state = shootEightBall(request.params.roomCode, String(request.body?.token || ""), {
         dx: Number(request.body?.dx),
         dy: Number(request.body?.dy),
-        power: Number(request.body?.power)
+        power: Number(request.body?.power),
+        cuePlacement: request.body?.cuePlacement && typeof request.body.cuePlacement === "object"
+          ? {
+              x: Number(request.body.cuePlacement.x),
+              y: Number(request.body.cuePlacement.y)
+            }
+          : null
       });
       response.json(state);
     } catch (error) {

@@ -4,13 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chipkittle 8 Ball</title>
+<<<<<<< HEAD
   <meta name="description" content="Play a multiplayer Chipkittle 8 ball match in your browser.">
+=======
+  <meta name="description" content="Play a proper multiplayer Chipkittle 8 ball match in your browser.">
+>>>>>>> 2483b0b2b784bc082921320a995989f308d25315
   <link rel="icon" type="image/png" href="/notativelogotransparent.png">
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <main class="site-shell interior game-page">
+  <main class="site-shell interior game-page pool-page">
     <header class="topbar">
       <a class="brand" href="/">
         <img src="/notativelogotransparent.png" alt="">
@@ -29,668 +33,147 @@
       </div>
     </header>
 
-    <section class="page-head game-head">
-      <p class="eyebrow">Multiplayer ritual</p>
+    <section class="page-head game-head pool-page-head">
+      <p class="eyebrow">Live table</p>
       <h1>Chipkittle 8 Ball</h1>
-      <p>Make a room, share the code, and trade turns at the table until one poor soul sinks the glowing black ball.</p>
+      <p>Actual solids, stripes, break fouls, ball-in-hand, and a shared room code so two people can play the same table without the whole thing falling apart.</p>
     </section>
 
+<<<<<<< HEAD
     <section class="game-shell" aria-label="Chipkittle 8 Ball game">
       <div class="game-stage multiplayer-board">
         <canvas id="eightBallCanvas" width="1000" height="560" aria-label="Chipkittle 8 ball table"></canvas>
+=======
+    <div class="game-tabs" aria-label="Game selection">
+      <a class="game-tab" href="/game">Dash</a>
+      <a class="game-tab is-active" href="/8ball">8 Ball</a>
+    </div>
+
+    <section class="pool-layout" aria-label="Chipkittle 8 Ball game">
+      <div class="pool-main">
+        <div class="pool-stage-bar">
+          <div class="pool-badge">
+            <span>Room</span>
+            <strong id="roomValue">-----</strong>
+          </div>
+          <div class="pool-badge">
+            <span>You</span>
+            <strong id="seatValue">-</strong>
+          </div>
+          <div class="pool-badge">
+            <span>Turn</span>
+            <strong id="turnValue">-</strong>
+          </div>
+          <span class="status-pill is-waiting" id="matchState">No room</span>
+        </div>
+
+        <div class="pool-stage multiplayer-board">
+          <canvas id="eightBallCanvas" width="1180" height="680" aria-label="Chipkittle 8 ball table"></canvas>
+          <div class="pool-stage-message" id="turnBanner">Create a room or join one and the table will wake up.</div>
+        </div>
+
+        <div class="pool-bottom-grid">
+          <section class="pool-card">
+            <div class="pool-card-head">
+              <strong>Shot Status</strong>
+              <span id="shotMeta">Waiting for a room</span>
+            </div>
+            <p class="table-note" id="tableNote">When it is your turn, drag on the table and release to shoot. If you have ball-in-hand, grab the cue ball first and place it where you want.</p>
+            <div class="pool-last-shot" id="lastShotSummary">No shot has been taken yet.</div>
+          </section>
+
+          <section class="pool-card">
+            <div class="pool-card-head">
+              <strong>Rack</strong>
+              <span id="rackStatus">15 balls waiting</span>
+            </div>
+            <div class="pool-rack-grid" id="rackGrid" aria-live="polite"></div>
+          </section>
+        </div>
+>>>>>>> 2483b0b2b784bc082921320a995989f308d25315
       </div>
-      <aside class="game-panel">
-        <div class="game-stat">
-          <span>Room</span>
-          <strong id="roomValue">-----</strong>
-        </div>
-        <div class="game-stat">
-          <span>You</span>
-          <strong id="seatValue">-</strong>
-        </div>
-        <div class="game-stat">
-          <span>Turn</span>
-          <strong id="turnValue">-</strong>
-        </div>
-        <span class="status-pill" id="matchState">No room</span>
-        <form class="room-form" id="roomForm">
-          <label>
-            Your name
-            <input id="playerName" type="text" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
-          </label>
-          <label>
-            Room code
-            <input id="roomCode" type="text" maxlength="5" autocomplete="off" placeholder="ABCDE">
-          </label>
-          <div class="room-form-grid">
-            <button class="button primary" type="button" id="createRoom">Create room</button>
-            <button class="button secondary" type="button" id="joinRoom">Join room</button>
-            <button class="button ghost" type="button" id="copyCode">Copy code</button>
+
+      <aside class="pool-sidebar">
+        <section class="pool-card">
+          <div class="pool-card-head">
+            <strong>Room Setup</strong>
+            <span>Two players per table</span>
+          </div>
+          <form class="room-form" id="roomForm">
+            <label>
+              Your name
+              <input id="playerName" type="text" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
+            </label>
+            <label>
+              Room code
+              <input id="roomCode" type="text" maxlength="5" autocomplete="off" placeholder="ABCDE">
+            </label>
+            <div class="room-form-grid pool-room-grid">
+              <button class="button primary" type="button" id="createRoom">Create room</button>
+              <button class="button secondary" type="button" id="joinRoom">Join room</button>
+              <button class="button ghost" type="button" id="copyLink">Copy invite</button>
+              <button class="button ghost" type="button" id="leaveRoom">Leave room</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="pool-card">
+          <div class="pool-card-head">
+            <strong>Shot Control</strong>
+            <span id="objectiveBadge">Open table</span>
+          </div>
+          <div class="pool-objective">
+            <div class="pool-objective-row">
+              <span>Your objective</span>
+              <strong id="objectiveValue">Open table</strong>
+            </div>
+            <div class="pool-objective-row">
+              <span>Ball in hand</span>
+              <strong id="ballInHandValue">No</strong>
+            </div>
+          </div>
+          <div class="shot-meter">
+            <label>
+              Shot power
+              <input id="powerSlider" type="range" min="20" max="100" value="62">
+            </label>
+            <output id="powerValue">62%</output>
+          </div>
+          <div class="room-form-grid pool-room-grid">
+            <button class="button secondary" type="button" id="copyCode">Copy code</button>
             <button class="button secondary" type="button" id="resetTable">New rack</button>
           </div>
-        </form>
-        <div class="shot-meter">
-          <label>
-            Shot power
-            <input id="powerSlider" type="range" min="25" max="100" value="62">
-          </label>
-          <output id="powerValue">62%</output>
-        </div>
-        <div class="player-list">
-          <span>Players</span>
+        </section>
+
+        <section class="pool-card player-list">
+          <div class="pool-card-head">
+            <strong>Players</strong>
+            <span id="playerSummary">Waiting for challengers</span>
+          </div>
           <ol id="playersList">
-            <li class="player-card"><strong>Waiting for room</strong><span>Create or join a table to start.</span></li>
+            <li class="player-card">
+              <strong>Waiting for room</strong>
+              <span>Create or join a table to start.</span>
+            </li>
           </ol>
-        </div>
-        <p class="table-note" id="tableNote">Click anywhere on the table to aim, then release to shoot. Use the power slider for force, and two browsers or phones for a proper little duel.</p>
+        </section>
+
+        <section class="pool-card">
+          <div class="pool-card-head">
+            <strong>House Rules</strong>
+            <span>Chipkittle table law</span>
+          </div>
+          <ul class="pool-rule-list">
+            <li>The break must pocket a ball or drive at least four object balls to a rail.</li>
+            <li>The table stays open after the break, even if something drops.</li>
+            <li>Fouls hand the other player ball-in-hand anywhere on the table.</li>
+            <li>The 8 only wins once your whole group is gone and you hit it first.</li>
+          </ul>
+        </section>
       </aside>
     </section>
   </main>
 
-  <script>
-    const apiRoot = ["localhost", "127.0.0.1", "panel.chipkittle.com"].includes(window.location.hostname)
-      ? `${window.location.origin}/api/public/eight-ball`
-      : `${window.location.protocol}//panel.chipkittle.com/api/public/eight-ball`;
-    const storageKeys = {
-      name: "chipkittle-8ball-name",
-      room: "chipkittle-8ball-room",
-      tokens: "chipkittle-8ball-tokens"
-    };
-
-    const canvas = document.querySelector("#eightBallCanvas");
-    const ctx = canvas.getContext("2d");
-    const playerNameInput = document.querySelector("#playerName");
-    const roomCodeInput = document.querySelector("#roomCode");
-    const createRoomButton = document.querySelector("#createRoom");
-    const joinRoomButton = document.querySelector("#joinRoom");
-    const copyCodeButton = document.querySelector("#copyCode");
-    const resetTableButton = document.querySelector("#resetTable");
-    const roomValue = document.querySelector("#roomValue");
-    const seatValue = document.querySelector("#seatValue");
-    const turnValue = document.querySelector("#turnValue");
-    const matchState = document.querySelector("#matchState");
-    const playersList = document.querySelector("#playersList");
-    const powerSlider = document.querySelector("#powerSlider");
-    const powerValue = document.querySelector("#powerValue");
-    const tableNote = document.querySelector("#tableNote");
-
-    const fallbackTable = {
-      width: 1000,
-      height: 560,
-      ballRadius: 16,
-      pocketRadius: 32
-    };
-    const cueStart = { x: 250, y: 280 };
-    const eightStart = { x: 735, y: 280 };
-    const pockets = [
-      { x: 24, y: 24 },
-      { x: fallbackTable.width / 2, y: 18 },
-      { x: fallbackTable.width - 24, y: 24 },
-      { x: 24, y: fallbackTable.height - 24 },
-      { x: fallbackTable.width / 2, y: fallbackTable.height - 18 },
-      { x: fallbackTable.width - 24, y: fallbackTable.height - 24 }
-    ];
-
-    let state = null;
-    let displayBalls = freshBalls();
-    let animating = false;
-    let pendingShot = false;
-    let lastAnimatedShotId = -1;
-    let pollTimer = 0;
-    let activeAnimation = 0;
-    let pointer = {
-      active: false,
-      x: 0,
-      y: 0
-    };
-
-    playerNameInput.value = localStorage.getItem(storageKeys.name) || "";
-    powerValue.textContent = `${powerSlider.value}%`;
-
-    function freshBalls() {
-      return {
-        cue: { x: cueStart.x, y: cueStart.y, pocketed: false },
-        eight: { x: eightStart.x, y: eightStart.y, pocketed: false }
-      };
-    }
-
-    function tokenMap() {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(storageKeys.tokens) || "{}");
-        return parsed && typeof parsed === "object" ? parsed : {};
-      } catch {
-        return {};
-      }
-    }
-
-    function saveToken(roomCode, token) {
-      const tokens = tokenMap();
-      tokens[String(roomCode || "").toUpperCase()] = token;
-      localStorage.setItem(storageKeys.tokens, JSON.stringify(tokens));
-    }
-
-    function clearToken(roomCode) {
-      const code = String(roomCode || "").toUpperCase();
-      const tokens = tokenMap();
-      delete tokens[code];
-      localStorage.setItem(storageKeys.tokens, JSON.stringify(tokens));
-    }
-
-    function tokenFor(roomCode) {
-      return tokenMap()[String(roomCode || "").toUpperCase()] || "";
-    }
-
-    function currentRoomCode() {
-      return String(localStorage.getItem(storageKeys.room) || "").toUpperCase();
-    }
-
-    function rememberRoom(roomCode, token) {
-      const code = String(roomCode || "").toUpperCase();
-      localStorage.setItem(storageKeys.room, code);
-      roomCodeInput.value = code;
-      if (token) {
-        saveToken(code, token);
-      }
-    }
-
-    function clearRoom() {
-      const code = currentRoomCode();
-      if (code) {
-        clearToken(code);
-      }
-      localStorage.removeItem(storageKeys.room);
-      state = null;
-      displayBalls = freshBalls();
-      lastAnimatedShotId = -1;
-      updatePanel();
-    }
-
-    function safeName(value) {
-      return String(value || "")
-        .replace(/[^\w .#-]/g, "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 24) || "Anonymous Chipkittle";
-    }
-
-    function escapeHtml(value) {
-      return String(value || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }
-
-    async function request(path, options = {}) {
-      const response = await fetch(`${apiRoot}${path}`, {
-        method: options.method || "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(options.headers || {})
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload.error || "The table did not answer.");
-      }
-      return payload;
-    }
-
-    function cloneBall(ball) {
-      if (!ball) return { pocketed: true };
-      return {
-        x: Number(ball.x) || 0,
-        y: Number(ball.y) || 0,
-        pocketed: Boolean(ball.pocketed)
-      };
-    }
-
-    function applyDisplayBalls(nextBalls) {
-      displayBalls = {
-        cue: cloneBall(nextBalls?.cue),
-        eight: cloneBall(nextBalls?.eight)
-      };
-    }
-
-    function updatePanel(note = "") {
-      const roomCode = state?.roomCode || currentRoomCode() || "-----";
-      roomValue.textContent = roomCode;
-      matchState.textContent = state ? state.status : "No room";
-      seatValue.textContent = state && state.selfPlayerIndex >= 0 ? `P${state.selfPlayerIndex + 1}` : "-";
-      turnValue.textContent = state && state.currentTurn >= 0 ? `P${state.currentTurn + 1}` : "-";
-      tableNote.textContent = note || state?.message || "Click anywhere on the table to aim, then release to shoot.";
-
-      const players = Array.isArray(state?.players) ? state.players : [];
-      if (!players.length) {
-        playersList.innerHTML = '<li class="player-card"><strong>Waiting for room</strong><span>Create or join a table to start.</span></li>';
-      } else {
-        playersList.innerHTML = players.map((player, index) => {
-          const classes = [
-            "player-card",
-            index === state.selfPlayerIndex ? "is-you" : "",
-            index === state.currentTurn && state.status === "active" ? "is-turn" : "",
-            index === state.winnerIndex ? "is-winner" : ""
-          ].filter(Boolean).join(" ");
-          const detail = index === state.winnerIndex
-            ? "Won the table"
-            : index === state.currentTurn && state.status === "active"
-              ? "Currently shooting"
-              : index === state.selfPlayerIndex
-                ? "You"
-                : "Waiting";
-          return `<li class="${classes}"><strong>${escapeHtml(player.name)}</strong><span>Player ${index + 1} - ${escapeHtml(detail)}</span></li>`;
-        }).join("");
-      }
-
-      copyCodeButton.disabled = !state?.roomCode;
-      resetTableButton.disabled = !state?.roomCode;
-    }
-
-    function canShoot() {
-      return Boolean(
-        state &&
-        state.status === "active" &&
-        state.selfPlayerIndex === state.currentTurn &&
-        state.players?.length === 2 &&
-        !animating &&
-        !pendingShot
-      );
-    }
-
-    function tableCoords(event) {
-      const rect = canvas.getBoundingClientRect();
-      return {
-        x: (event.clientX - rect.left) * (canvas.width / rect.width),
-        y: (event.clientY - rect.top) * (canvas.height / rect.height)
-      };
-    }
-
-    function animateTrace(trace, shotId) {
-      const frames = Array.isArray(trace) ? trace.filter(Boolean) : [];
-      if (frames.length < 2) {
-        applyDisplayBalls(state?.balls);
-        lastAnimatedShotId = shotId;
-        animating = false;
-        return;
-      }
-
-      cancelAnimationFrame(activeAnimation);
-      animating = true;
-      let index = 0;
-
-      const step = () => {
-        const frame = frames[Math.min(index, frames.length - 1)];
-        displayBalls = {
-          cue: cloneBall(frame.cue),
-          eight: cloneBall(frame.eight)
-        };
-        index += 1;
-
-        if (index < frames.length) {
-          activeAnimation = requestAnimationFrame(step);
-          return;
-        }
-
-        animating = false;
-        lastAnimatedShotId = shotId;
-        applyDisplayBalls(state?.balls);
-        updatePanel();
-      };
-
-      step();
-    }
-
-    function applyState(nextState, animateIfNeeded = true) {
-      state = nextState;
-      roomCodeInput.value = state?.roomCode || roomCodeInput.value;
-      updatePanel();
-
-      const hasNewTrace =
-        animateIfNeeded &&
-        state &&
-        state.shotId !== lastAnimatedShotId &&
-        Array.isArray(state.trace) &&
-        state.trace.length > 1;
-
-      if (hasNewTrace) {
-        animateTrace(state.trace, state.shotId);
-      } else {
-        if (state?.balls) {
-          applyDisplayBalls(state.balls);
-        }
-        if (typeof state?.shotId === "number") {
-          lastAnimatedShotId = Math.max(lastAnimatedShotId, state.shotId);
-        }
-      }
-    }
-
-    async function loadRoomState() {
-      const roomCode = currentRoomCode();
-      const token = tokenFor(roomCode);
-      if (!roomCode || !token) return;
-
-      try {
-        const nextState = await request(`/${encodeURIComponent(roomCode)}?token=${encodeURIComponent(token)}`, {
-          headers: {}
-        });
-        applyState(nextState, true);
-      } catch (error) {
-        if (/does not exist/i.test(error.message)) {
-          clearRoom();
-        }
-        updatePanel(error.message);
-      }
-    }
-
-    async function createRoom() {
-      const playerName = safeName(playerNameInput.value);
-      localStorage.setItem(storageKeys.name, playerName);
-      const payload = await request("/create", {
-        method: "POST",
-        body: { playerName }
-      });
-      rememberRoom(payload.state.roomCode, payload.token);
-      applyState(payload.state, false);
-      updatePanel("Room created. Share the code and wait for another player.");
-    }
-
-    async function joinRoom() {
-      const roomCode = roomCodeInput.value.trim().toUpperCase();
-      const playerName = safeName(playerNameInput.value);
-      if (!roomCode) {
-        updatePanel("Enter a room code first.");
-        return;
-      }
-      localStorage.setItem(storageKeys.name, playerName);
-      const payload = await request(`/${encodeURIComponent(roomCode)}/join`, {
-        method: "POST",
-        body: { playerName }
-      });
-      rememberRoom(payload.state.roomCode, payload.token);
-      applyState(payload.state, false);
-    }
-
-    async function resetRoom() {
-      const roomCode = currentRoomCode();
-      const token = tokenFor(roomCode);
-      if (!roomCode || !token) return;
-      const nextState = await request(`/${encodeURIComponent(roomCode)}/reset`, {
-        method: "POST",
-        body: { token }
-      });
-      applyState(nextState, false);
-    }
-
-    async function shoot(dx, dy, power) {
-      const roomCode = currentRoomCode();
-      const token = tokenFor(roomCode);
-      if (!roomCode || !token) return;
-
-      pendingShot = true;
-      try {
-        const nextState = await request(`/${encodeURIComponent(roomCode)}/shoot`, {
-          method: "POST",
-          body: {
-            token,
-            dx,
-            dy,
-            power
-          }
-        });
-        applyState(nextState, true);
-      } finally {
-        pendingShot = false;
-      }
-    }
-
-    function drawTable() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = "#4b2715";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = "#0f5f35";
-      ctx.fillRect(28, 28, canvas.width - 56, canvas.height - 56);
-
-      const felt = ctx.createLinearGradient(0, 28, 0, canvas.height - 28);
-      felt.addColorStop(0, "#157442");
-      felt.addColorStop(1, "#0d5b31");
-      ctx.fillStyle = felt;
-      ctx.fillRect(36, 36, canvas.width - 72, canvas.height - 72);
-
-      ctx.strokeStyle = "rgba(255,255,255,0.1)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(36, 36, canvas.width - 72, canvas.height - 72);
-
-      ctx.fillStyle = "#09110d";
-      for (const pocket of pockets) {
-        ctx.beginPath();
-        ctx.arc(pocket.x, pocket.y, fallbackTable.pocketRadius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.strokeStyle = "rgba(180,255,200,0.14)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(500, 280, 86, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(200, 36);
-      ctx.lineTo(200, canvas.height - 36);
-      ctx.stroke();
-    }
-
-    function drawCueBall(ball) {
-      if (!ball || ball.pocketed) return;
-      const glow = ctx.createRadialGradient(ball.x - 5, ball.y - 5, 2, ball.x, ball.y, 24);
-      glow.addColorStop(0, "#ffffff");
-      glow.addColorStop(1, "#dfe6db");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, fallbackTable.ballRadius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,0.22)";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-
-    function drawEightBall(ball) {
-      if (!ball || ball.pocketed) return;
-      const glow = ctx.createRadialGradient(ball.x, ball.y, 6, ball.x, ball.y, 22);
-      glow.addColorStop(0, "#1d3028");
-      glow.addColorStop(1, "#050807");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, fallbackTable.ballRadius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(170,255,170,0.12)";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.fillStyle = "#72ef72";
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#072514";
-      ctx.font = "900 10px system-ui";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("8", ball.x, ball.y + 0.5);
-    }
-
-    function drawGuide() {
-      if (!pointer.active || !canShoot()) return;
-      const cue = displayBalls.cue;
-      if (!cue || cue.pocketed) return;
-
-      const dx = pointer.x - cue.x;
-      const dy = pointer.y - cue.y;
-      const length = Math.hypot(dx, dy);
-      if (length < 8) return;
-
-      const nx = dx / length;
-      const ny = dy / length;
-      const endX = cue.x + nx * 220;
-      const endY = cue.y + ny * 220;
-
-      ctx.strokeStyle = "rgba(255,255,255,0.72)";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([10, 9]);
-      ctx.beginPath();
-      ctx.moveTo(cue.x, cue.y);
-      ctx.lineTo(endX, endY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    function drawOverlay() {
-      if (!state) {
-        ctx.fillStyle = "rgba(7, 12, 9, 0.46)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#f3fff3";
-        ctx.font = "900 58px system-ui";
-        ctx.textAlign = "center";
-        ctx.fillText("Chipkittle 8 Ball", canvas.width / 2, canvas.height / 2 - 12);
-        ctx.font = "800 22px system-ui";
-        ctx.fillText("Create a room or join one with a code.", canvas.width / 2, canvas.height / 2 + 28);
-        return;
-      }
-
-      if (state.status === "waiting") {
-        ctx.fillStyle = "rgba(5, 12, 10, 0.36)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#f3fff3";
-        ctx.font = "900 44px system-ui";
-        ctx.textAlign = "center";
-        ctx.fillText("Waiting for Player 2", canvas.width / 2, canvas.height / 2 - 4);
-        ctx.font = "800 22px system-ui";
-        ctx.fillText(`Share room code ${state.roomCode}`, canvas.width / 2, canvas.height / 2 + 32);
-      } else if (state.status === "finished") {
-        ctx.fillStyle = "rgba(5, 12, 10, 0.4)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#f3fff3";
-        ctx.font = "900 46px system-ui";
-        ctx.textAlign = "center";
-        const winner = state.players?.[state.winnerIndex]?.name || "A Chipkittle";
-        ctx.fillText(`${winner} wins`, canvas.width / 2, canvas.height / 2 - 4);
-        ctx.font = "800 20px system-ui";
-        ctx.fillText("Hit New Rack to play again.", canvas.width / 2, canvas.height / 2 + 30);
-      }
-    }
-
-    function draw() {
-      drawTable();
-      drawEightBall(displayBalls.eight);
-      drawCueBall(displayBalls.cue);
-      drawGuide();
-      drawOverlay();
-      requestAnimationFrame(draw);
-    }
-
-    playerNameInput.addEventListener("change", () => {
-      playerNameInput.value = safeName(playerNameInput.value);
-      localStorage.setItem(storageKeys.name, playerNameInput.value);
-    });
-
-    roomCodeInput.addEventListener("input", () => {
-      roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
-    });
-
-    powerSlider.addEventListener("input", () => {
-      powerValue.textContent = `${powerSlider.value}%`;
-    });
-
-    createRoomButton.addEventListener("click", () => {
-      createRoom().catch((error) => updatePanel(error.message));
-    });
-
-    joinRoomButton.addEventListener("click", () => {
-      joinRoom().catch((error) => updatePanel(error.message));
-    });
-
-    copyCodeButton.addEventListener("click", async () => {
-      if (!state?.roomCode) return;
-      try {
-        await navigator.clipboard.writeText(state.roomCode);
-        updatePanel("Room code copied.");
-      } catch {
-        updatePanel(`Room code: ${state.roomCode}`);
-      }
-    });
-
-    resetTableButton.addEventListener("click", () => {
-      resetRoom().catch((error) => updatePanel(error.message));
-    });
-
-    canvas.addEventListener("pointerdown", (event) => {
-      if (!canShoot()) return;
-      const point = tableCoords(event);
-      pointer.active = true;
-      pointer.x = point.x;
-      pointer.y = point.y;
-      if (typeof canvas.setPointerCapture === "function") {
-        canvas.setPointerCapture(event.pointerId);
-      }
-    });
-
-    canvas.addEventListener("pointermove", (event) => {
-      if (!pointer.active) return;
-      const point = tableCoords(event);
-      pointer.x = point.x;
-      pointer.y = point.y;
-    });
-
-    canvas.addEventListener("pointerup", (event) => {
-      if (!pointer.active) return;
-      const point = tableCoords(event);
-      const cue = displayBalls.cue;
-      pointer.active = false;
-      if (typeof canvas.releasePointerCapture === "function") {
-        canvas.releasePointerCapture(event.pointerId);
-      }
-      if (!cue || cue.pocketed || !canShoot()) return;
-
-      const dx = point.x - cue.x;
-      const dy = point.y - cue.y;
-      const distance = Math.hypot(dx, dy);
-      if (distance < 12) return;
-
-      const power = Math.min(Math.max(Number(powerSlider.value) / 100, 0.25), 1);
-      shoot(dx, dy, power).catch((error) => updatePanel(error.message));
-    });
-
-    canvas.addEventListener("pointerleave", () => {
-      pointer.active = false;
-    });
-
-    canvas.addEventListener("pointercancel", () => {
-      pointer.active = false;
-    });
-
-    async function restoreRoom() {
-      const roomCode = currentRoomCode();
-      if (!roomCode || !tokenFor(roomCode)) return;
-      try {
-        await loadRoomState();
-      } catch {
-        clearRoom();
-      }
-    }
-
-    pollTimer = window.setInterval(() => {
-      loadRoomState().catch(() => {});
-    }, 1200);
-
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") {
-        loadRoomState().catch(() => {});
-      }
-    });
-
-    restoreRoom();
-    updatePanel();
-    draw();
-  </script>
+  <script src="/8ball.js" defer></script>
 </body>
 </html>
