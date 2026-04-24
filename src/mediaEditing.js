@@ -56,17 +56,17 @@ function wrapCaptionLines(text, maxChars) {
 }
 
 function captionLayout(text, width = 720) {
-  const fontSize = Math.max(28, Math.min(54, Math.floor(width / 13)));
-  const lineSpacing = Math.max(4, Math.floor(fontSize / 7));
-  const verticalPadding = Math.max(16, Math.floor(fontSize * 0.55));
+  const fontSize = Math.max(24, Math.min(48, Math.floor(width / 15)));
+  const lineSpacing = Math.max(2, Math.floor(fontSize / 10));
+  const verticalPadding = Math.max(8, Math.floor(fontSize * 0.22));
   const lines = wrapCaptionLines(text, Math.max(18, Math.floor(width / (fontSize * 0.5))));
-  const boxHeight = Math.max(96, Math.min(300, (fontSize + lineSpacing) * lines.length + verticalPadding * 2));
-  const marginV = Math.max(14, Math.floor((boxHeight - fontSize * lines.length - lineSpacing * Math.max(0, lines.length - 1)) / 2));
-  return { boxHeight, fontSize, lineSpacing, lines, marginV };
+  const boxHeight = Math.max(64, Math.min(220, Math.ceil((fontSize + lineSpacing) * lines.length + verticalPadding * 2)));
+  const textCenterY = Math.floor(boxHeight / 2);
+  return { boxHeight, fontSize, lineSpacing, lines, textCenterY };
 }
 
 function buildCaptionAss({ text, width = 720 }) {
-  const { fontSize, lineSpacing, lines, marginV } = captionLayout(text, width);
+  const { fontSize, lineSpacing, lines, textCenterY } = captionLayout(text, width);
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -77,11 +77,11 @@ function buildCaptionAss({ text, width = 720 }) {
     "",
     "[V4+ Styles]",
     "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-    `Style: Caption,Arial,${fontSize},&H00000000,&H000000FF,&H00FFFFFF,&H00FFFFFF,-1,0,0,0,100,100,0,0,1,0,0,8,24,24,${marginV},1`,
+    `Style: Caption,Arial,${fontSize},&H00000000,&H000000FF,&H00FFFFFF,&H00FFFFFF,-1,0,0,0,100,100,0,0,1,0,0,5,24,24,0,1`,
     "",
     "[Events]",
     "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
-    `Dialogue: 0,0:00:00.00,9:59:59.00,Caption,,0,0,0,,{\\q2\\fsp0\\fnArial\\b1\\an8\\fs${fontSize}\\blur0\\shad0\\bord0\\pos(${Math.floor(width / 2)},${marginV})\\1c&H000000&}${assEscape(lines.join("\n"))}`,
+    `Dialogue: 0,0:00:00.00,9:59:59.00,Caption,,0,0,0,,{\\q2\\fsp0\\fnArial\\b1\\an5\\fs${fontSize}\\blur0\\shad0\\bord0\\pos(${Math.floor(width / 2)},${textCenterY})\\1c&H000000&}${assEscape(lines.join("\n"))}`,
     ""
   ].join("\n");
 }
@@ -89,7 +89,7 @@ function buildCaptionAss({ text, width = 720 }) {
 function esmCaptionFilter({ assPath, text, width = 720 } = {}) {
   const { boxHeight } = captionLayout(text, width);
   return [
-    `scale='min(${width},iw)':-1:flags=lanczos`,
+    `scale=${width}:-1:flags=lanczos`,
     `pad=iw:ih+${boxHeight}:0:${boxHeight}:white`,
     `subtitles='${ffmpegFilterPath(assPath)}':original_size=${width}x720`
   ].join(",");
