@@ -195,6 +195,32 @@ export async function captionMedia(media, { topText = "", bottomText = "", force
   });
 }
 
+export async function convertToGif(media) {
+  return withMediaFiles(media, async ({ workDir, inputPath }) => {
+    const outputPath = path.join(workDir, "output.gif");
+    const sourceArgs = media.mimeType === "image/gif"
+      ? ["-i", inputPath]
+      : staticInputArgs(inputPath, 1);
+    const filter = gifFinalizeChain(`fps=15,${scaledFilter()}`);
+
+    await runFfmpeg([
+      "-y",
+      ...sourceArgs,
+      "-filter_complex",
+      filter,
+      "-gifflags",
+      "+transdiff",
+      outputPath
+    ]);
+
+    return {
+      buffer: await readOutput(outputPath),
+      filename: "output.gif",
+      mimeType: "image/gif"
+    };
+  });
+}
+
 export async function gifReverse(media) {
   if (media.mimeType !== "image/gif") {
     throw new Error("Reverse only works on GIF attachments right now.");

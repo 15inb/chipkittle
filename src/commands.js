@@ -60,6 +60,7 @@ import {
 } from "./panelAccess.js";
 import {
   captionMedia,
+  convertToGif,
   gifBoomerang,
   gifResize,
   gifReverse,
@@ -919,12 +920,12 @@ function prefixGifOptions(ctx) {
 
 function gifUsageText(config) {
   return [
-    `\`${config.prefix}gif caption some text\` + attach or reply to an image/GIF`,
-    `\`${config.prefix}gif speed 2\` + attach or reply to a GIF`,
-    `\`${config.prefix}gif reverse\` + attach or reply to a GIF`,
-    `\`${config.prefix}gif boomerang\` + attach or reply to a GIF`,
-    `\`${config.prefix}gif resize 320 320\` + attach or reply to a GIF`,
-    `\`${config.prefix}gif wiggle 3\` + attach or reply to an image/GIF`
+    `\`${config.prefix}gifedit caption some text\` + attach or reply to an image/GIF`,
+    `\`${config.prefix}gifedit speed 2\` + attach or reply to a GIF`,
+    `\`${config.prefix}gifedit reverse\` + attach or reply to a GIF`,
+    `\`${config.prefix}gifedit boomerang\` + attach or reply to a GIF`,
+    `\`${config.prefix}gifedit resize 320 320\` + attach or reply to a GIF`,
+    `\`${config.prefix}gifedit wiggle 3\` + attach or reply to an image/GIF`
   ].join("\n");
 }
 
@@ -2963,10 +2964,42 @@ define({
 
 define({
   name: "gif",
-  aliases: ["gifedit"],
+  aliases: ["getgif", "togif", "tgif", "gifify"],
   category: "Utility",
-  description: "esmBot-style GIF editing with caption, speed, reverse, boomerang, resize, and wiggle.",
-  usage: "gif caption|speed|reverse|boomerang|resize|wiggle",
+  description: "Convert an attached or replied-to image/GIF into a GIF, like esmBot's gif command.",
+  usage: "gif [attach image or reply to image]",
+  async run(ctx) {
+    const slashOptions = ctx.message.slashOptions;
+    const attachment = slashOptions?.getAttachment("file") || await findMediaAttachment(ctx.message);
+    if (!attachment) {
+      await ctx.message.reply("Attach or reply to an image/GIF first.");
+      return;
+    }
+
+    const status = await ctx.message.reply("Converting that media to GIF...");
+
+    try {
+      const media = await downloadMediaAttachment(attachment);
+      const output = await convertToGif(media);
+      const file = new AttachmentBuilder(output.buffer, { name: output.filename });
+      await status.edit({
+        content: `${ctx.message.author}, done.`,
+        files: [file],
+        allowedMentions: NO_MENTIONS
+      });
+    } catch (error) {
+      console.error("GIF command failed:", error);
+      await status.edit(error.message || "I could not convert that media to GIF.").catch(() => {});
+    }
+  }
+});
+
+define({
+  name: "gifedit",
+  aliases: ["mediaedit", "giftools"],
+  category: "Utility",
+  description: "Deterministic GIF editing with caption, speed, reverse, boomerang, resize, and wiggle.",
+  usage: "gifedit caption|speed|reverse|boomerang|resize|wiggle",
   async run(ctx) {
     const options = slashGifOptions(ctx) || prefixGifOptions(ctx);
     const subcommand = options?.subcommand || "";
@@ -2991,7 +3024,7 @@ define({
         const topText = options.bottomText ? options.text : "";
         const bottomText = options.bottomText || options.text;
         if (!String(topText || bottomText || "").trim()) {
-          throw new Error("Give me caption text for `/gif caption`.");
+          throw new Error("Give me caption text for `gifedit caption`.");
         }
         output = await captionMedia(media, {
           topText,
@@ -3009,7 +3042,7 @@ define({
         output = await gifBoomerang(media);
       } else if (subcommand === "resize") {
         if (!options.width && !options.height) {
-          throw new Error("Give me a width, or a width and height, for `/gif resize`.");
+          throw new Error("Give me a width, or a width and height, for `gifedit resize`.");
         }
         output = await gifResize(media, {
           width: options.width || 0,

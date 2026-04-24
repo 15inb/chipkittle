@@ -1,6 +1,6 @@
 import { Collection, REST, Routes, SlashCommandBuilder } from "discord.js";
 
-const SLOW_COMMANDS = new Set(["ask", "chipify", "caption", "gif"]);
+const SLOW_COMMANDS = new Set(["ask", "chipify", "caption", "gif", "gifedit"]);
 
 function slashDescription(command) {
   return String(command.description || "Run a Chipkittle command.").slice(0, 100);
@@ -87,6 +87,15 @@ function addCaptionOptions(builder) {
         .setDescription("Optional bottom caption.")
         .setRequired(false)
     );
+}
+
+function addGifConvertOptions(builder) {
+  return builder.addAttachmentOption((option) =>
+    option
+      .setName("file")
+      .setDescription("Image or GIF to convert into a GIF.")
+      .setRequired(true)
+  );
 }
 
 function addGifSubcommands(builder) {
@@ -206,6 +215,10 @@ export function buildSlashCommands(commandList) {
     }
 
     if (command.name === "gif") {
+      return addGifConvertOptions(builder).toJSON();
+    }
+
+    if (command.name === "gifedit") {
       return addGifSubcommands(builder).toJSON();
     }
 
@@ -332,7 +345,7 @@ function reminderInput(interaction) {
 function inputForInteraction(interaction) {
   if (interaction.commandName === "remind") return reminderInput(interaction);
   if (interaction.commandName === "tts") return interaction.options.getSubcommand();
-  if (interaction.commandName === "gif") return interaction.options.getSubcommand();
+  if (interaction.commandName === "gifedit") return interaction.options.getSubcommand();
   if (interaction.commandName === "caption") return interaction.options.getString("text") || "";
   return interaction.options.getString("input") || "";
 }
