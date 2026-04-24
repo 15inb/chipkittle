@@ -79,8 +79,8 @@
     const leaderboardList = document.querySelector("#leaderboardList");
     const refreshLeaderboard = document.querySelector("#refreshLeaderboard");
 
-    const tileCount = 25;
-    const mineCount = 5;
+    const tileCount = 16;
+    const mineCount = 3;
     let tiles = [];
     let ended = false;
     let score = 0;
@@ -194,7 +194,7 @@
       const found = tiles[index].bread;
       bread += found;
       safe += 1;
-      score += found * 12 + safe * 4;
+      score += found * 12 + safe * 5;
       button.classList.add("is-safe");
       button.textContent = found;
       updateStats();
@@ -211,7 +211,7 @@
       while (mines.size < mineCount) mines.add(Math.floor(Math.random() * tileCount));
       tiles = Array.from({ length: tileCount }, (_, index) => ({
         mine: mines.has(index),
-        bread: 1 + Math.floor(Math.random() * 4),
+        bread: 1 + Math.floor(Math.random() * 3),
         revealed: false
       }));
       board.innerHTML = "";

@@ -85,7 +85,7 @@
     let lastTime = 0;
     let score = 0;
     let bread = 0;
-    let speed = 250;
+    let speed = 310;
     let spawnTimer = 0;
     let claimRequested = false;
     const player = { x: 110, y: 410, vy: 0, size: 44, grounded: true };
@@ -192,26 +192,26 @@
     function jump() {
       if (!running || ended) return;
       if (player.grounded) {
-        player.vy = -720;
+        player.vy = -680;
         player.grounded = false;
       }
     }
 
     function spawnObject() {
-      const isBread = Math.random() < 0.58;
+      const isBread = Math.random() < 0.34;
       objects.push({
         x: canvas.width + 50,
-        y: isBread ? 350 + Math.random() * 80 : 410,
-        size: isBread ? 30 : 42,
+        y: isBread ? 320 + Math.random() * 100 : 410,
+        size: isBread ? 26 : 46,
         type: isBread ? "bread" : "stone"
       });
     }
 
     function update(dt) {
       if (!running || ended) return;
-      score += dt * 12;
-      speed += dt * 4;
-      player.vy += 1600 * dt;
+      score += dt * 14;
+      speed += dt * 10;
+      player.vy += 1750 * dt;
       player.y += player.vy * dt;
       if (player.y >= 410) {
         player.y = 410;
@@ -221,14 +221,14 @@
       spawnTimer -= dt;
       if (spawnTimer <= 0) {
         spawnObject();
-        spawnTimer = 0.75 + Math.random() * 0.85;
+        spawnTimer = Math.max(0.4, 0.72 - score * 0.0015) + Math.random() * 0.34;
       }
       objects.forEach((item) => { item.x -= speed * dt; });
       objects = objects.filter((item) => {
-        const hit = Math.abs(item.x - player.x) < (item.size + player.size) * 0.45 && Math.abs(item.y - player.y) < (item.size + player.size) * 0.5;
+        const hit = Math.abs(item.x - player.x) < (item.size + player.size) * 0.42 && Math.abs(item.y - player.y) < (item.size + player.size) * 0.48;
         if (hit && item.type === "bread") {
           bread += 1;
-          score += 18;
+          score += 12;
           updateStats();
           return false;
         }
