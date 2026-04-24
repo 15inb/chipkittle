@@ -90,11 +90,6 @@ const PROFILE_BIO_MAX = 220;
 const pendingDateRequests = new Map();
 const currentDates = new Map();
 const PUBLIC_GAME_IDS = ["dash", "runner", "mines", "catch"];
-const breadCooldowns = {
-  beg: new Map(),
-  work: new Map(),
-  rob: new Map()
-};
 
 function pendingDateKey(guildId, targetId) {
   return `${guildId}:${targetId}`;
@@ -566,22 +561,15 @@ function applicationCooldownStatus(config, userId) {
 }
 
 function formatCooldown(ms) {
+  if (ms < 60_000) {
+    return `${Math.max(Math.ceil(ms / 1000), 1)}s`;
+  }
   const totalMinutes = Math.ceil(ms / 60_000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   if (hours && minutes) return `${hours}h ${minutes}m`;
   if (hours) return `${hours}h`;
   return `${Math.max(minutes, 1)}m`;
-}
-
-function checkRuntimeCooldown(bucket, userId, cooldownMs) {
-  const lastUsedAt = bucket.get(userId) || 0;
-  const remainingMs = cooldownMs - (Date.now() - lastUsedAt);
-  if (remainingMs > 0) {
-    return { limited: true, remainingMs };
-  }
-  bucket.set(userId, Date.now());
-  return { limited: false, remainingMs: 0 };
 }
 
 function isBlockedFromApplying(member, config) {
@@ -948,6 +936,8 @@ const STARTING_BREAD = 500;
 const DAILY_BREAD = 300;
 const MAX_BREAD_BET = 10_000;
 const DAILY_COOLDOWN_MS = 20 * 60 * 60 * 1000;
+const GAMBLING_COOLDOWN_MS = 5 * 1000;
+const ROB_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const ECONOMY_LOG_LIMIT = 60;
 const BLACKJACK_SESSION_MS = 120_000;
 const blackjackSessions = new Map();
@@ -958,6 +948,14 @@ function normalizeEconomy(economy = {}) {
     balances: { ...(economy.balances || {}) },
     dailyClaims: { ...(economy.dailyClaims || {}) },
     stats: { ...(economy.stats || {}) },
+    cooldowns: {
+      ...(economy.cooldowns || {}),
+      gambling: { ...(economy.cooldowns?.gambling || {}) },
+      beg: { ...(economy.cooldowns?.beg || {}) },
+      work: { ...(economy.cooldowns?.work || {}) },
+      robbers: { ...(economy.cooldowns?.robbers || {}) },
+      robVictims: { ...(economy.cooldowns?.robVictims || {}) }
+    },
     transactions: Array.isArray(economy.transactions) ? economy.transactions.slice(-ECONOMY_LOG_LIMIT) : []
   };
 }
@@ -1021,6 +1019,21 @@ function formatNetBread(net) {
   const amount = Math.abs(Math.floor(Number(net) || 0));
   if (!amount) return "even";
   return `${net > 0 ? "+" : "-"}${formatBread(amount)}`;
+}
+
+function persistentCooldownStatus(economy, bucket, id, cooldownMs) {
+  const lastUsedAt = new Date(economy.cooldowns?.[bucket]?.[id] || 0).getTime();
+  const remainingMs = cooldownMs - (Date.now() - lastUsedAt);
+  return {
+    limited: Number.isFinite(lastUsedAt) && remainingMs > 0,
+    remainingMs: Math.max(remainingMs, 0)
+  };
+}
+
+function setPersistentCooldown(economy, bucket, id) {
+  economy.cooldowns ||= {};
+  economy.cooldowns[bucket] ||= {};
+  economy.cooldowns[bucket][id] = new Date().toISOString();
 }
 
 function publicLeaderboardPath() {
@@ -1113,6 +1126,12 @@ async function runBreadBet(ctx, gameName, resolver) {
     const bet = validateBreadBet(ctx.args[0], balance);
     if (!bet.ok) return bet.error;
 
+    const cooldown = persistentCooldownStatus(economy, "gambling", userId, GAMBLING_COOLDOWN_MS);
+    if (cooldown.limited) {
+      return `Slow down a little. You can gamble again in ${formatCooldown(cooldown.remainingMs)}.`;
+    }
+    setPersistentCooldown(economy, "gambling", userId);
+
     const result = resolver(bet.amount, balance, economy);
     const payout = Math.max(Math.floor(Number(result.payout) || 0), 0);
     const nextBalance = balance - bet.amount + payout;
@@ -1178,8 +1197,11 @@ function blackjackOutcome(session) {
   const playerTotal = blackjackHandValue(session.player);
   const dealerTotal = blackjackHandValue(session.dealer);
   const natural = session.player.length === 2 && playerTotal === 21;
+  const dealerNatural = session.dealer.length === 2 && dealerTotal === 21;
   if (playerTotal > 21) return { payout: 0, label: "Bust. House wins." };
-  if (natural && dealerTotal !== 21) return { payout: Math.floor(session.bet * 2.5), label: "Natural blackjack." };
+  if (natural && dealerNatural) return { payout: session.bet, label: "Both hands have natural blackjack. Push." };
+  if (natural) return { payout: Math.floor(session.bet * 2.5), label: "Natural blackjack." };
+  if (dealerNatural) return { payout: 0, label: "Dealer has natural blackjack." };
   if (dealerTotal > 21) return { payout: session.bet * 2, label: "Dealer busts. You win." };
   if (playerTotal > dealerTotal) return { payout: session.bet * 2, label: "You beat the dealer." };
   if (playerTotal === dealerTotal) return { payout: session.bet, label: "Push. Bet returned." };
@@ -2402,6 +2424,11 @@ define({
       const balance = breadBalance(economy, userId);
       const bet = validateBreadBet(ctx.args[0], balance);
       if (!bet.ok) return { error: bet.error };
+      const cooldown = persistentCooldownStatus(economy, "gambling", userId, GAMBLING_COOLDOWN_MS);
+      if (cooldown.limited) {
+        return { error: `Slow down a little. You can gamble again in ${formatCooldown(cooldown.remainingMs)}.` };
+      }
+      setPersistentCooldown(economy, "gambling", userId);
       setBreadBalance(economy, userId, balance - bet.amount);
       const deck = createBlackjackDeck();
       return {
@@ -2429,7 +2456,10 @@ define({
     const settle = async (reason, interaction = null) => {
       if (session.settled) return;
       session.settled = true;
-      while (blackjackHandValue(session.dealer) < 17) {
+      const playerTotal = blackjackHandValue(session.player);
+      const playerNatural = session.player.length === 2 && blackjackHandValue(session.player) === 21;
+      const dealerNatural = session.dealer.length === 2 && blackjackHandValue(session.dealer) === 21;
+      while (playerTotal <= 21 && !playerNatural && !dealerNatural && blackjackHandValue(session.dealer) < 17) {
         session.dealer.push(drawBlackjackCard(session.deck));
       }
       const outcome = blackjackOutcome(session);
@@ -4622,13 +4652,12 @@ define({
   category: "Gambling",
   description: "Beg the artifact for a little spare bread.",
   async run(ctx) {
-    const cooldown = checkRuntimeCooldown(breadCooldowns.beg, ctx.message.author.id, 10 * 60_000);
-    if (cooldown.limited) {
-      await ctx.message.reply(`The artifact already heard you. Try begging again in ${formatCooldown(cooldown.remainingMs)}.`);
-      return;
-    }
-
     const output = await updateBreadEconomy(ctx, async (economy) => {
+      const cooldown = persistentCooldownStatus(economy, "beg", ctx.message.author.id, 10 * 60_000);
+      if (cooldown.limited) {
+        return `The artifact already heard you. Try begging again in ${formatCooldown(cooldown.remainingMs)}.`;
+      }
+      setPersistentCooldown(economy, "beg", ctx.message.author.id);
       const amount = randomInt(25, 140);
       const nextBalance = breadBalance(economy, ctx.message.author.id) + amount;
       setBreadBalance(economy, ctx.message.author.id, nextBalance);
@@ -4645,12 +4674,6 @@ define({
   category: "Gambling",
   description: "Work a suspiciously ceremonial shift for bread.",
   async run(ctx) {
-    const cooldown = checkRuntimeCooldown(breadCooldowns.work, ctx.message.author.id, 30 * 60_000);
-    if (cooldown.limited) {
-      await ctx.message.reply(`Your shift is still in progress. Try again in ${formatCooldown(cooldown.remainingMs)}.`);
-      return;
-    }
-
     const jobs = [
       "polished the artifact display case",
       "stood guard at the Round Table",
@@ -4660,6 +4683,11 @@ define({
     ];
 
     const output = await updateBreadEconomy(ctx, async (economy) => {
+      const cooldown = persistentCooldownStatus(economy, "work", ctx.message.author.id, 30 * 60_000);
+      if (cooldown.limited) {
+        return `Your shift is still in progress. Try again in ${formatCooldown(cooldown.remainingMs)}.`;
+      }
+      setPersistentCooldown(economy, "work", ctx.message.author.id);
       const amount = randomInt(90, 260);
       const nextBalance = breadBalance(economy, ctx.message.author.id) + amount;
       setBreadBalance(economy, ctx.message.author.id, nextBalance);
@@ -4683,19 +4711,23 @@ define({
       return;
     }
 
-    const cooldown = checkRuntimeCooldown(breadCooldowns.rob, ctx.message.author.id, 45 * 60_000);
-    if (cooldown.limited) {
-      await ctx.message.reply(`Lay low for a bit. You can rob again in ${formatCooldown(cooldown.remainingMs)}.`);
-      return;
-    }
-
     const output = await updateBreadEconomy(ctx, async (economy) => {
       const attackerId = ctx.message.author.id;
+      const robberCooldown = persistentCooldownStatus(economy, "robbers", attackerId, ROB_COOLDOWN_MS);
+      if (robberCooldown.limited) {
+        return `Lay low for a bit. You can rob again in ${formatCooldown(robberCooldown.remainingMs)}.`;
+      }
+      const victimCooldown = persistentCooldownStatus(economy, "robVictims", target.id, ROB_COOLDOWN_MS);
+      if (victimCooldown.limited) {
+        return `**${target.username || target.tag}** was already mugged recently. They can be robbed again in ${formatCooldown(victimCooldown.remainingMs)}.`;
+      }
       const victimBalance = breadBalance(economy, target.id);
       if (victimBalance < 50) {
         return `${target.username || target.tag} does not have enough bread worth stealing.`;
       }
 
+      setPersistentCooldown(economy, "robbers", attackerId);
+      setPersistentCooldown(economy, "robVictims", target.id);
       const success = Math.random() < 0.45;
       if (success) {
         const stolen = Math.min(randomInt(40, Math.max(60, Math.floor(victimBalance * 0.3))), victimBalance, 1500);
