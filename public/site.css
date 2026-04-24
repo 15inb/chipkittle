@@ -104,41 +104,6 @@ a {
     url("/assets/ckwebsitebg3.png");
 }
 
-.hero-logo-overlay {
-  position: absolute;
-  left: clamp(51%, 55vw, 60%);
-  top: clamp(51%, 56vh, 60%);
-  z-index: -1;
-  width: clamp(250px, 20vw, 360px);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-.hero-logo-overlay img {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 30px 58px rgba(97, 216, 66, 0.38));
-  animation: hero-logo-hover 5.4s cubic-bezier(0.42, 0, 0.18, 1) infinite;
-}
-
-@keyframes hero-logo-hover {
-  0%,
-  100% {
-    transform: translateY(0) scale(1) rotate(-3deg);
-  }
-  25% {
-    transform: translateY(-10px) scale(1.03) rotate(1deg);
-  }
-  50% {
-    transform: translateY(-18px) scale(1.05) rotate(4deg);
-  }
-  75% {
-    transform: translateY(-8px) scale(1.025) rotate(-1deg);
-  }
-}
-
 :root[data-theme="dark"] .hero-bg,
 :root[data-theme="dark"] .interior {
   filter: saturate(0.92) brightness(0.72);
@@ -198,11 +163,11 @@ a {
 }
 
 .brand img {
-  width: 76px;
-  height: 76px;
+  width: 82px;
+  height: 82px;
   object-fit: contain;
-  filter: drop-shadow(0 8px 20px rgba(26, 138, 56, 0.22));
-  transform: translateY(3px);
+  filter: drop-shadow(0 10px 24px rgba(26, 138, 56, 0.18));
+  transform: translateY(1px);
 }
 
 .topbar nav {
@@ -1666,12 +1631,6 @@ a {
     background-position: center, center, center, 64% center;
   }
 
-  .hero-logo-overlay {
-    left: 56%;
-    top: 56%;
-    width: clamp(190px, 22vw, 270px);
-  }
-
   .hero-copy {
     width: 100%;
     max-width: 700px;
@@ -1770,12 +1729,6 @@ a {
 
   .hero-copy h1 {
     font-size: clamp(54px, 18vw, 76px);
-  }
-
-  .hero-logo-overlay {
-    left: 57%;
-    top: 56%;
-    width: 152px;
   }
 
   .trusted strong {
