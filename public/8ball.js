@@ -14,7 +14,13 @@
     height: 680,
     rail: 42,
     ballRadius: 17,
-    pocketRadius: 31,
+    cornerPocketRadius: 40,
+    sidePocketRadius: 36,
+    cornerPocketMouth: 108,
+    sidePocketHalf: 78,
+    sideJawInset: 28,
+    sideJawDepth: 94,
+    pocketPullRadius: 98,
     headX: 286,
     footX: 862,
     centerY: 340
@@ -80,6 +86,7 @@
   let animationHandle = 0;
   let transientNote = "";
   let transientTimer = 0;
+  let cuePlacementValid = true;
   const pointer = { x: 0, y: 0, moved: false };
 
   playerNameInput.value = localStorage.getItem(storageKeys.name) || "";
@@ -110,6 +117,62 @@
 
   function currentTable() {
     return state?.table || tableFallback;
+  }
+
+  function pocketsForTable(table) {
+    return [
+      { id: "tl", x: table.rail + 12, y: table.rail + 12, radius: table.cornerPocketRadius, kind: "corner" },
+      { id: "tm", x: table.width / 2, y: table.rail + 2, radius: table.sidePocketRadius, kind: "side" },
+      { id: "tr", x: table.width - table.rail - 12, y: table.rail + 12, radius: table.cornerPocketRadius, kind: "corner" },
+      { id: "bl", x: table.rail + 12, y: table.height - table.rail - 12, radius: table.cornerPocketRadius, kind: "corner" },
+      { id: "bm", x: table.width / 2, y: table.height - table.rail - 2, radius: table.sidePocketRadius, kind: "side" },
+      { id: "br", x: table.width - table.rail - 12, y: table.height - table.rail - 12, radius: table.cornerPocketRadius, kind: "corner" }
+    ];
+  }
+
+  function cushionSegmentsForTable(table) {
+    const left = table.rail + table.ballRadius;
+    const right = table.width - table.rail - table.ballRadius;
+    const top = table.rail + table.ballRadius;
+    const bottom = table.height - table.rail - table.ballRadius;
+    const centerX = table.width / 2;
+    const corner = table.cornerPocketMouth;
+    const sideHalf = table.sidePocketHalf;
+    const sideJawInset = table.sideJawInset;
+    const sideJawDepth = table.sideJawDepth;
+
+    return [
+      { ax: corner, ay: top, bx: centerX - sideHalf, by: top },
+      { ax: centerX + sideHalf, ay: top, bx: table.width - corner, by: top },
+      { ax: corner, ay: bottom, bx: centerX - sideHalf, by: bottom },
+      { ax: centerX + sideHalf, ay: bottom, bx: table.width - corner, by: bottom },
+      { ax: left, ay: corner, bx: left, by: table.height - corner },
+      { ax: right, ay: corner, bx: right, by: table.height - corner },
+      { ax: corner, ay: top, bx: left, by: corner },
+      { ax: table.width - corner, ay: top, bx: right, by: corner },
+      { ax: corner, ay: bottom, bx: left, by: table.height - corner },
+      { ax: table.width - corner, ay: bottom, bx: right, by: table.height - corner },
+      { ax: centerX - sideHalf, ay: top, bx: centerX - sideJawInset, by: sideJawDepth },
+      { ax: centerX + sideHalf, ay: top, bx: centerX + sideJawInset, by: sideJawDepth },
+      { ax: centerX - sideHalf, ay: bottom, bx: centerX - sideJawInset, by: table.height - sideJawDepth },
+      { ax: centerX + sideHalf, ay: bottom, bx: centerX + sideJawInset, by: table.height - sideJawDepth }
+    ];
+  }
+
+  function lerp(start, end, amount) {
+    return start + (end - start) * amount;
+  }
+
+  function interpolateFrames(fromFrame, toFrame, amount) {
+    const nextFrame = cloneBalls(toFrame);
+    const previousByNumber = new Map(fromFrame.map((ball) => [ball.number, ball]));
+    for (const ball of nextFrame) {
+      const previous = previousByNumber.get(ball.number);
+      if (!previous || ball.pocketed || previous.pocketed) continue;
+      ball.x = lerp(previous.x, ball.x, amount);
+      ball.y = lerp(previous.y, ball.y, amount);
+    }
+    return nextFrame;
   }
 
   function tokenMap() {
@@ -452,11 +515,16 @@
         if (state.winnerIndex === index && state.status === "finished") classes.push("is-winner");
         const group = player.group ? player.group[0].toUpperCase() + player.group.slice(1) : "Open table";
         const seat = state.selfPlayerIndex === index ? "You" : `Seat ${index + 1}`;
+        const progress = player.canShootEight
+          ? "On the 8"
+          : player.group
+            ? `${state.remaining?.[player.group] ?? 0} left`
+            : "Unclaimed";
         return `
           <li class="${classes.join(" ")}">
             <strong>${escapeHtml(player.name)}</strong>
             <span>${escapeHtml(player.objective || "Open table")}</span>
-            <small>${escapeHtml(seat)} · ${escapeHtml(group)}</small>
+            <small>${escapeHtml(seat)} &middot; ${escapeHtml(group)} &middot; ${escapeHtml(progress)}</small>
           </li>
         `;
       })
@@ -547,6 +615,8 @@
 
   function drawBackground(table) {
     ctx.clearRect(0, 0, table.width, table.height);
+    const pockets = pocketsForTable(table);
+    const cushionSegments = cushionSegmentsForTable(table);
 
     const roomGlow = ctx.createRadialGradient(table.width * 0.64, table.height * 0.46, 40, table.width * 0.64, table.height * 0.46, 540);
     roomGlow.addColorStop(0, "rgba(87, 236, 115, 0.20)");
@@ -575,6 +645,15 @@
     ctx.fill();
 
     ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    for (const pocket of pockets) {
+      ctx.beginPath();
+      ctx.arc(pocket.x, pocket.y, pocket.radius + 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.save();
     roundRectPath(feltInset, feltInset, feltWidth, feltHeight, 34);
     ctx.clip();
     ctx.strokeStyle = "rgba(183, 255, 200, 0.05)";
@@ -584,6 +663,25 @@
       ctx.beginPath();
       ctx.moveTo(feltInset - 30, y);
       ctx.bezierCurveTo(table.width * 0.24, y + 12, table.width * 0.48, y - 12, table.width - feltInset + 30, y + 8);
+      ctx.stroke();
+    }
+
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(3, 8, 6, 0.96)";
+    for (const segment of cushionSegments) {
+      ctx.beginPath();
+      ctx.moveTo(segment.ax, segment.ay);
+      ctx.lineTo(segment.bx, segment.by);
+      ctx.stroke();
+    }
+
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = "rgba(225, 248, 220, 0.10)";
+    for (const segment of cushionSegments.slice(0, 6)) {
+      ctx.beginPath();
+      ctx.moveTo(segment.ax, segment.ay);
+      ctx.lineTo(segment.bx, segment.by);
       ctx.stroke();
     }
     ctx.restore();
@@ -602,23 +700,23 @@
     ctx.arc(table.footX, table.centerY, 4.5, 0, Math.PI * 2);
     ctx.fill();
 
-    const pocketPositions = [
-      { x: 30, y: 30 },
-      { x: table.width / 2, y: 24 },
-      { x: table.width - 30, y: 30 },
-      { x: 30, y: table.height - 30 },
-      { x: table.width / 2, y: table.height - 24 },
-      { x: table.width - 30, y: table.height - 30 }
-    ];
-
-    for (const pocket of pocketPositions) {
-      const rim = ctx.createRadialGradient(pocket.x, pocket.y, 4, pocket.x, pocket.y, table.pocketRadius + 9);
+    for (const pocket of pockets) {
+      const rim = ctx.createRadialGradient(pocket.x, pocket.y, 4, pocket.x, pocket.y, pocket.radius + 10);
       rim.addColorStop(0, "#010202");
       rim.addColorStop(0.62, "#0b0f0c");
       rim.addColorStop(1, "rgba(196, 146, 85, 0.3)");
       ctx.beginPath();
-      ctx.arc(pocket.x, pocket.y, table.pocketRadius + 8, 0, Math.PI * 2);
+      ctx.arc(pocket.x, pocket.y, pocket.radius + 8, 0, Math.PI * 2);
       ctx.fillStyle = rim;
+      ctx.fill();
+
+      const throat = ctx.createRadialGradient(pocket.x, pocket.y, 0, pocket.x, pocket.y, pocket.radius + 3);
+      throat.addColorStop(0, "rgba(0, 0, 0, 0.98)");
+      throat.addColorStop(0.55, "rgba(3, 5, 4, 0.96)");
+      throat.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.beginPath();
+      ctx.arc(pocket.x, pocket.y, pocket.radius + 3, 0, Math.PI * 2);
+      ctx.fillStyle = throat;
       ctx.fill();
     }
 
@@ -771,12 +869,23 @@
     const cue = cueBallForDraw();
     if (!cue) return;
     ctx.save();
-    ctx.strokeStyle = "rgba(128, 255, 152, 0.66)";
+    ctx.strokeStyle = cuePlacementValid ? "rgba(128, 255, 152, 0.72)" : "rgba(255, 112, 112, 0.82)";
     ctx.lineWidth = 2.4;
     ctx.setLineDash([6, 7]);
     ctx.beginPath();
     ctx.arc(cue.x, cue.y, table.ballRadius + 8, 0, Math.PI * 2);
     ctx.stroke();
+    if (!cuePlacementValid) {
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(255, 80, 80, 0.45)";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(cue.x - table.ballRadius - 3, cue.y - table.ballRadius - 3);
+      ctx.lineTo(cue.x + table.ballRadius + 3, cue.y + table.ballRadius + 3);
+      ctx.moveTo(cue.x + table.ballRadius + 3, cue.y - table.ballRadius - 3);
+      ctx.lineTo(cue.x - table.ballRadius - 3, cue.y + table.ballRadius + 3);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -806,7 +915,8 @@
       if (!ball || ball.number === 0 || ball.pocketed) return false;
       return Math.hypot(ball.x - x, ball.y - y) < table.ballRadius * 2 + 0.25;
     });
-    if (collisions) return null;
+    const insidePocketShelf = pocketsForTable(table).some((pocket) => Math.hypot(pocket.x - x, pocket.y - y) <= pocket.radius + table.ballRadius * 0.8);
+    if (collisions || insidePocketShelf) return null;
     return { x, y };
   }
 
@@ -825,13 +935,18 @@
     updateButtonState();
     const frames = Array.isArray(trace) && trace.length ? trace.map(cloneBalls) : [cloneBalls(finalBalls)];
     const totalFrames = frames.length;
-    const duration = clamp(totalFrames * 22, 420, 1600);
+    const duration = clamp(totalFrames * 16, 360, 1400);
     const start = performance.now();
 
     function step(now) {
       const progress = Math.min((now - start) / duration, 1);
-      const frameIndex = Math.min(totalFrames - 1, Math.floor(progress * (totalFrames - 1)));
-      renderedBalls = cloneBalls(frames[frameIndex]);
+      const scaled = progress * Math.max(totalFrames - 1, 0);
+      const frameIndex = Math.min(totalFrames - 1, Math.floor(scaled));
+      const nextIndex = Math.min(totalFrames - 1, frameIndex + 1);
+      const frameProgress = scaled - frameIndex;
+      renderedBalls = frameIndex === nextIndex
+        ? cloneBalls(frames[frameIndex])
+        : interpolateFrames(frames[frameIndex], frames[nextIndex], frameProgress);
       draw();
       if (progress < 1) {
         animationHandle = requestAnimationFrame(step);
@@ -852,6 +967,7 @@
       renderedBalls = createFallbackBalls();
       renderedShotId = -1;
       previewCuePlacement = null;
+      cuePlacementValid = true;
       updatePanel();
       draw();
       return;
@@ -863,8 +979,10 @@
       if (!previewCuePlacement && cue) {
         previewCuePlacement = { x: cue.x, y: cue.y };
       }
+      cuePlacementValid = true;
     } else {
       previewCuePlacement = null;
+      cuePlacementValid = true;
     }
 
     const shouldAnimate = options.animate !== false
@@ -1059,6 +1177,7 @@
 
     if (hasBallInHand() && Math.hypot(point.x - cue.x, point.y - cue.y) <= currentTable().ballRadius * 1.65) {
       placingCue = true;
+      cuePlacementValid = true;
       aiming = false;
       draw();
       return;
@@ -1078,6 +1197,7 @@
 
     if (placingCue) {
       const valid = validCuePlacementLocal(point);
+      cuePlacementValid = Boolean(valid);
       if (valid) {
         previewCuePlacement = valid;
       }
@@ -1093,6 +1213,7 @@
   function resetPointerState() {
     aiming = false;
     placingCue = false;
+    cuePlacementValid = true;
     pointerId = null;
   }
 
@@ -1105,6 +1226,8 @@
       const valid = validCuePlacementLocal(point);
       if (valid) {
         previewCuePlacement = valid;
+      } else {
+        flashNote("That spot is blocked. Keep the cue ball clear of other balls and the pocket mouths.");
       }
       resetPointerState();
       draw();

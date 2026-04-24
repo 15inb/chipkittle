@@ -12,19 +12,26 @@ const TABLE = {
   height: 680,
   rail: 42,
   ballRadius: 17,
-  pocketRadius: 31,
+  cornerPocketRadius: 40,
+  sidePocketRadius: 36,
+  cornerPocketMouth: 108,
+  sidePocketHalf: 78,
+  sideJawInset: 28,
+  sideJawDepth: 94,
+  pocketPullRadius: 98,
   headX: 286,
   footX: 862,
   centerY: 340
 };
 const POCKETS = [
-  { x: 30, y: 30 },
-  { x: TABLE.width / 2, y: 24 },
-  { x: TABLE.width - 30, y: 30 },
-  { x: 30, y: TABLE.height - 30 },
-  { x: TABLE.width / 2, y: TABLE.height - 24 },
-  { x: TABLE.width - 30, y: TABLE.height - 30 }
+  { id: "tl", x: TABLE.rail + 12, y: TABLE.rail + 12, radius: TABLE.cornerPocketRadius, pullRadius: TABLE.pocketPullRadius, kind: "corner" },
+  { id: "tm", x: TABLE.width / 2, y: TABLE.rail + 2, radius: TABLE.sidePocketRadius, pullRadius: TABLE.pocketPullRadius, kind: "side" },
+  { id: "tr", x: TABLE.width - TABLE.rail - 12, y: TABLE.rail + 12, radius: TABLE.cornerPocketRadius, pullRadius: TABLE.pocketPullRadius, kind: "corner" },
+  { id: "bl", x: TABLE.rail + 12, y: TABLE.height - TABLE.rail - 12, radius: TABLE.cornerPocketRadius, pullRadius: TABLE.pocketPullRadius, kind: "corner" },
+  { id: "bm", x: TABLE.width / 2, y: TABLE.height - TABLE.rail - 2, radius: TABLE.sidePocketRadius, pullRadius: TABLE.pocketPullRadius, kind: "side" },
+  { id: "br", x: TABLE.width - TABLE.rail - 12, y: TABLE.height - TABLE.rail - 12, radius: TABLE.cornerPocketRadius, pullRadius: TABLE.pocketPullRadius, kind: "corner" }
 ];
+const CUSHION_SEGMENTS = createCushionSegments();
 const BALL_STYLE = {
   cue: { color: "#f8fbf7", accent: "#d9e2d6", label: "" },
   eight: { color: "#0b0f0d", accent: "#74ef70", label: "8" },
@@ -393,41 +400,144 @@ function normalizeVector(dx, dy) {
   };
 }
 
-function applyWallBounce(ball) {
-  if (ball.pocketed) return false;
-  const minX = TABLE.rail + TABLE.ballRadius;
-  const maxX = TABLE.width - TABLE.rail - TABLE.ballRadius;
-  const minY = TABLE.rail + TABLE.ballRadius;
-  const maxY = TABLE.height - TABLE.rail - TABLE.ballRadius;
-  let touchedRail = false;
+function createCushionSegments() {
+  const left = TABLE.rail + TABLE.ballRadius;
+  const right = TABLE.width - TABLE.rail - TABLE.ballRadius;
+  const top = TABLE.rail + TABLE.ballRadius;
+  const bottom = TABLE.height - TABLE.rail - TABLE.ballRadius;
+  const centerX = TABLE.width / 2;
+  const corner = TABLE.cornerPocketMouth;
+  const sideHalf = TABLE.sidePocketHalf;
+  const sideJawInset = TABLE.sideJawInset;
+  const sideJawDepth = TABLE.sideJawDepth;
+  const diagonal = Math.SQRT1_2;
 
-  if (ball.x <= minX) {
-    ball.x = minX;
-    ball.vx = Math.abs(ball.vx) * WALL_BOUNCE;
-    touchedRail = true;
-  } else if (ball.x >= maxX) {
-    ball.x = maxX;
-    ball.vx = -Math.abs(ball.vx) * WALL_BOUNCE;
-    touchedRail = true;
+  return [
+    { ax: corner, ay: top, bx: centerX - sideHalf, by: top, nx: 0, ny: 1 },
+    { ax: centerX + sideHalf, ay: top, bx: TABLE.width - corner, by: top, nx: 0, ny: 1 },
+    { ax: corner, ay: bottom, bx: centerX - sideHalf, by: bottom, nx: 0, ny: -1 },
+    { ax: centerX + sideHalf, ay: bottom, bx: TABLE.width - corner, by: bottom, nx: 0, ny: -1 },
+    { ax: left, ay: corner, bx: left, by: TABLE.height - corner, nx: 1, ny: 0 },
+    { ax: right, ay: corner, bx: right, by: TABLE.height - corner, nx: -1, ny: 0 },
+    { ax: corner, ay: top, bx: left, by: corner, nx: diagonal, ny: diagonal },
+    { ax: TABLE.width - corner, ay: top, bx: right, by: corner, nx: -diagonal, ny: diagonal },
+    { ax: corner, ay: bottom, bx: left, by: TABLE.height - corner, nx: diagonal, ny: -diagonal },
+    { ax: TABLE.width - corner, ay: bottom, bx: right, by: TABLE.height - corner, nx: -diagonal, ny: -diagonal },
+    { ax: centerX - sideHalf, ay: top, bx: centerX - sideJawInset, by: sideJawDepth, nx: -diagonal, ny: diagonal },
+    { ax: centerX + sideHalf, ay: top, bx: centerX + sideJawInset, by: sideJawDepth, nx: diagonal, ny: diagonal },
+    { ax: centerX - sideHalf, ay: bottom, bx: centerX - sideJawInset, by: TABLE.height - sideJawDepth, nx: -diagonal, ny: -diagonal },
+    { ax: centerX + sideHalf, ay: bottom, bx: centerX + sideJawInset, by: TABLE.height - sideJawDepth, nx: diagonal, ny: -diagonal }
+  ];
+}
+
+function resolveCushionSegment(ball, segment) {
+  const segmentDx = segment.bx - segment.ax;
+  const segmentDy = segment.by - segment.ay;
+  const segmentLengthSquared = segmentDx * segmentDx + segmentDy * segmentDy;
+  const projection = ((ball.x - segment.ax) * segmentDx + (ball.y - segment.ay) * segmentDy) / segmentLengthSquared;
+  const t = clamp(projection, 0, 1);
+  const closestX = segment.ax + segmentDx * t;
+  const closestY = segment.ay + segmentDy * t;
+  const offsetX = ball.x - closestX;
+  const offsetY = ball.y - closestY;
+  const distance = Math.hypot(offsetX, offsetY);
+
+  if (distance > TABLE.ballRadius + 0.75) {
+    return false;
   }
 
-  if (ball.y <= minY) {
-    ball.y = minY;
-    ball.vy = Math.abs(ball.vy) * WALL_BOUNCE;
-    touchedRail = true;
-  } else if (ball.y >= maxY) {
-    ball.y = maxY;
-    ball.vy = -Math.abs(ball.vy) * WALL_BOUNCE;
-    touchedRail = true;
+  const separation = offsetX * segment.nx + offsetY * segment.ny;
+  if (separation >= TABLE.ballRadius) {
+    return false;
+  }
+
+  const penetration = TABLE.ballRadius - separation;
+  ball.x += segment.nx * penetration;
+  ball.y += segment.ny * penetration;
+
+  const approach = ball.vx * segment.nx + ball.vy * segment.ny;
+  if (approach < 0) {
+    ball.vx -= (1 + WALL_BOUNCE) * approach * segment.nx;
+    ball.vy -= (1 + WALL_BOUNCE) * approach * segment.ny;
+  }
+
+  return true;
+}
+
+function applyPocketGravity(ball, scale = 1) {
+  if (ball.pocketed) return;
+
+  let nearestPocket = null;
+  let nearestDistance = Infinity;
+  for (const pocket of POCKETS) {
+    const distance = Math.hypot(ball.x - pocket.x, ball.y - pocket.y);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestPocket = pocket;
+    }
+  }
+
+  if (!nearestPocket || nearestDistance >= nearestPocket.pullRadius || nearestDistance === 0) {
+    return;
+  }
+
+  const pull = ((nearestPocket.pullRadius - nearestDistance) / nearestPocket.pullRadius) ** 2 * 0.38 * scale;
+  ball.vx += ((nearestPocket.x - ball.x) / nearestDistance) * pull;
+  ball.vy += ((nearestPocket.y - ball.y) / nearestDistance) * pull;
+}
+
+function applyWallBounce(ball) {
+  if (ball.pocketed) return false;
+  let touchedRail = false;
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const segment of CUSHION_SEGMENTS) {
+      touchedRail = resolveCushionSegment(ball, segment) || touchedRail;
+    }
   }
 
   return touchedRail;
 }
 
+function inPocketMouth(ball, pocket) {
+  const cornerThreshold = TABLE.cornerPocketMouth + TABLE.rail + TABLE.ballRadius;
+  const sideThreshold = TABLE.sideJawDepth + TABLE.ballRadius * 0.9;
+
+  if (pocket.kind === "corner") {
+    if (pocket.id === "tl") {
+      return ball.x <= TABLE.cornerPocketMouth && ball.y <= TABLE.cornerPocketMouth && ball.x + ball.y <= cornerThreshold;
+    }
+    if (pocket.id === "tr") {
+      return ball.x >= TABLE.width - TABLE.cornerPocketMouth
+        && ball.y <= TABLE.cornerPocketMouth
+        && (TABLE.width - ball.x) + ball.y <= cornerThreshold;
+    }
+    if (pocket.id === "bl") {
+      return ball.x <= TABLE.cornerPocketMouth
+        && ball.y >= TABLE.height - TABLE.cornerPocketMouth
+        && ball.x + (TABLE.height - ball.y) <= cornerThreshold;
+    }
+    return ball.x >= TABLE.width - TABLE.cornerPocketMouth
+      && ball.y >= TABLE.height - TABLE.cornerPocketMouth
+      && (TABLE.width - ball.x) + (TABLE.height - ball.y) <= cornerThreshold;
+  }
+
+  if (pocket.id === "tm") {
+    return Math.abs(ball.x - TABLE.width / 2) <= TABLE.sidePocketHalf - 4 && ball.y <= sideThreshold;
+  }
+  return Math.abs(ball.x - TABLE.width / 2) <= TABLE.sidePocketHalf - 4 && ball.y >= TABLE.height - sideThreshold;
+}
+
 function maybePocket(ball) {
   if (ball.pocketed) return false;
-  const hitPocket = POCKETS.some((pocket) => Math.hypot(ball.x - pocket.x, ball.y - pocket.y) <= TABLE.pocketRadius);
+
+  const hitPocket = POCKETS.find(
+    (pocket) => Math.hypot(ball.x - pocket.x, ball.y - pocket.y) <= pocket.radius || inPocketMouth(ball, pocket)
+  );
   if (!hitPocket) return false;
+
+  ball.x = hitPocket.x;
+  ball.y = hitPocket.y;
   ball.pocketed = true;
   ball.vx = 0;
   ball.vy = 0;
@@ -482,7 +592,8 @@ function validBallPlacement(balls, placement, ignoreNumbers = []) {
   const overlaps = balls.some(
     (ball) => !ball.pocketed && !ignoreSet.has(ball.number) && Math.hypot(ball.x - x, ball.y - y) < TABLE.ballRadius * 2 + 0.2
   );
-  if (overlaps) return null;
+  const insidePocketShelf = POCKETS.some((pocket) => Math.hypot(pocket.x - x, pocket.y - y) <= pocket.radius + TABLE.ballRadius * 0.8);
+  if (overlaps || insidePocketShelf) return null;
   return { x, y };
 }
 
@@ -560,53 +671,69 @@ function simulateShot(room, shot) {
   captureTraceFrame(trace, balls, true);
 
   for (let step = 0; step < MAX_SIMULATION_STEPS; step += 1) {
-    for (const ball of activeBalls(balls)) {
-      ball.x += ball.vx;
-      ball.y += ball.vy;
-      ball.vx *= FRICTION;
-      ball.vy *= FRICTION;
+    const movingBalls = activeBalls(balls);
+    const maxSpeed = movingBalls.reduce((largest, ball) => Math.max(largest, Math.hypot(ball.vx, ball.vy)), 0);
+    const substeps = Math.min(Math.max(Math.ceil(maxSpeed / (TABLE.ballRadius * 0.52)), 1), 4);
+    const subFriction = FRICTION ** (1 / substeps);
 
-      if (Math.abs(ball.vx) < 0.015) ball.vx = 0;
-      if (Math.abs(ball.vy) < 0.015) ball.vy = 0;
-
-      const hitRail = applyWallBounce(ball);
-      if (hitRail) {
-        if (ball.number !== 0) {
-          railTouchNumbers.add(ball.number);
+    for (let substep = 0; substep < substeps; substep += 1) {
+      for (const ball of activeBalls(balls)) {
+        ball.x += ball.vx / substeps;
+        ball.y += ball.vy / substeps;
+        applyPocketGravity(ball, 1 / substeps);
+        if (maybePocket(ball)) {
+          pocketedNumbers.add(ball.number);
+          if (ball.number === 0) cuePocketed = true;
+          if (ball.number === 8) eightPocketed = true;
+          if (firstHitNumber != null && ball.number !== 0) {
+            railAfterContact = true;
+          }
+          continue;
         }
-        if (firstHitNumber != null) {
-          railAfterContact = true;
+
+        ball.vx *= subFriction;
+        ball.vy *= subFriction;
+
+        if (Math.abs(ball.vx) < 0.012) ball.vx = 0;
+        if (Math.abs(ball.vy) < 0.012) ball.vy = 0;
+
+        const hitRail = applyWallBounce(ball);
+        if (hitRail) {
+          if (ball.number !== 0) {
+            railTouchNumbers.add(ball.number);
+          }
+          if (firstHitNumber != null) {
+            railAfterContact = true;
+          }
+        }
+
+        if (maybePocket(ball)) {
+          pocketedNumbers.add(ball.number);
+          if (ball.number === 0) cuePocketed = true;
+          if (ball.number === 8) eightPocketed = true;
+          if (firstHitNumber != null && ball.number !== 0) {
+            railAfterContact = true;
+          }
         }
       }
-    }
 
-    for (let firstIndex = 0; firstIndex < balls.length; firstIndex += 1) {
-      const first = balls[firstIndex];
-      if (first.pocketed) continue;
+      for (let firstIndex = 0; firstIndex < balls.length; firstIndex += 1) {
+        const first = balls[firstIndex];
+        if (first.pocketed) continue;
 
-      for (let secondIndex = firstIndex + 1; secondIndex < balls.length; secondIndex += 1) {
-        const second = balls[secondIndex];
-        if (second.pocketed) continue;
+        for (let secondIndex = firstIndex + 1; secondIndex < balls.length; secondIndex += 1) {
+          const second = balls[secondIndex];
+          if (second.pocketed) continue;
 
-        const collided = resolveBallCollision(first, second);
-        if (!collided || firstHitNumber != null) continue;
+          const collided = resolveBallCollision(first, second);
+          if (!collided || firstHitNumber != null) continue;
 
-        if (first.number === 0 && second.number !== 0) {
-          firstHitNumber = second.number;
-        } else if (second.number === 0 && first.number !== 0) {
-          firstHitNumber = first.number;
+          if (first.number === 0 && second.number !== 0) {
+            firstHitNumber = second.number;
+          } else if (second.number === 0 && first.number !== 0) {
+            firstHitNumber = first.number;
+          }
         }
-      }
-    }
-
-    for (const ball of balls) {
-      if (ball.pocketed) continue;
-      if (!maybePocket(ball)) continue;
-      pocketedNumbers.add(ball.number);
-      if (ball.number === 0) cuePocketed = true;
-      if (ball.number === 8) eightPocketed = true;
-      if (firstHitNumber != null && ball.number !== 0) {
-        railAfterContact = true;
       }
     }
 
