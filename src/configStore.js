@@ -26,6 +26,7 @@ const DEFAULT_CONFIG = {
     balances: {},
     dailyClaims: {}
   },
+  cooldowns: {},
   publicSite: {
     members: [
       {
@@ -99,6 +100,10 @@ function mergeConfig(config = {}) {
     economy: {
       ...clone(DEFAULT_CONFIG.economy),
       ...(config.economy || {})
+    },
+    cooldowns: {
+      ...clone(DEFAULT_CONFIG.cooldowns),
+      ...(config.cooldowns || {})
     },
     publicSite: {
       ...clone(DEFAULT_CONFIG.publicSite),

@@ -962,6 +962,99 @@ define({
 
 
 define({
+  name: "tickle",
+  category: "Dating",
+  description: "lil tickle.",
+  usage: "tickle @user",
+  async run(ctx) {
+    const member = mentionUser(ctx.message);
+    await ctx.message.reply(`${member} has been tickled and started giggling.`);
+  }
+});
+
+define({
+  name: "mug",
+  category: "Dating",
+  description: "Mug someone and steal up to 10 bread from them (10 minute cooldown).",
+  usage: "mug @user",
+  async run(ctx) {
+    const target = ctx.message.mentions.users.first();
+    if (!target) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    if (target.id === ctx.message.author.id) {
+      await ctx.message.reply("You cannot mug yourself.");
+      return;
+    }
+
+    // Check cooldown (10 minutes)
+    const cooldownKey = `mug_${ctx.message.author.id}`;
+    const lastMug = ctx.config.cooldowns?.[cooldownKey];
+    const cooldownMs = 10 * 60 * 1000; // 10 minutes
+    
+    if (lastMug && Date.now() - new Date(lastMug).getTime() < cooldownMs) {
+      const remaining = cooldownMs - (Date.now() - new Date(lastMug).getTime());
+      await ctx.message.reply(`You can mug again in ${formatCooldown(remaining)}.`);
+      return;
+    }
+
+    // Update cooldown
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      cooldowns: {
+        ...(ctx.config.cooldowns || {}),
+        [cooldownKey]: new Date().toISOString()
+      }
+    });
+
+    // Steal bread
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const targetBalance = breadBalance(economy, target.id);
+      if (targetBalance < 1) {
+        return `${target} has no bread to steal!`;
+      }
+
+      const stealAmount = Math.min(randomInt(1, 100), targetBalance);
+      const newTargetBalance = targetBalance - stealAmount;
+      const newMuggerBalance = breadBalance(economy, ctx.message.author.id) + stealAmount;
+
+      setBreadBalance(economy, target.id, newTargetBalance);
+      setBreadBalance(economy, ctx.message.author.id, newMuggerBalance);
+
+      return `${target} has been mugged! You stole ${formatBread(stealAmount)} from them.`;
+    });
+
+    await ctx.message.reply(output);
+  }
+});
+
+
+define({
+  name: "drug",
+  category: "Dating",
+  description: "Drug someone with a random set of 10 drugs.",
+  usage: "drug @user",
+  async run(ctx) {
+    const member = mentionUser(ctx.message);
+    const drugs = [
+      "tickle", "mug", "heroin", "cocaine", "meth", "weed", "acid", "shrooms", 
+      "ecstasy", "ketamine", "opium", "peyote", "salvia", "DMT", "ayahuasca",
+      "caffeine", "nicotine", "alcohol", "sugar", "chocolate", "bread"
+    ];
+    
+    // Randomly select 10 unique drugs
+    const selectedDrugs = [];
+    const shuffled = [...drugs].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < Math.min(10, drugs.length); i++) {
+      selectedDrugs.push(shuffled[i]);
+    }
+    
+    await ctx.message.reply(`${member} has been drugged with: ${selectedDrugs.join(", ")}`);
+  }
+});
+
+define({
   name: "date",
   category: "Dating",
   description: "Invite someone to date you in the server.",
