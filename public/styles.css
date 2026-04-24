@@ -85,13 +85,17 @@ textarea {
   color: var(--accent-ink);
   font-weight: 900;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .brand-mark img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  object-position: center;
   display: block;
+  padding: 4px;
+  background: transparent;
 }
 
 .brand strong {
