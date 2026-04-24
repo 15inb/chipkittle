@@ -87,12 +87,13 @@ a {
   inset: 0;
   z-index: -2;
   background-image:
-    radial-gradient(circle at 60% 48%, var(--hero-radial) 0 11%, var(--hero-radial-soft) 22%, transparent 40%),
-    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 24%, var(--hero-wash-glass) 48%, var(--hero-wash-end) 74%),
+    radial-gradient(circle at 60% 48%, var(--hero-radial) 0 12%, var(--hero-radial-soft) 24%, transparent 46%),
+    linear-gradient(90deg, rgba(17, 28, 16, 0.88) 0%, rgba(17, 28, 16, 0.82) 18%, rgba(17, 28, 16, 0.58) 34%, rgba(17, 28, 16, 0.22) 52%, rgba(17, 28, 16, 0) 72%),
+    linear-gradient(90deg, var(--hero-wash-start) 0%, var(--hero-wash-mid) 28%, var(--hero-wash-glass) 52%, var(--hero-wash-end) 76%),
     url("/assets/ckwebsitebg3.png");
   background-repeat: no-repeat;
-  background-size: cover, cover, auto 100%;
-  background-position: center, center, right center;
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, 68% center;
 }
 
 :root[data-theme="dark"] .hero-bg {
@@ -209,13 +210,20 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 999px;
+  background: rgba(10, 19, 15, 0.2);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 16px 36px rgba(10, 19, 15, 0.14);
 }
 
 .theme-toggle {
   width: 76px;
   padding: 0 16px;
-  background: rgba(255, 255, 255, 0.46);
+  background: rgba(255, 255, 255, 0.68);
   cursor: pointer;
+  box-shadow: 0 10px 24px rgba(10, 19, 15, 0.12);
 }
 
 .nav-button,
@@ -1062,7 +1070,7 @@ a {
   }
 
   .hero-bg {
-    background-position: center, center, 62% center;
+    background-position: center, center, center, 64% center;
   }
 
   .hero-logo-overlay {
@@ -1143,6 +1151,11 @@ a {
   .theme-toggle {
     width: 66px;
     padding-inline: 12px;
+  }
+
+  .nav-actions {
+    padding: 6px;
+    gap: 8px;
   }
 
   .hero-copy h1 {
