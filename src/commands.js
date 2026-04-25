@@ -1024,6 +1024,12 @@ const ECONOMY_UPGRADES = [
 ];
 const ECONOMY_LOG_LIMIT = 60;
 const BLACKJACK_SESSION_MS = 120_000;
+const LOAN_GRACE_MS = 60 * 60 * 1000;
+const LOAN_INTEREST_INTERVAL_MS = 30 * 60 * 1000;
+const LOAN_INTEREST_RATE = 0.06;
+const LOAN_SHARK_INTERVAL_MS = 60 * 60 * 1000;
+const LOAN_MAX_INTEREST_TICKS = 24;
+const LOAN_MAX_SHARK_TICKS = 12;
 const blackjackSessions = new Map();
 
 function normalizeEconomy(economy = {}) {
@@ -1040,6 +1046,7 @@ function normalizeEconomy(economy = {}) {
     balances: { ...(economy.balances || {}) },
     bankBalances: { ...(economy.bankBalances || {}) },
     upgrades: { ...(economy.upgrades || {}) },
+    loans: { ...(economy.loans || {}) },
     dailyClaims: { ...(economy.dailyClaims || {}) },
     dailyStreaks: { ...(economy.dailyStreaks || {}) },
     stats: { ...(economy.stats || {}) },
@@ -1218,6 +1225,128 @@ function formatNetBread(net) {
   return `${net > 0 ? "+" : "-"}${formatBread(amount)}`;
 }
 
+function activeLoan(economy, userId) {
+  const loan = economy.loans?.[userId];
+  if (!loan || loan.status === "paid") return null;
+  return {
+    principal: Math.max(Math.floor(Number(loan.principal) || 0), 0),
+    owed: Math.max(Math.floor(Number(loan.owed) || 0), 0),
+    borrowedAt: loan.borrowedAt || new Date().toISOString(),
+    dueAt: loan.dueAt || loan.borrowedAt || new Date().toISOString(),
+    lastInterestAt: loan.lastInterestAt || loan.dueAt || loan.borrowedAt || new Date().toISOString(),
+    lastPenaltyAt: loan.lastPenaltyAt || loan.dueAt || loan.borrowedAt || new Date().toISOString(),
+    strikes: Math.max(Math.floor(Number(loan.strikes) || 0), 0),
+    status: loan.status || "active"
+  };
+}
+
+function maxLoanAmount(economy, userId) {
+  const wealth = totalBreadWealth(economy, userId);
+  return Math.max(1_000, Math.min(15_000, Math.floor(750 + wealth * 0.35)));
+}
+
+function setLoan(economy, userId, loan) {
+  economy.loans ||= {};
+  if (!loan) {
+    delete economy.loans[userId];
+    return;
+  }
+  economy.loans[userId] = loan;
+}
+
+function collectLoanSharkFee(economy, userId, amount) {
+  let remaining = Math.max(Math.floor(Number(amount) || 0), 0);
+  const wallet = breadBalance(economy, userId);
+  const fromWallet = Math.min(wallet, remaining);
+  if (fromWallet > 0) {
+    setBreadBalance(economy, userId, wallet - fromWallet);
+    remaining -= fromWallet;
+  }
+  const bank = bankBalance(economy, userId);
+  const fromBank = Math.min(bank, remaining);
+  if (fromBank > 0) {
+    setBankBalance(economy, userId, bank - fromBank);
+    remaining -= fromBank;
+  }
+  return {
+    collected: fromWallet + fromBank,
+    unpaid: remaining
+  };
+}
+
+function applyLoanPressure(economy, userId, nowMs = Date.now()) {
+  const loan = activeLoan(economy, userId);
+  if (!loan || loan.owed < 1) return [];
+
+  const notices = [];
+  const dueMs = Date.parse(loan.dueAt);
+  if (!Number.isFinite(dueMs) || nowMs <= dueMs) {
+    setLoan(economy, userId, loan);
+    return notices;
+  }
+
+  let interestAnchor = Math.max(Date.parse(loan.lastInterestAt) || dueMs, dueMs);
+  const elapsedInterestTicks = Math.floor((nowMs - interestAnchor) / LOAN_INTEREST_INTERVAL_MS);
+  const immediateInterest = elapsedInterestTicks === 0 && interestAnchor === dueMs && nowMs > dueMs;
+  const interestTicks = Math.min(
+    elapsedInterestTicks + (immediateInterest ? 1 : 0),
+    LOAN_MAX_INTEREST_TICKS
+  );
+  let interestAdded = 0;
+  for (let index = 0; index < interestTicks; index += 1) {
+    const interest = Math.max(1, Math.floor(loan.owed * LOAN_INTEREST_RATE));
+    loan.owed += interest;
+    interestAdded += interest;
+    interestAnchor = index === 0 && immediateInterest ? nowMs : interestAnchor + LOAN_INTEREST_INTERVAL_MS;
+  }
+  if (interestTicks > 0) {
+    loan.lastInterestAt = new Date(interestAnchor).toISOString();
+    notices.push(`Loan shark interest added **${formatBread(interestAdded)}**.`);
+    recordEconomyTransaction(economy, {
+      userId,
+      type: "loan-interest",
+      amount: interestAdded,
+      owed: loan.owed
+    });
+  }
+
+  let penaltyAnchor = Math.max(Date.parse(loan.lastPenaltyAt) || dueMs, dueMs);
+  const sharkTicks = Math.min(Math.floor((nowMs - penaltyAnchor) / LOAN_SHARK_INTERVAL_MS), LOAN_MAX_SHARK_TICKS);
+  let collectedTotal = 0;
+  let unpaidFees = 0;
+  for (let index = 0; index < sharkTicks; index += 1) {
+    loan.strikes += 1;
+    const fee = Math.max(25, Math.floor(loan.owed * 0.035));
+    const collection = collectLoanSharkFee(economy, userId, fee);
+    collectedTotal += collection.collected;
+    unpaidFees += collection.unpaid;
+    if (collection.unpaid > 0) loan.owed += collection.unpaid;
+    penaltyAnchor += LOAN_SHARK_INTERVAL_MS;
+  }
+  if (sharkTicks > 0) {
+    loan.lastPenaltyAt = new Date(penaltyAnchor).toISOString();
+    notices.push(`Loan sharks made **${sharkTicks}** collection visit${sharkTicks === 1 ? "" : "s"} and took **${formatBread(collectedTotal)}**${unpaidFees ? `, adding **${formatBread(unpaidFees)}** unpaid fees to the debt` : ""}.`);
+    recordEconomyTransaction(economy, {
+      userId,
+      type: "loan-collection",
+      amount: -collectedTotal,
+      feeAdded: unpaidFees,
+      strikes: loan.strikes,
+      owed: loan.owed,
+      balance: breadBalance(economy, userId),
+      bank: bankBalance(economy, userId)
+    });
+  }
+
+  setLoan(economy, userId, loan);
+  return notices;
+}
+
+function loanNoticeSummary(notices = []) {
+  if (!notices.length) return "";
+  return [`**Loan Shark Notice**`, ...notices].join("\n");
+}
+
 function persistentCooldownStatus(economy, bucket, id, cooldownMs) {
   const lastUsedAt = new Date(economy.cooldowns?.[bucket]?.[id] || 0).getTime();
   const remainingMs = cooldownMs - (Date.now() - lastUsedAt);
@@ -1317,7 +1446,11 @@ async function updateBreadEconomy(ctx, mutator) {
   const guildId = ctx.message.guild.id;
   const latestConfig = ctx.store.getGuild(guildId);
   const economy = normalizeEconomy(latestConfig.economy);
-  const result = await mutator(economy, latestConfig);
+  const loanNotices = applyLoanPressure(economy, ctx.message.author.id);
+  let result = await mutator(economy, latestConfig, loanNotices);
+  if (typeof result === "string" && loanNotices.length) {
+    result = `${result}\n\n${loanNoticeSummary(loanNotices)}`;
+  }
   await ctx.store.updateGuild(guildId, { economy });
   return result;
 }
@@ -2359,11 +2492,13 @@ define({
     const interest = Math.min(Math.floor(bank * interestRateFor(economy, target.id)), maxInterestFor(economy, target.id));
     const cooldown = persistentCooldownStatus(economy, "interest", target.id, interestCooldownFor(economy, target.id));
     const ownedUpgrades = Object.values(userUpgrades(economy, target.id)).reduce((sum, level) => sum + Math.max(Number(level) || 0, 0), 0);
+    const loan = activeLoan(economy, target.id);
     await ctx.message.reply([
       `**${target.displayName}'s Bread Bank**`,
       `Wallet: **${formatBread(wallet)}**`,
       `Bank: **${formatBread(bank)}**`,
       `Net worth: **${formatBread(wallet + bank)}**`,
+      loan ? `Loan debt: **${formatBread(loan.owed)}** due ${new Date(loan.dueAt).getTime() < Date.now() ? "**now**" : `<t:${Math.floor(new Date(loan.dueAt).getTime() / 1000)}:R>`}` : "Loan debt: **none**",
       `Interest rate: **${(interestRateFor(economy, target.id) * 100).toFixed(2)}%**`,
       `Next interest: **${formatBread(interest)}**`,
       `Interest status: ${cooldown.limited ? `ready in **${formatCooldown(cooldown.remainingMs)}**` : "**ready now**"}`,
@@ -2465,6 +2600,130 @@ define({
         `Net worth: **${formatBread(totalBreadWealth(economy, userId))}**`
       ].join("\n");
     });
+    await ctx.message.reply(output);
+  }
+});
+
+define({
+  name: "loan",
+  aliases: ["borrow", "repayloan", "payloan", "loans", "debt"],
+  category: "Gambling",
+  description: "Borrow bread, repay debt, or check loan shark pressure.",
+  usage: "loan [status|take|pay] [amount]",
+  async run(ctx) {
+    const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
+    const action = invoked === "borrow" ? "take" : ["repayloan", "payloan"].includes(invoked) ? "pay" : String(ctx.args[0] || "status").toLowerCase();
+    const amountInput = invoked === "borrow" || ["repayloan", "payloan"].includes(invoked) ? ctx.args[0] : ["take", "borrow", "pay", "repay"].includes(action) ? ctx.args[1] : ctx.args[0];
+
+    const output = await updateBreadEconomy(ctx, async (economy) => {
+      const userId = ctx.message.author.id;
+      const currentLoan = activeLoan(economy, userId);
+      const maxLoan = maxLoanAmount(economy, userId);
+
+      if (["status", "info", "debt"].includes(action)) {
+        if (!currentLoan) {
+          return [
+            `**Bread Loan Office**`,
+            `You do not have an active loan.`,
+            `Available credit: **${formatBread(maxLoan)}**`,
+            `Borrow with \`${ctx.config.prefix}loan take amount\`. Pay with \`${ctx.config.prefix}loan pay amount\`.`,
+            `Loans are due after **1 hour**. After that, interest and loan shark visits begin.`
+          ].join("\n");
+        }
+        const dueMs = Date.parse(currentLoan.dueAt);
+        const overdueMs = Date.now() - dueMs;
+        return [
+          `**Bread Loan Office**`,
+          `Principal: **${formatBread(currentLoan.principal)}**`,
+          `Current debt: **${formatBread(currentLoan.owed)}**`,
+          `Due: ${overdueMs > 0 ? `**overdue by ${formatCooldown(overdueMs)}**` : `<t:${Math.floor(dueMs / 1000)}:R>`}`,
+          `Loan shark strikes: **${currentLoan.strikes}**`,
+          `Wallet: **${formatBread(breadBalance(economy, userId))}** | Bank: **${formatBread(bankBalance(economy, userId))}**`
+        ].join("\n");
+      }
+
+      if (["take", "borrow"].includes(action)) {
+        if (currentLoan) return `You already owe **${formatBread(currentLoan.owed)}**. Pay it off before borrowing again.`;
+        const amount = parseBreadAmount(amountInput, maxLoan, maxLoan);
+        if (!amount || amount < 100) return `Borrow at least **100 bread**. Your current max loan is **${formatBread(maxLoan)}**.`;
+        if (amount > maxLoan) return `Your current max loan is **${formatBread(maxLoan)}**.`;
+        const now = new Date();
+        const dueAt = new Date(now.getTime() + LOAN_GRACE_MS);
+        setBreadBalance(economy, userId, breadBalance(economy, userId) + amount);
+        setLoan(economy, userId, {
+          principal: amount,
+          owed: amount,
+          borrowedAt: now.toISOString(),
+          dueAt: dueAt.toISOString(),
+          lastInterestAt: dueAt.toISOString(),
+          lastPenaltyAt: dueAt.toISOString(),
+          strikes: 0,
+          status: "active"
+        });
+        recordEconomyTransaction(economy, {
+          userId,
+          type: "loan-borrow",
+          amount,
+          owed: amount,
+          balance: breadBalance(economy, userId)
+        });
+        return [
+          `**Loan approved.**`,
+          `Borrowed: **${formatBread(amount)}**`,
+          `Due: <t:${Math.floor(dueAt.getTime() / 1000)}:R>`,
+          `Wallet: **${formatBread(breadBalance(economy, userId))}**`,
+          `Pay it back with \`${ctx.config.prefix}loan pay amount\`. After 1 hour, the loan sharks start adding interest and taking bread.`
+        ].join("\n");
+      }
+
+      if (["pay", "repay"].includes(action)) {
+        if (!currentLoan) return "You do not have an active loan to repay.";
+        const available = totalBreadWealth(economy, userId);
+        const amount = parseBreadAmount(amountInput, Math.min(available, currentLoan.owed), Math.min(available, currentLoan.owed));
+        if (!amount || amount < 1) return `Usage: \`${usage(ctx.config, ctx.command)}\``;
+        if (amount > available) return `You only have **${formatBread(available)}** between wallet and bank.`;
+        let remainingPayment = amount;
+        const wallet = breadBalance(economy, userId);
+        const fromWallet = Math.min(wallet, remainingPayment);
+        setBreadBalance(economy, userId, wallet - fromWallet);
+        remainingPayment -= fromWallet;
+        if (remainingPayment > 0) {
+          setBankBalance(economy, userId, bankBalance(economy, userId) - remainingPayment);
+        }
+        currentLoan.owed = Math.max(currentLoan.owed - amount, 0);
+        recordEconomyTransaction(economy, {
+          userId,
+          type: "loan-pay",
+          amount: -amount,
+          owed: currentLoan.owed,
+          balance: breadBalance(economy, userId),
+          bank: bankBalance(economy, userId)
+        });
+        if (currentLoan.owed <= 0) {
+          setLoan(economy, userId, {
+            ...currentLoan,
+            owed: 0,
+            paidAt: new Date().toISOString(),
+            status: "paid"
+          });
+          return [
+            `**Loan paid off.**`,
+            `Paid: **${formatBread(amount)}**`,
+            `The loan sharks have been told to stop looking at you.`,
+            `Wallet: **${formatBread(breadBalance(economy, userId))}** | Bank: **${formatBread(bankBalance(economy, userId))}**`
+          ].join("\n");
+        }
+        setLoan(economy, userId, currentLoan);
+        return [
+          `Paid **${formatBread(amount)}** toward your loan.`,
+          `Remaining debt: **${formatBread(currentLoan.owed)}**`,
+          `Wallet: **${formatBread(breadBalance(economy, userId))}** | Bank: **${formatBread(bankBalance(economy, userId))}**`
+        ].join("\n");
+      }
+
+      return `Usage: \`${usage(ctx.config, ctx.command)}\``;
+    });
+
     await ctx.message.reply(output);
   }
 });
@@ -2659,6 +2918,10 @@ define({
       if (entry.type === "withdraw") return `${when} - Withdrawal: **${formatBread(entry.amount || 0)}** to wallet`;
       if (entry.type === "interest") return `${when} - Bank interest: **+${formatBread(entry.amount || 0)}**`;
       if (entry.type === "upgrade") return `${when} - Bought upgrade **${entry.upgradeName || entry.upgradeId || "unknown"}** for **${formatBread(Math.abs(entry.amount || 0))}**`;
+      if (entry.type === "loan-borrow") return `${when} - Loan borrowed: **+${formatBread(entry.amount || 0)}**, owed **${formatBread(entry.owed || 0)}**`;
+      if (entry.type === "loan-pay") return `${when} - Loan payment: **${formatBread(Math.abs(entry.amount || 0))}**, owed **${formatBread(entry.owed || 0)}**`;
+      if (entry.type === "loan-interest") return `${when} - Loan interest: **+${formatBread(entry.amount || 0)}**, owed **${formatBread(entry.owed || 0)}**`;
+      if (entry.type === "loan-collection") return `${when} - Loan shark collection: **${formatBread(Math.abs(entry.amount || 0))}** taken, owed **${formatBread(entry.owed || 0)}**`;
       if (entry.type === "casino-robbery") return `${when} - Casino robbery: **${formatNetBread(entry.net || 0)}**`;
       if (entry.type === "admin-set") return `${when} - Staff set wallet to **${formatBread(entry.amount || 0)}**`;
       if (entry.type === "admin-add") return `${when} - Staff added **${formatBread(entry.amount || 0)}**`;

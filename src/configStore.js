@@ -28,6 +28,9 @@ const DEFAULT_CONFIG = {
   },
   economy: {
     balances: {},
+    bankBalances: {},
+    upgrades: {},
+    loans: {},
     dailyClaims: {},
     settings: {
       dailyBread: 300,
