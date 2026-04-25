@@ -60,6 +60,7 @@ const PANEL_SECTION_MIN_LEVEL = {
   members: "root",
   public: "root",
   ai: "root",
+  economy: "root",
   games: "root",
   community: "root",
   server: "root"
@@ -72,6 +73,7 @@ const SETTINGS_SECTIONS = [
   { id: "public", label: "Public Site", description: "Quick links, exports, and live public-facing content summaries." },
   { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
   { id: "ai", label: "AI", description: "Chipkittle AI channels, model, cooldowns, and personality." },
+  { id: "economy", label: "Economy", description: "Bread payouts, cooldowns, interest, and upgrade pricing." },
   { id: "applications", label: "Applications", description: "DM questions, review threads, roles, and cooldowns." },
   { id: "games", label: "Games", description: "Leaderboard moderation, claim limits, and public game tools." },
   { id: "community", label: "Community", description: "Artifacts, rituals, public directory extras, and archive data." },
@@ -84,7 +86,7 @@ const SETTINGS_SECTIONS = [
 
 const SETTINGS_NAV_GROUPS = [
   { label: "Overview", sections: ["dashboard", "audit", "public", "commands", "server"] },
-  { label: "Configuration", sections: ["general", "ai", "games", "permissions", "access", "backups"] },
+  { label: "Configuration", sections: ["general", "ai", "economy", "games", "permissions", "access", "backups"] },
   { label: "Community", sections: ["members", "applications", "community", "moderation"] }
 ];
 
@@ -98,6 +100,28 @@ const DEFAULT_PUBLIC_GAME_SETTINGS = {
   maxClaimBreadPerRun: 100000,
   recordAlertChannelId: ""
 };
+
+const DEFAULT_ECONOMY_SETTINGS = {
+  dailyBread: 300,
+  maxBreadBet: 10000,
+  gamblingCooldownSeconds: 5,
+  robCooldownMinutes: 180,
+  casinoRobberyCooldownMinutes: 480,
+  bankInterestCooldownHours: 20,
+  bankInterestRatePercent: 1.5,
+  maxBankInterest: 1000,
+  upgradeCosts: {}
+};
+
+const PANEL_ECONOMY_UPGRADES = [
+  { id: "daily-oven", name: "Daily Oven", baseCost: 1500, costGrowth: 1.75, description: "Adds bread to every daily claim." },
+  { id: "streak-vault", name: "Streak Vault", baseCost: 2000, costGrowth: 1.8, description: "Raises the daily streak bonus cap." },
+  { id: "interest-altar", name: "Interest Altar", baseCost: 3000, costGrowth: 1.9, description: "Improves bank interest payouts." },
+  { id: "interest-clock", name: "Interest Clock", baseCost: 2800, costGrowth: 1.75, description: "Shortens bank interest cooldowns." },
+  { id: "work-tools", name: "Work Tools", baseCost: 1250, costGrowth: 1.65, description: "Adds bread to work payouts." },
+  { id: "casino-disguise", name: "Casino Disguise", baseCost: 4000, costGrowth: 2, description: "Improves casino robbery outcomes." },
+  { id: "bread-shield", name: "Bread Shield", baseCost: 2500, costGrowth: 1.8, description: "Protects more wallet bread from robberies." }
+];
 
 const BUILT_IN_BLOCKED_LEADERBOARD_TERMS = [
   "fuck",
@@ -1309,6 +1333,157 @@ function publicGameSettings(config = {}) {
   };
 }
 
+function clampPanelNumber(value, fallback, min, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(Math.max(numeric, min), max);
+}
+
+function economyPanelSettings(config = {}) {
+  const settings = config?.economy?.settings || {};
+  const upgradeCosts = settings.upgradeCosts || config?.economy?.upgradeCosts || {};
+  return {
+    dailyBread: Math.floor(clampPanelNumber(settings.dailyBread, DEFAULT_ECONOMY_SETTINGS.dailyBread, 0, 1000000)),
+    maxBreadBet: Math.floor(clampPanelNumber(settings.maxBreadBet, DEFAULT_ECONOMY_SETTINGS.maxBreadBet, 1, 1000000)),
+    gamblingCooldownSeconds: Math.floor(clampPanelNumber(settings.gamblingCooldownSeconds, DEFAULT_ECONOMY_SETTINGS.gamblingCooldownSeconds, 0, 3600)),
+    robCooldownMinutes: Math.floor(clampPanelNumber(settings.robCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.robCooldownMinutes, 1, 10080)),
+    casinoRobberyCooldownMinutes: Math.floor(clampPanelNumber(settings.casinoRobberyCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.casinoRobberyCooldownMinutes, 1, 10080)),
+    bankInterestCooldownHours: Math.floor(clampPanelNumber(settings.bankInterestCooldownHours, DEFAULT_ECONOMY_SETTINGS.bankInterestCooldownHours, 1, 168)),
+    bankInterestRatePercent: clampPanelNumber(settings.bankInterestRatePercent, DEFAULT_ECONOMY_SETTINGS.bankInterestRatePercent, 0, 100),
+    maxBankInterest: Math.floor(clampPanelNumber(settings.maxBankInterest, DEFAULT_ECONOMY_SETTINGS.maxBankInterest, 0, 1000000)),
+    upgradeCosts: Object.fromEntries(
+      PANEL_ECONOMY_UPGRADES.map((upgrade) => {
+        const override = upgradeCosts[upgrade.id] || {};
+        return [
+          upgrade.id,
+          {
+            baseCost: Math.floor(clampPanelNumber(override.baseCost, upgrade.baseCost, 0, 10000000)),
+            costGrowth: clampPanelNumber(override.costGrowth, upgrade.costGrowth, 1, 10)
+          }
+        ];
+      })
+    )
+  };
+}
+
+function parseEconomySettings(body = {}) {
+  const upgradeCosts = Object.fromEntries(
+    PANEL_ECONOMY_UPGRADES.map((upgrade) => [
+      upgrade.id,
+      {
+        baseCost: Math.floor(clampPanelNumber(body[`upgradeBaseCost_${upgrade.id}`], upgrade.baseCost, 0, 10000000)),
+        costGrowth: clampPanelNumber(body[`upgradeCostGrowth_${upgrade.id}`], upgrade.costGrowth, 1, 10)
+      }
+    ])
+  );
+
+  return {
+    dailyBread: Math.floor(clampPanelNumber(body.dailyBread, DEFAULT_ECONOMY_SETTINGS.dailyBread, 0, 1000000)),
+    maxBreadBet: Math.floor(clampPanelNumber(body.maxBreadBet, DEFAULT_ECONOMY_SETTINGS.maxBreadBet, 1, 1000000)),
+    gamblingCooldownSeconds: Math.floor(clampPanelNumber(body.gamblingCooldownSeconds, DEFAULT_ECONOMY_SETTINGS.gamblingCooldownSeconds, 0, 3600)),
+    robCooldownMinutes: Math.floor(clampPanelNumber(body.robCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.robCooldownMinutes, 1, 10080)),
+    casinoRobberyCooldownMinutes: Math.floor(clampPanelNumber(body.casinoRobberyCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.casinoRobberyCooldownMinutes, 1, 10080)),
+    bankInterestCooldownHours: Math.floor(clampPanelNumber(body.bankInterestCooldownHours, DEFAULT_ECONOMY_SETTINGS.bankInterestCooldownHours, 1, 168)),
+    bankInterestRatePercent: clampPanelNumber(body.bankInterestRatePercent, DEFAULT_ECONOMY_SETTINGS.bankInterestRatePercent, 0, 100),
+    maxBankInterest: Math.floor(clampPanelNumber(body.maxBankInterest, DEFAULT_ECONOMY_SETTINGS.maxBankInterest, 0, 1000000)),
+    upgradeCosts
+  };
+}
+
+function economyWorkspace(config = {}) {
+  const settings = economyPanelSettings(config);
+  const balances = config.economy?.balances || {};
+  const bankBalances = config.economy?.bankBalances || {};
+  const trackedUsers = new Set([...Object.keys(balances), ...Object.keys(bankBalances)]);
+  const walletTotal = Object.values(balances).reduce((sum, amount) => sum + Math.max(Math.floor(Number(amount) || 0), 0), 0);
+  const bankTotal = Object.values(bankBalances).reduce((sum, amount) => sum + Math.max(Math.floor(Number(amount) || 0), 0), 0);
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Bread Economy</h2>
+        <p>Root-only controls for global bread payouts, gambling limits, robbery cooldowns, bank interest, and upgrade pricing.</p>
+      </div>
+      <div class="stat-grid compact-stat-grid">
+        <div><span>Tracked users</span><strong>${trackedUsers.size.toLocaleString()}</strong></div>
+        <div><span>Wallet bread</span><strong>${walletTotal.toLocaleString()}</strong></div>
+        <div><span>Bank bread</span><strong>${bankTotal.toLocaleString()}</strong></div>
+        <div><span>Transactions</span><strong>${(config.economy?.transactions || []).length.toLocaleString()}</strong></div>
+      </div>
+    </section>
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Global Tuning</h2>
+        <p>These settings apply immediately after saving and do not erase balances, cooldowns, upgrades, or logs.</p>
+      </div>
+      <div class="field-pair">
+        <label>
+          Daily bread base
+          <input type="number" name="dailyBread" min="0" max="1000000" value="${escapeHtml(settings.dailyBread)}">
+        </label>
+        <label>
+          Max gambling bet
+          <input type="number" name="maxBreadBet" min="1" max="1000000" value="${escapeHtml(settings.maxBreadBet)}">
+        </label>
+        <label>
+          Gambling cooldown seconds
+          <input type="number" name="gamblingCooldownSeconds" min="0" max="3600" value="${escapeHtml(settings.gamblingCooldownSeconds)}">
+        </label>
+        <label>
+          Member robbery cooldown minutes
+          <input type="number" name="robCooldownMinutes" min="1" max="10080" value="${escapeHtml(settings.robCooldownMinutes)}">
+        </label>
+        <label>
+          Casino robbery cooldown minutes
+          <input type="number" name="casinoRobberyCooldownMinutes" min="1" max="10080" value="${escapeHtml(settings.casinoRobberyCooldownMinutes)}">
+        </label>
+        <label>
+          Bank interest cooldown hours
+          <input type="number" name="bankInterestCooldownHours" min="1" max="168" value="${escapeHtml(settings.bankInterestCooldownHours)}">
+        </label>
+        <label>
+          Base bank interest percent
+          <input type="number" name="bankInterestRatePercent" min="0" max="100" step="0.01" value="${escapeHtml(settings.bankInterestRatePercent)}">
+        </label>
+        <label>
+          Max base bank interest
+          <input type="number" name="maxBankInterest" min="0" max="1000000" value="${escapeHtml(settings.maxBankInterest)}">
+        </label>
+      </div>
+    </section>
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Upgrade Costs</h2>
+        <p>Base cost is level 0 to 1. Growth multiplies each next level's cost.</p>
+      </div>
+      <div class="permission-list">
+        ${PANEL_ECONOMY_UPGRADES.map((upgrade) => {
+          const cost = settings.upgradeCosts[upgrade.id] || {};
+          return `
+            <details class="permission-category-card" open>
+              <summary>
+                <span>
+                  <strong>${escapeHtml(upgrade.name)}</strong>
+                  <small>${escapeHtml(upgrade.id)} - ${escapeHtml(upgrade.description)}</small>
+                </span>
+              </summary>
+              <div class="field-pair">
+                <label>
+                  Base cost
+                  <input type="number" name="upgradeBaseCost_${escapeHtml(upgrade.id)}" min="0" max="10000000" value="${escapeHtml(cost.baseCost)}">
+                </label>
+                <label>
+                  Cost growth
+                  <input type="number" name="upgradeCostGrowth_${escapeHtml(upgrade.id)}" min="1" max="10" step="0.01" value="${escapeHtml(cost.costGrowth)}">
+                </label>
+              </div>
+            </details>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 async function sendGameRecordAlert(client, channelId, entry, previousTop = null) {
   if (!channelId) return;
   const channel = await client.channels.fetch(channelId).catch(() => null);
@@ -1577,6 +1752,12 @@ function parseConfigForm(body, section = "general") {
             maxClaimBreadPerRun: Math.min(Math.max(Number(body.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000),
             recordAlertChannelId: String(body.recordAlertChannelId || "")
           }
+        }
+      };
+    case "economy":
+      return {
+        economy: {
+          settings: parseEconomySettings(body)
         }
       };
     case "community":
@@ -2425,6 +2606,13 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
         )}
         ${gameLeaderboardControls(guild.id, gameSettings)}
       `;
+    case "economy":
+      return sectionForm(
+        guild.id,
+        currentSection,
+        currentMeta,
+        economyWorkspace(config)
+      );
     case "community":
       return sectionForm(
         guild.id,

@@ -942,6 +942,17 @@ const CASINO_ROBBERY_COOLDOWN_MS = 8 * 60 * 60 * 1000;
 const BANK_INTEREST_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 const BANK_INTEREST_RATE = 0.015;
 const MAX_BANK_INTEREST = 1_000;
+const DEFAULT_ECONOMY_SETTINGS = {
+  dailyBread: DAILY_BREAD,
+  maxBreadBet: MAX_BREAD_BET,
+  gamblingCooldownSeconds: GAMBLING_COOLDOWN_MS / 1000,
+  robCooldownMinutes: ROB_COOLDOWN_MS / 60000,
+  casinoRobberyCooldownMinutes: CASINO_ROBBERY_COOLDOWN_MS / 60000,
+  bankInterestCooldownHours: BANK_INTEREST_COOLDOWN_MS / 3600000,
+  bankInterestRatePercent: BANK_INTEREST_RATE * 100,
+  maxBankInterest: MAX_BANK_INTEREST,
+  upgradeCosts: {}
+};
 const ECONOMY_UPGRADES = [
   {
     id: "daily-oven",
@@ -1018,6 +1029,14 @@ const blackjackSessions = new Map();
 function normalizeEconomy(economy = {}) {
   return {
     ...economy,
+    settings: {
+      ...DEFAULT_ECONOMY_SETTINGS,
+      ...(economy.settings || {}),
+      upgradeCosts: {
+        ...(economy.settings?.upgradeCosts || {}),
+        ...(economy.upgradeCosts || {})
+      }
+    },
     balances: { ...(economy.balances || {}) },
     bankBalances: { ...(economy.bankBalances || {}) },
     upgrades: { ...(economy.upgrades || {}) },
@@ -1075,8 +1094,35 @@ function upgradeLevel(economy, userId, upgradeId) {
   return Math.max(Math.floor(Number(economy.upgrades?.[userId]?.[upgradeId]) || 0), 0);
 }
 
-function upgradeCost(upgrade, currentLevel) {
-  return Math.max(Math.floor(upgrade.baseCost * (upgrade.costGrowth ** currentLevel)), 1);
+function clampEconomyNumber(value, fallback, min, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(Math.max(numeric, min), max);
+}
+
+function economySettings(economy = {}) {
+  const settings = {
+    ...DEFAULT_ECONOMY_SETTINGS,
+    ...(economy.settings || {})
+  };
+  return {
+    dailyBread: Math.floor(clampEconomyNumber(settings.dailyBread, DAILY_BREAD, 0, 1_000_000)),
+    maxBreadBet: Math.floor(clampEconomyNumber(settings.maxBreadBet, MAX_BREAD_BET, 1, 1_000_000)),
+    gamblingCooldownMs: Math.floor(clampEconomyNumber(settings.gamblingCooldownSeconds, DEFAULT_ECONOMY_SETTINGS.gamblingCooldownSeconds, 0, 3600)) * 1000,
+    robCooldownMs: Math.floor(clampEconomyNumber(settings.robCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.robCooldownMinutes, 1, 10080)) * 60000,
+    casinoRobberyCooldownMs: Math.floor(clampEconomyNumber(settings.casinoRobberyCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.casinoRobberyCooldownMinutes, 1, 10080)) * 60000,
+    bankInterestCooldownMs: Math.floor(clampEconomyNumber(settings.bankInterestCooldownHours, DEFAULT_ECONOMY_SETTINGS.bankInterestCooldownHours, 1, 168)) * 3600000,
+    bankInterestRate: clampEconomyNumber(settings.bankInterestRatePercent, DEFAULT_ECONOMY_SETTINGS.bankInterestRatePercent, 0, 100) / 100,
+    maxBankInterest: Math.floor(clampEconomyNumber(settings.maxBankInterest, MAX_BANK_INTEREST, 0, 1_000_000)),
+    upgradeCosts: settings.upgradeCosts || {}
+  };
+}
+
+function upgradeCost(upgrade, currentLevel, economy = {}) {
+  const overrides = economySettings(economy).upgradeCosts?.[upgrade.id] || {};
+  const baseCost = Math.floor(clampEconomyNumber(overrides.baseCost, upgrade.baseCost, 0, 10_000_000));
+  const costGrowth = clampEconomyNumber(overrides.costGrowth, upgrade.costGrowth, 1, 10);
+  return Math.max(Math.floor(baseCost * (costGrowth ** currentLevel)), 1);
 }
 
 function setUpgradeLevel(economy, userId, upgradeId, level) {
@@ -1104,15 +1150,15 @@ function workBonusFor(economy, userId) {
 }
 
 function interestRateFor(economy, userId) {
-  return BANK_INTEREST_RATE + upgradeTotal(economy, userId, "interest") * 0.0035;
+  return economySettings(economy).bankInterestRate + upgradeTotal(economy, userId, "interest") * 0.0035;
 }
 
 function maxInterestFor(economy, userId) {
-  return MAX_BANK_INTEREST + upgradeTotal(economy, userId, "interest") * 400;
+  return economySettings(economy).maxBankInterest + upgradeTotal(economy, userId, "interest") * 400;
 }
 
 function interestCooldownFor(economy, userId) {
-  return Math.max(8 * 60 * 60 * 1000, BANK_INTEREST_COOLDOWN_MS - upgradeTotal(economy, userId, "interestCooldown") * 60 * 60 * 1000);
+  return Math.max(8 * 60 * 60 * 1000, economySettings(economy).bankInterestCooldownMs - upgradeTotal(economy, userId, "interestCooldown") * 60 * 60 * 1000);
 }
 
 function casinoUpgradeLevel(economy, userId) {
@@ -1254,11 +1300,12 @@ function parseBreadAmount(input, balance, maxAmount = MAX_BREAD_BET) {
   return amount;
 }
 
-function validateBreadBet(input, balance) {
-  const amount = parseBreadAmount(input, balance);
+function validateBreadBet(input, balance, economy = {}) {
+  const maxBet = economySettings(economy).maxBreadBet;
+  const amount = parseBreadAmount(input, balance, maxBet);
   if (!amount || amount < 1) return { ok: false, error: "Bet at least 1 bread." };
   if (amount > balance) return { ok: false, error: `You only have ${formatBread(balance)}.` };
-  if (amount > MAX_BREAD_BET) return { ok: false, error: `Max bet is ${formatBread(MAX_BREAD_BET)}.` };
+  if (amount > maxBet) return { ok: false, error: `Max bet is ${formatBread(maxBet)}.` };
   return { ok: true, amount };
 }
 
@@ -1279,10 +1326,11 @@ async function runBreadBet(ctx, gameName, resolver) {
   const reply = await updateBreadEconomy(ctx, async (economy) => {
     const userId = ctx.message.author.id;
     const balance = breadBalance(economy, userId);
-    const bet = validateBreadBet(ctx.args[0], balance);
+    const settings = economySettings(economy);
+    const bet = validateBreadBet(ctx.args[0], balance, economy);
     if (!bet.ok) return bet.error;
 
-    const cooldown = persistentCooldownStatus(economy, "gambling", userId, GAMBLING_COOLDOWN_MS);
+    const cooldown = persistentCooldownStatus(economy, "gambling", userId, settings.gamblingCooldownMs);
     if (cooldown.limited) {
       return `Slow down a little. You can gamble again in ${formatCooldown(cooldown.remainingMs)}.`;
     }
@@ -2219,6 +2267,7 @@ define({
   async run(ctx) {
     const output = await updateBreadEconomy(ctx, async (economy) => {
       const userId = ctx.message.author.id;
+      const settings = economySettings(economy);
       const lastClaim = new Date(economy.dailyClaims[userId] || 0).getTime();
       const remaining = DAILY_COOLDOWN_MS - (Date.now() - lastClaim);
       if (remaining > 0) {
@@ -2230,7 +2279,7 @@ define({
       const bonus = randomInt(0, 150);
       const upgradeBonus = dailyBonusFor(economy, userId);
       const streakBonus = Math.min(streak * 25, dailyStreakCapFor(economy, userId));
-      const amount = DAILY_BREAD + bonus + streakBonus + upgradeBonus;
+      const amount = settings.dailyBread + bonus + streakBonus + upgradeBonus;
       const nextBalance = breadBalance(economy, userId) + amount;
       economy.dailyClaims[userId] = new Date().toISOString();
       economy.dailyStreaks[userId] = {
@@ -2247,7 +2296,7 @@ define({
       });
       return [
         `You claimed **${formatBread(amount)}**.`,
-        `Daily base: **${formatBread(DAILY_BREAD)}** | random bonus: **${formatBread(bonus)}** | streak bonus: **${formatBread(streakBonus)}** | upgrade bonus: **${formatBread(upgradeBonus)}**`,
+        `Daily base: **${formatBread(settings.dailyBread)}** | random bonus: **${formatBread(bonus)}** | streak bonus: **${formatBread(streakBonus)}** | upgrade bonus: **${formatBread(upgradeBonus)}**`,
         `Streak: **${streak} day${streak === 1 ? "" : "s"}**`,
         `Wallet: **${formatBread(nextBalance)}**.`
       ].join("\n");
@@ -2432,7 +2481,7 @@ define({
     const lines = ECONOMY_UPGRADES.map((upgrade) => {
       const level = upgradeLevel(economy, target.id, upgrade.id);
       const maxed = level >= upgrade.maxLevel;
-      const nextCost = maxed ? "maxed" : formatBread(upgradeCost(upgrade, level));
+      const nextCost = maxed ? "maxed" : formatBread(upgradeCost(upgrade, level, economy));
       return `**${upgrade.name}** \`${upgrade.id}\` - level **${level}/${upgrade.maxLevel}** - next: **${nextCost}**\n${upgrade.description}`;
     });
     await ctx.message.reply([
@@ -2462,7 +2511,7 @@ define({
       const userId = ctx.message.author.id;
       const currentLevel = upgradeLevel(economy, userId, upgrade.id);
       if (currentLevel >= upgrade.maxLevel) return `**${upgrade.name}** is already maxed.`;
-      const cost = upgradeCost(upgrade, currentLevel);
+      const cost = upgradeCost(upgrade, currentLevel, economy);
       const wallet = breadBalance(economy, userId);
       if (wallet < cost) return `You need **${formatBread(cost)}** in your wallet to buy **${upgrade.name}**.`;
       setBreadBalance(economy, userId, wallet - cost);
@@ -2809,9 +2858,10 @@ define({
 
     const session = await updateBreadEconomy(ctx, async (economy) => {
       const balance = breadBalance(economy, userId);
-      const bet = validateBreadBet(ctx.args[0], balance);
+      const settings = economySettings(economy);
+      const bet = validateBreadBet(ctx.args[0], balance, economy);
       if (!bet.ok) return { error: bet.error };
-      const cooldown = persistentCooldownStatus(economy, "gambling", userId, GAMBLING_COOLDOWN_MS);
+      const cooldown = persistentCooldownStatus(economy, "gambling", userId, settings.gamblingCooldownMs);
       if (cooldown.limited) {
         return { error: `Slow down a little. You can gamble again in ${formatCooldown(cooldown.remainingMs)}.` };
       }
@@ -5101,11 +5151,12 @@ define({
 
     const output = await updateBreadEconomy(ctx, async (economy) => {
       const attackerId = ctx.message.author.id;
-      const robberCooldown = persistentCooldownStatus(economy, "robbers", attackerId, ROB_COOLDOWN_MS);
+      const settings = economySettings(economy);
+      const robberCooldown = persistentCooldownStatus(economy, "robbers", attackerId, settings.robCooldownMs);
       if (robberCooldown.limited) {
         return `Lay low for a bit. You can rob again in ${formatCooldown(robberCooldown.remainingMs)}.`;
       }
-      const victimCooldown = persistentCooldownStatus(economy, "robVictims", target.id, ROB_COOLDOWN_MS);
+      const victimCooldown = persistentCooldownStatus(economy, "robVictims", target.id, settings.robCooldownMs);
       if (victimCooldown.limited) {
         return `**${target.username || target.tag}** was already mugged recently. They can be robbed again in ${formatCooldown(victimCooldown.remainingMs)}.`;
       }
@@ -5146,7 +5197,8 @@ define({
   async run(ctx) {
     const output = await updateBreadEconomy(ctx, async (economy) => {
       const userId = ctx.message.author.id;
-      const cooldown = persistentCooldownStatus(economy, "casinoRobbery", userId, CASINO_ROBBERY_COOLDOWN_MS);
+      const settings = economySettings(economy);
+      const cooldown = persistentCooldownStatus(economy, "casinoRobbery", userId, settings.casinoRobberyCooldownMs);
       if (cooldown.limited) {
         return `The casino security team still recognizes you. Try another heist in ${formatCooldown(cooldown.remainingMs)}.`;
       }
@@ -5213,7 +5265,7 @@ define({
         ...(disguiseLevel ? [`Disguise bonus: **level ${disguiseLevel}**`] : []),
         `Result: **${formatNetBread(net)}**`,
         `Wallet: **${formatBread(breadBalance(economy, userId))}**`,
-        `Cooldown: **${formatCooldown(CASINO_ROBBERY_COOLDOWN_MS)}**`
+        `Cooldown: **${formatCooldown(settings.casinoRobberyCooldownMs)}**`
       ].join("\n");
     });
 

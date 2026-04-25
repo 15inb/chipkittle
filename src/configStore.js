@@ -28,7 +28,18 @@ const DEFAULT_CONFIG = {
   },
   economy: {
     balances: {},
-    dailyClaims: {}
+    dailyClaims: {},
+    settings: {
+      dailyBread: 300,
+      maxBreadBet: 10000,
+      gamblingCooldownSeconds: 5,
+      robCooldownMinutes: 180,
+      casinoRobberyCooldownMinutes: 480,
+      bankInterestCooldownHours: 20,
+      bankInterestRatePercent: 1.5,
+      maxBankInterest: 1000,
+      upgradeCosts: {}
+    }
   },
   cooldowns: {},
   publicSite: {
@@ -136,7 +147,15 @@ function mergeConfig(config = {}) {
     },
     economy: {
       ...clone(DEFAULT_CONFIG.economy),
-      ...(config.economy || {})
+      ...(config.economy || {}),
+      settings: {
+        ...clone(DEFAULT_CONFIG.economy.settings),
+        ...(config.economy?.settings || {}),
+        upgradeCosts: {
+          ...(config.economy?.settings?.upgradeCosts || {}),
+          ...(config.economy?.upgradeCosts || {})
+        }
+      }
     },
     cooldowns: {
       ...clone(DEFAULT_CONFIG.cooldowns),
@@ -250,7 +269,15 @@ export class ConfigStore {
       },
       economy: {
         ...this.getGuild(guildId).economy,
-        ...(partialConfig.economy || {})
+        ...(partialConfig.economy || {}),
+        settings: {
+          ...this.getGuild(guildId).economy.settings,
+          ...(partialConfig.economy?.settings || {}),
+          upgradeCosts: {
+            ...(this.getGuild(guildId).economy.settings?.upgradeCosts || {}),
+            ...(partialConfig.economy?.settings?.upgradeCosts || {})
+          }
+        }
       },
       publicSite: {
         ...this.getGuild(guildId).publicSite,
