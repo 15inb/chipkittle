@@ -521,6 +521,35 @@ function hasCommandRoleOverride(member, config, commandName) {
   return hasAnyRole(member, roleIds);
 }
 
+function isCommandDisabled(config, commandName) {
+  return Boolean(config.commandRoles?.disabled?.[commandName]);
+}
+
+function commandAllowedChannelIds(config, commandName) {
+  const channelIds = config.commandRoles?.channelAllowlist?.[commandName];
+  return Array.isArray(channelIds) ? channelIds.map(String).filter(Boolean) : [];
+}
+
+function commandChannelAllowed(message, allowedChannelIds = []) {
+  if (!message.guild || !allowedChannelIds.length) return true;
+  const allowedSet = new Set(allowedChannelIds);
+  return allowedSet.has(String(message.channelId || message.channel?.id || "")) ||
+    allowedSet.has(String(message.channel?.parentId || ""));
+}
+
+function commandRestrictionMessage(command, message, config) {
+  if (isCommandDisabled(config, command.name)) {
+    return "That command is currently disabled in this server.";
+  }
+
+  const allowedChannelIds = commandAllowedChannelIds(config, command.name);
+  if (!commandChannelAllowed(message, allowedChannelIds)) {
+    return `That command can only be used in ${allowedChannelIds.map((channelId) => `<#${channelId}>`).join(", ")}.`;
+  }
+
+  return "";
+}
+
 function requirePermission(ctx, permission) {
   if (
     hasPermission(ctx.message.member, permission) ||
@@ -6495,9 +6524,12 @@ define({
       return;
     }
     const roleIds = ctx.config.commandRoles?.overrides?.[command.name] || [];
+    const allowedChannelIds = commandAllowedChannelIds(ctx.config, command.name);
     await ctx.message.reply([
       `**Command Access: ${ctx.config.prefix}${command.name}**`,
       `Category: ${command.category || "Other"}`,
+      `Disabled: ${isCommandDisabled(ctx.config, command.name) ? "Yes" : "No"}`,
+      `Allowed channels: ${allowedChannelIds.length ? allowedChannelIds.map((channelId) => `<#${channelId}>`).join(", ") : "Any channel"}`,
       `Role overrides: ${roleIds.length ? roleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "None"}`
     ].join("\n"));
   }
@@ -6539,6 +6571,19 @@ export function createCommandHandler(options) {
   }
 
   async function runCommand(command, message, config, args, rest, invokedName = command.name) {
+    const restrictionMessage = commandRestrictionMessage(command, message, config);
+    if (restrictionMessage) {
+      const payload = toEmbedPayload(
+        restrictionMessage,
+        commandEmbedMeta({ command, config, message })
+      );
+      const sent = await message.reply(payload).then(() => true).catch(() => false);
+      if (!sent && message.channel?.send) {
+        await message.channel.send(payload).catch(() => {});
+      }
+      return true;
+    }
+
     const commandMessage = PLAIN_OUTPUT_COMMANDS.has(command.name)
       ? message
       : createEmbedMessageProxy(message, commandEmbedMeta({ command, config, message }));

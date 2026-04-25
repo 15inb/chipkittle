@@ -1984,6 +1984,17 @@ function parseConfigForm(body, section = "general") {
       .map(([key, value]) => [key.replace("commandRole_", ""), arrayFromFormValue(value).map(String)])
       .filter(([, roleIds]) => roleIds.length)
   );
+  const commandDisabled = Object.fromEntries(
+    Object.entries(body)
+      .filter(([key, value]) => key.startsWith("commandDisabled_") && value === "on")
+      .map(([key]) => [key.replace("commandDisabled_", ""), true])
+  );
+  const commandChannelAllowlist = Object.fromEntries(
+    Object.entries(body)
+      .filter(([key]) => key.startsWith("commandChannel_"))
+      .map(([key, value]) => [key.replace("commandChannel_", ""), arrayFromFormValue(value).map(String)])
+      .filter(([, channelIds]) => channelIds.length)
+  );
   switch (currentSection) {
     case "general":
       return {
@@ -2082,7 +2093,9 @@ function parseConfigForm(body, section = "general") {
     case "permissions":
       return {
         commandRoles: {
-          overrides: commandOverrides
+          overrides: commandOverrides,
+          disabled: commandDisabled,
+          channelAllowlist: commandChannelAllowlist
         }
       };
     default:
@@ -2385,8 +2398,11 @@ function roleCheckboxes(roles, selectedIds, name) {
     .join("");
 }
 
-function commandRoleAccess(commandList, roles, overrides = {}, panelUser = null) {
+function commandRoleAccess(commandList, roles, channels, commandRoles = {}, panelUser = null) {
   const canEditGrantAccess = panelAccessAtLeast(panelUser?.level || "root", "root");
+  const overrides = commandRoles?.overrides || {};
+  const disabled = commandRoles?.disabled || {};
+  const channelAllowlist = commandRoles?.channelAllowlist || {};
   const byCategory = new Map();
   for (const command of commandList) {
     if (command.name === "grantaccess" && !canEditGrantAccess) continue;
@@ -2411,8 +2427,23 @@ function commandRoleAccess(commandList, roles, overrides = {}, panelUser = null)
                       <span>${escapeHtml(command.name)}</span>
                       <small>${escapeHtml(command.description || "No description.")}</small>
                     </summary>
-                    <div class="checkbox-grid compact">
-                      ${roleCheckboxes(roles, overrides[command.name] || [], `commandRole_${command.name}`)}
+                    <div class="permission-rule-block">
+                      <label class="toggle">
+                        <input type="checkbox" name="commandDisabled_${command.name}" ${isChecked(Boolean(disabled[command.name]))}>
+                        <span>Disable this command entirely</span>
+                      </label>
+                    </div>
+                    <div class="permission-rule-block">
+                      <p class="field-help">If no channels are selected below, this command can run anywhere. If you select channels, it will only run there.</p>
+                      <div class="checkbox-grid compact">
+                        ${channelCheckboxes(channels, channelAllowlist[command.name] || [], `commandChannel_${command.name}`)}
+                      </div>
+                    </div>
+                    <div class="permission-rule-block">
+                      <p class="field-help">Role overrides bypass the Discord permission check for this command.</p>
+                      <div class="checkbox-grid compact">
+                        ${roleCheckboxes(roles, overrides[command.name] || [], `commandRole_${command.name}`)}
+                      </div>
                     </div>
                   </details>`
               )
@@ -2973,12 +3004,12 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
         `
           <section class="panel-section">
             <div class="section-heading">
-              <h2>Command Role Access</h2>
-              <p>Grant specific roles access to specific commands without requiring the matching Discord permission.</p>
+              <h2>Command Access Rules</h2>
+              <p>Disable commands, limit them to selected channels, or grant specific roles access without the matching Discord permission.</p>
             </div>
-            <p class="field-help">Open a command, then choose which roles can bypass that command's Discord permission check.</p>
+            <p class="field-help">Open a command to manage its disable switch, allowed channels, and role overrides.</p>
             <div class="permission-list">
-              ${commandRoleAccess(commandList, guild.roles, config.commandRoles.overrides, panelUser)}
+              ${commandRoleAccess(commandList, guild.roles, guild.channels, config.commandRoles, panelUser)}
             </div>
           </section>
         `
@@ -4634,6 +4665,18 @@ export function createPanel({
             ...(nextConfig.commandRoles?.overrides || {}),
             ...(store.getGuild(discordGuild.id).commandRoles?.overrides?.grantaccess
               ? { grantaccess: store.getGuild(discordGuild.id).commandRoles.overrides.grantaccess }
+              : {})
+          },
+          disabled: {
+            ...(nextConfig.commandRoles?.disabled || {}),
+            ...(store.getGuild(discordGuild.id).commandRoles?.disabled?.grantaccess
+              ? { grantaccess: store.getGuild(discordGuild.id).commandRoles.disabled.grantaccess }
+              : {})
+          },
+          channelAllowlist: {
+            ...(nextConfig.commandRoles?.channelAllowlist || {}),
+            ...(store.getGuild(discordGuild.id).commandRoles?.channelAllowlist?.grantaccess
+              ? { grantaccess: store.getGuild(discordGuild.id).commandRoles.channelAllowlist.grantaccess }
               : {})
           }
         };

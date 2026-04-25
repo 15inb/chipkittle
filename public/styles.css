@@ -689,6 +689,15 @@ textarea:focus {
   border-radius: 0;
 }
 
+.permission-rule-block {
+  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+}
+
+.permission-rule-block .field-help {
+  margin: 0 0 10px;
+}
+
 .ai-status-line {
   display: flex;
   align-items: center;

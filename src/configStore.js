@@ -20,7 +20,9 @@ const DEFAULT_CONFIG = {
     warnings: {}
   },
   commandRoles: {
-    overrides: {}
+    overrides: {},
+    disabled: {},
+    channelAllowlist: {}
   },
   panelAccess: {
     users: {},
@@ -141,7 +143,19 @@ function mergeConfig(config = {}) {
     },
     commandRoles: {
       ...clone(DEFAULT_CONFIG.commandRoles),
-      ...(config.commandRoles || {})
+      ...(config.commandRoles || {}),
+      overrides: {
+        ...clone(DEFAULT_CONFIG.commandRoles.overrides),
+        ...(config.commandRoles?.overrides || {})
+      },
+      disabled: {
+        ...clone(DEFAULT_CONFIG.commandRoles.disabled),
+        ...(config.commandRoles?.disabled || {})
+      },
+      channelAllowlist: {
+        ...clone(DEFAULT_CONFIG.commandRoles.channelAllowlist),
+        ...(config.commandRoles?.channelAllowlist || {})
+      }
     },
     panelAccess: {
       ...clone(DEFAULT_CONFIG.panelAccess),
@@ -262,7 +276,19 @@ export class ConfigStore {
       },
       commandRoles: {
         ...this.getGuild(guildId).commandRoles,
-        ...(partialConfig.commandRoles || {})
+        ...(partialConfig.commandRoles || {}),
+        overrides: {
+          ...(this.getGuild(guildId).commandRoles.overrides || {}),
+          ...(partialConfig.commandRoles?.overrides || {})
+        },
+        disabled: {
+          ...(this.getGuild(guildId).commandRoles.disabled || {}),
+          ...(partialConfig.commandRoles?.disabled || {})
+        },
+        channelAllowlist: {
+          ...(this.getGuild(guildId).commandRoles.channelAllowlist || {}),
+          ...(partialConfig.commandRoles?.channelAllowlist || {})
+        }
       },
       panelAccess: {
         ...this.getGuild(guildId).panelAccess,
