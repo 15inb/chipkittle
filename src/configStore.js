@@ -65,6 +65,9 @@ const DEFAULT_CONFIG = {
       maxLeaderboardBread: 100000,
       maxClaimBreadPerRun: 100000,
       recordAlertChannelId: ""
+    },
+    suggestions: {
+      channelId: ""
     }
   },
   ai: {
@@ -110,6 +113,7 @@ const DEFAULT_CONFIG = {
       seasonalMessage: "Current season: ceremonial optimism.",
       nextTrial: ""
     },
+    suggestions: [],
     staffNotes: {}
   }
 };

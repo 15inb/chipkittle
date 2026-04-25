@@ -1442,6 +1442,102 @@ code {
   gap: 6px;
 }
 
+.suggestion-ledger {
+  display: grid;
+  gap: 14px;
+}
+
+.suggestion-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, auto);
+  gap: 16px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 16px;
+}
+
+.suggestion-row-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.suggestion-row-main p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-row-main small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.suggestion-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.suggestion-row-top strong {
+  overflow-wrap: anywhere;
+}
+
+.suggestion-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.suggestion-status-under_consideration {
+  background: rgba(59, 130, 246, 0.14);
+  color: #93c5fd;
+}
+
+.suggestion-status-accepted {
+  background: rgba(34, 197, 94, 0.14);
+  color: #86efac;
+}
+
+.suggestion-status-denied {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+}
+
+.suggestion-status-implemented {
+  background: rgba(250, 204, 21, 0.14);
+  color: #fde68a;
+}
+
+.compact-form,
+.inline-action-form {
+  display: grid;
+  gap: 12px;
+}
+
+.inline-action-form {
+  min-width: 210px;
+}
+
+.compact-form select,
+.inline-action-form select {
+  width: 100%;
+  min-height: 42px;
+}
+
 .member-mini-card small,
 .mini-stats span {
   color: var(--muted);
@@ -1984,7 +2080,8 @@ textarea {
   .access-user-row,
   .access-user-actions form,
   .case-row,
-  .warning-row {
+  .warning-row,
+  .suggestion-row {
     grid-template-columns: 1fr;
   }
 
@@ -2036,6 +2133,7 @@ textarea {
   .access-user-row button,
   .access-user-actions form,
   .warning-row > button,
+  .inline-action-form,
   .form-actions button {
     width: 100%;
   }

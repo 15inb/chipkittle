@@ -52,6 +52,7 @@ const PANEL_SECTION_MIN_LEVEL = {
   audit: "round_table",
   commands: "round_table",
   moderation: "round_table",
+  suggestions: "artifact_contributor",
   applications: "keeper",
   permissions: "artifact_contributor",
   access: "artifact_contributor",
@@ -72,6 +73,7 @@ const SETTINGS_SECTIONS = [
   { id: "members", label: "Members", description: "Edit the public member directory and review community profiles." },
   { id: "public", label: "Public Site", description: "Quick links, exports, and live public-facing content summaries." },
   { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
+  { id: "suggestions", label: "Suggestions", description: "Review public and Discord suggestions." },
   { id: "ai", label: "AI", description: "Chipkittle AI channels, model, cooldowns, and personality." },
   { id: "economy", label: "Economy", description: "Bread payouts, cooldowns, interest, and upgrade pricing." },
   { id: "applications", label: "Applications", description: "DM questions, review threads, roles, and cooldowns." },
@@ -87,10 +89,10 @@ const SETTINGS_SECTIONS = [
 const SETTINGS_NAV_GROUPS = [
   { label: "Overview", sections: ["dashboard", "audit", "public", "commands", "server"] },
   { label: "Configuration", sections: ["general", "ai", "economy", "games", "permissions", "access", "backups"] },
-  { label: "Community", sections: ["members", "applications", "community", "moderation"] }
+  { label: "Community", sections: ["members", "applications", "suggestions", "community", "moderation"] }
 ];
 
-const NON_FORM_SECTIONS = new Set(["dashboard", "audit", "public", "commands", "server", "backups"]);
+const NON_FORM_SECTIONS = new Set(["dashboard", "audit", "public", "commands", "server", "backups", "suggestions"]);
 
 const DEFAULT_PUBLIC_GAME_SETTINGS = {
   blockedLeaderboardWords: [],
@@ -100,6 +102,15 @@ const DEFAULT_PUBLIC_GAME_SETTINGS = {
   maxClaimBreadPerRun: 100000,
   recordAlertChannelId: ""
 };
+const SUGGESTION_STATUSES = ["submitted", "under_consideration", "accepted", "denied", "implemented"];
+const SUGGESTION_STATUS_LABELS = {
+  submitted: "Submitted",
+  under_consideration: "Under consideration",
+  accepted: "Accepted",
+  denied: "Denied",
+  implemented: "Implemented"
+};
+const PUBLIC_SUGGESTION_COOLDOWN_MS = 60 * 1000;
 
 const DEFAULT_ECONOMY_SETTINGS = {
   dailyBread: 300,
@@ -927,6 +938,75 @@ function publicSiteWorkspace(config = {}, commandList = []) {
   `;
 }
 
+function suggestionsWorkspace(guild, config = {}, panelUser = null) {
+  const suggestions = storedSuggestions(config);
+  const counts = Object.fromEntries(SUGGESTION_STATUSES.map((status) => [status, suggestions.filter((entry) => String(entry.status || "submitted") === status).length]));
+  const canSetChannel = panelAccessAtLeast(panelUser?.level || "root", "root");
+  const currentChannelId = suggestionChannelId(config);
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Suggestion Queue</h2>
+        <p>Ideas submitted from Discord and the public website. Mark what staff is reviewing, accepting, denying, and shipping.</p>
+      </div>
+      <div class="stats-grid">
+        <article class="stat-card"><strong>${escapeHtml(suggestions.length)}</strong><span>Total Suggestions</span></article>
+        <article class="stat-card"><strong>${escapeHtml(counts.under_consideration || 0)}</strong><span>Under Consideration</span></article>
+        <article class="stat-card"><strong>${escapeHtml(counts.accepted || 0)}</strong><span>Accepted</span></article>
+        <article class="stat-card"><strong>${escapeHtml(counts.implemented || 0)}</strong><span>Implemented</span></article>
+      </div>
+    </section>
+    ${
+      canSetChannel
+        ? `<section class="panel-section">
+            <div class="section-heading">
+              <h2>Forwarding Channel</h2>
+              <p>Only root users can decide where new suggestions are copied in Discord.</p>
+            </div>
+            <form method="post" action="/guilds/${guild.id}/suggestions/channel" class="compact-form">
+              <label>
+                Suggestion channel
+                <select name="suggestionChannelId">
+                  ${optionList(guild.channels, currentChannelId, "Do not forward to Discord")}
+                </select>
+              </label>
+              <button type="submit">Save Channel</button>
+            </form>
+          </section>`
+        : ""
+    }
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Review List</h2>
+        <p>Newest suggestions appear first. Status changes are logged in the audit log.</p>
+      </div>
+      ${
+        suggestions.length
+          ? `<div class="suggestion-ledger">${suggestions.map((suggestion) => `
+              <article class="suggestion-row">
+                <div class="suggestion-row-main">
+                  <div class="suggestion-row-top">
+                    <strong>${escapeHtml(suggestion.title || suggestion.body || "Suggestion").slice(0, 90)}</strong>
+                    <span class="${suggestionStatusClass(suggestion.status)}">${escapeHtml(suggestionStatusLabel(suggestion.status))}</span>
+                  </div>
+                  <small>${escapeHtml(suggestion.source === "website" ? "Website" : "Discord")} &middot; ${escapeHtml(suggestion.authorTag || suggestion.authorName || "Anonymous")} &middot; ${escapeHtml(suggestion.createdAt || "Unknown")}</small>
+                  ${suggestion.title ? `<p class="muted">${escapeHtml(suggestion.body || "")}</p>` : `<p>${escapeHtml(suggestion.body || "")}</p>`}
+                  ${suggestion.updatedBy ? `<small>Last updated by ${escapeHtml(suggestion.updatedBy)} at ${escapeHtml(suggestion.updatedAt || "")}</small>` : ""}
+                </div>
+                <form method="post" action="/guilds/${guild.id}/suggestions/${encodeURIComponent(suggestion.id)}/status" class="inline-action-form">
+                  <select name="status" aria-label="Suggestion status">
+                    ${SUGGESTION_STATUSES.map((status) => `<option value="${status}" ${String(suggestion.status || "submitted") === status ? "selected" : ""}>${escapeHtml(suggestionStatusLabel(status))}</option>`).join("")}
+                  </select>
+                  <button type="submit">Update</button>
+                </form>
+              </article>
+            `).join("")}</div>`
+          : '<p class="muted">No suggestions have been submitted yet.</p>'
+      }
+    </section>
+  `;
+}
+
 function communityWorkspace(guildId, config = {}) {
   const snapshot = communitySnapshot(config);
   const artifacts = (config.community?.artifacts || []).slice(0, 8);
@@ -1633,6 +1713,84 @@ async function sendGameRecordAlert(client, channelId, entry, previousTop = null)
     embeds: [embed],
     allowedMentions: { parse: [], roles: [], users: [] }
   }).catch(() => {});
+}
+
+function suggestionChannelId(config = {}) {
+  return String(config.publicSite?.suggestions?.channelId || "");
+}
+
+function suggestionStatusLabel(status = "submitted") {
+  return SUGGESTION_STATUS_LABELS[String(status || "submitted")] || SUGGESTION_STATUS_LABELS.submitted;
+}
+
+function suggestionStatusClass(status = "submitted") {
+  return `suggestion-status suggestion-status-${SUGGESTION_STATUSES.includes(status) ? status : "submitted"}`;
+}
+
+function suggestionId() {
+  return `sug-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createSuggestionRecord({ source = "website", authorId = "", authorTag = "", authorName = "", title = "", body = "" } = {}) {
+  const now = new Date().toISOString();
+  return {
+    id: suggestionId(),
+    source,
+    authorId: String(authorId || ""),
+    authorTag: String(authorTag || "").trim().slice(0, 80),
+    authorName: String(authorName || authorTag || "Anonymous").replace(/\s+/g, " ").trim().slice(0, 80) || "Anonymous",
+    title: String(title || "").replace(/\s+/g, " ").trim().slice(0, 90),
+    body: String(body || "").replace(/\s+/g, " ").trim().slice(0, 1000),
+    status: "submitted",
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function storedSuggestions(config = {}) {
+  return Array.isArray(config.community?.suggestions) ? config.community.suggestions : [];
+}
+
+function publicSuggestionPayload(suggestion = {}) {
+  return {
+    id: suggestion.id,
+    source: suggestion.source || "website",
+    authorName: suggestion.authorName || suggestion.authorTag || "Anonymous",
+    title: suggestion.title || "",
+    body: suggestion.body || "",
+    status: suggestion.status || "submitted",
+    statusLabel: suggestionStatusLabel(suggestion.status),
+    createdAt: suggestion.createdAt || ""
+  };
+}
+
+function buildSuggestionEmbed(suggestion = {}) {
+  const description = [
+    suggestion.title ? `**${suggestion.title}**` : "",
+    suggestion.body || "No suggestion body provided.",
+    "",
+    `Source: **${suggestion.source === "website" ? "Website" : "Discord"}**`,
+    `Status: **${suggestionStatusLabel(suggestion.status)}**`,
+    `Author: **${suggestion.authorTag || suggestion.authorName || "Anonymous"}**`
+  ].filter(Boolean).join("\n");
+
+  return buildPrettyEmbed({
+    title: "New Chipkittle Suggestion",
+    description: description.slice(0, 3900),
+    color: 0x22c55e,
+    footer: `Suggestion ${suggestion.id || "unknown"}`
+  });
+}
+
+async function sendSuggestionAlert(client, config = {}, suggestion = {}) {
+  const channelId = suggestionChannelId(config);
+  if (!channelId) return null;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased?.()) return null;
+  return channel.send({
+    embeds: [buildSuggestionEmbed(suggestion)],
+    allowedMentions: { parse: [], roles: [], users: [] }
+  }).catch(() => null);
 }
 
 function normalizeNameModerationText(value = "") {
@@ -2555,6 +2713,8 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
             )
           : ""}
       `;
+    case "suggestions":
+      return suggestionsWorkspace(guild, config, panelUser);
     case "ai":
       return sectionForm(
         guild.id,
@@ -2994,6 +3154,7 @@ export function createPanel({
   const panelStatic = express.static("public", { index: false });
   const useSecureCookies = String(publicUrl || "").startsWith("https://");
   const loginAttempts = new Map();
+  const publicSuggestionCooldowns = new Map();
 
   app.disable("x-powered-by");
   if (useSecureCookies) {
@@ -3144,6 +3305,17 @@ export function createPanel({
     return storedGuildId ? store.getGuild(storedGuildId) : null;
   }
 
+  function getPublicGuildId() {
+    return guildId || client.guilds.cache.first()?.id || Object.keys(store.data?.guilds || {})[0] || "";
+  }
+
+  function publicSuggestionThrottleKey(request) {
+    return String(request.headers["x-forwarded-for"] || request.socket?.remoteAddress || request.ip || "unknown")
+      .split(",")[0]
+      .trim()
+      .slice(0, 80);
+  }
+
   app.options("/api/public/members", (_request, response) => {
     setPublicApiHeaders(response);
     response.sendStatus(204);
@@ -3160,6 +3332,11 @@ export function createPanel({
   });
 
   app.options("/api/public/archive", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
+  app.options("/api/public/suggestions", (_request, response) => {
     setPublicApiHeaders(response);
     response.sendStatus(204);
   });
@@ -3235,6 +3412,69 @@ export function createPanel({
       artifacts: config?.community?.artifacts || [],
       updatedAt: new Date().toISOString()
     });
+  });
+
+  app.get("/api/public/suggestions", (_request, response) => {
+    setPublicApiHeaders(response);
+    const config = getPublicGuildConfig();
+    response.json({
+      suggestions: storedSuggestions(config || {})
+        .filter((suggestion) => String(suggestion.status || "submitted") !== "denied")
+        .slice(0, 12)
+        .map(publicSuggestionPayload),
+      channelConfigured: Boolean(suggestionChannelId(config || {})),
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  app.post("/api/public/suggestions", async (request, response) => {
+    try {
+      setPublicApiHeaders(response);
+      const throttleKey = publicSuggestionThrottleKey(request);
+      const now = Date.now();
+      const previousSubmission = publicSuggestionCooldowns.get(throttleKey) || 0;
+      if (now - previousSubmission < PUBLIC_SUGGESTION_COOLDOWN_MS) {
+        response.status(429).json({ error: "Please wait a minute before sending another suggestion." });
+        return;
+      }
+
+      const targetGuildId = getPublicGuildId();
+      const config = targetGuildId ? store.getGuild(targetGuildId) : getPublicGuildConfig();
+      if (!targetGuildId || !config) {
+        response.status(503).json({ error: "The suggestion box is not ready yet." });
+        return;
+      }
+
+      const suggestion = createSuggestionRecord({
+        source: "website",
+        authorName: request.body?.name,
+        title: request.body?.title,
+        body: request.body?.body || request.body?.suggestion
+      });
+      if (suggestion.body.length < 8) {
+        response.status(400).json({ error: "Please write a little more before sending that suggestion." });
+        return;
+      }
+
+      publicSuggestionCooldowns.set(throttleKey, now);
+      const updatedConfig = await store.updateGuild(targetGuildId, {
+        community: {
+          ...config.community,
+          suggestions: [suggestion, ...storedSuggestions(config)].slice(0, 250)
+        }
+      });
+      await sendSuggestionAlert(client, updatedConfig, suggestion);
+      await addAuditLog(store, targetGuildId, {
+        type: "suggestions",
+        label: "Website suggestion submitted",
+        details: `${suggestion.authorName || "Anonymous"} submitted a public website suggestion.`,
+        actor: "Website"
+      }).catch(() => {});
+      response.json({ ok: true, suggestion: publicSuggestionPayload(suggestion), updatedAt: new Date().toISOString() });
+    } catch (error) {
+      console.error("Public suggestion submission failed:", error);
+      response.status(500).json({ error: "The suggestion box could not save that yet." });
+    }
   });
 
   app.get("/api/public/game-leaderboard", (request, response) => {
@@ -4206,6 +4446,83 @@ export function createPanel({
       deleteGameLeaderboardEntry(index, gameId, settings);
     }
     response.redirect(targetGuildId ? `/guilds/${encodeURIComponent(targetGuildId)}?section=games&saved=1` : "/?section=games");
+  });
+
+  app.post("/guilds/:guildId/suggestions/channel", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const config = store.getGuild(discordGuild.id);
+      const channelId = String(request.body?.suggestionChannelId || "");
+      await store.updateGuild(discordGuild.id, {
+        publicSite: {
+          ...config.publicSite,
+          suggestions: {
+            ...config.publicSite?.suggestions,
+            channelId
+          }
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "suggestions",
+        label: "Suggestion channel saved",
+        details: channelId ? `Suggestion forwarding set to ${channelId}.` : "Suggestion forwarding disabled.",
+        actor: panelUserLabel(currentPanelUser(request, discordGuild.id))
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?section=suggestions&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/suggestions/:suggestionId/status", requireAuth, requirePanelLevel("artifact_contributor"), async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const status = String(request.body?.status || "submitted");
+      if (!SUGGESTION_STATUSES.includes(status)) {
+        response.redirect(`/guilds/${discordGuild.id}?section=suggestions`);
+        return;
+      }
+      const config = store.getGuild(discordGuild.id);
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      const suggestions = storedSuggestions(config);
+      const index = suggestions.findIndex((suggestion) => String(suggestion.id) === String(request.params.suggestionId));
+      if (index === -1) {
+        response.redirect(`/guilds/${discordGuild.id}?section=suggestions`);
+        return;
+      }
+      const previousStatus = suggestions[index].status || "submitted";
+      const updatedSuggestion = {
+        ...suggestions[index],
+        status,
+        updatedAt: new Date().toISOString(),
+        updatedBy: panelUserLabel(panelUser)
+      };
+      const nextSuggestions = [...suggestions];
+      nextSuggestions[index] = updatedSuggestion;
+      await store.updateGuild(discordGuild.id, {
+        community: {
+          ...config.community,
+          suggestions: nextSuggestions
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "suggestions",
+        label: "Suggestion status updated",
+        details: `Changed ${updatedSuggestion.id} from ${suggestionStatusLabel(previousStatus)} to ${suggestionStatusLabel(status)}.`,
+        actor: panelUserLabel(panelUser)
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?section=suggestions&saved=1`);
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.post("/guilds/:guildId/config", requireAuth, async (request, response, next) => {

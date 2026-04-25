@@ -1408,6 +1408,80 @@ function gameRecordChannelId(config = {}) {
   return String(config.publicSite?.games?.recordAlertChannelId || "");
 }
 
+function suggestionChannelId(config = {}) {
+  return String(config.publicSite?.suggestions?.channelId || "");
+}
+
+function suggestionId() {
+  return `sug-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function suggestionStatusLabel(status = "submitted") {
+  const labels = {
+    submitted: "Submitted",
+    under_consideration: "Under Consideration",
+    accepted: "Accepted",
+    denied: "Denied",
+    implemented: "Implemented"
+  };
+  return labels[String(status || "submitted")] || labels.submitted;
+}
+
+function createSuggestionRecord({ source = "discord", authorId = "", authorTag = "", authorName = "", title = "", body = "" } = {}) {
+  const now = new Date().toISOString();
+  return {
+    id: suggestionId(),
+    source,
+    authorId,
+    authorTag,
+    authorName: cleanText(authorName || authorTag || "Anonymous", 80),
+    title: cleanText(title, 90),
+    body: cleanText(body, 1000),
+    status: "submitted",
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function storedSuggestions(config = {}) {
+  return Array.isArray(config.community?.suggestions) ? config.community.suggestions : [];
+}
+
+function isPanelRootUser(config = {}, userId = "") {
+  const users = panelAccessUsers(config);
+  const entry = users[userId];
+  return Boolean(entry && !entry.revokedAt && panelAccessAtLeast(normalizePanelAccessLevel(entry.level), "root"));
+}
+
+function buildSuggestionEmbed(suggestion = {}) {
+  const body = [
+    suggestion.title ? `**${suggestion.title}**` : "",
+    suggestion.body || "No suggestion body provided.",
+    "",
+    `Source: **${suggestion.source === "website" ? "Website" : "Discord"}**`,
+    `Status: **${suggestionStatusLabel(suggestion.status)}**`,
+    `Author: **${suggestion.authorTag || suggestion.authorName || "Anonymous"}**`
+  ].filter(Boolean).join("\n");
+
+  return buildPrettyEmbed({
+    title: "New Chipkittle Suggestion",
+    description: body.slice(0, 3900),
+    color: 0x22c55e,
+    footer: `Suggestion ${suggestion.id || "unknown"}`
+  });
+}
+
+async function forwardSuggestionToChannel(client, config = {}, suggestion = {}) {
+  const channelId = suggestionChannelId(config);
+  if (!channelId) return null;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased?.()) return null;
+  return channel.send({
+    embeds: [buildSuggestionEmbed(suggestion)],
+    allowedMentions: NO_MENTIONS
+  }).catch(() => null);
+}
+
 function rankForBalance(economy, userId) {
   const ids = new Set([
     ...Object.keys(economy.balances || {}),
@@ -5343,6 +5417,109 @@ define({
       actor: ctx.message.author.tag
     }).catch(() => {});
     await ctx.message.reply(`Game record alerts will now go to ${channel}.`);
+  }
+});
+
+define({
+  name: "suggestionchannel",
+  aliases: ["setsuggestionchannel", "suggestionlog"],
+  category: "Config",
+  description: "Set which channel receives website and Discord suggestions.",
+  usage: "suggestionchannel [#channel|off]",
+  async run(ctx) {
+    if (!isPanelRootUser(ctx.config, ctx.message.author.id)) {
+      await ctx.message.reply("Only root panel users can change the suggestion channel.");
+      return;
+    }
+
+    const raw = (ctx.args[0] || "").toLowerCase();
+    if (!ctx.args[0]) {
+      const channelId = suggestionChannelId(ctx.config);
+      await ctx.message.reply(channelId ? `Suggestions go to <#${channelId}>.` : "No suggestion channel is configured.");
+      return;
+    }
+
+    if (raw === "off" || raw === "none") {
+      await ctx.store.updateGuild(ctx.message.guild.id, {
+        publicSite: {
+          suggestions: {
+            ...ctx.config.publicSite?.suggestions,
+            channelId: ""
+          }
+        }
+      });
+      await addAuditLog(ctx.store, ctx.message.guild.id, {
+        type: "suggestions",
+        label: "Suggestion channel disabled",
+        details: "Disabled public and Discord suggestion forwarding from a command.",
+        actor: ctx.message.author.tag
+      }).catch(() => {});
+      await ctx.message.reply("Suggestion forwarding is now disabled.");
+      return;
+    }
+
+    const channel = targetTextChannel(ctx.message);
+    if (!channel?.isTextBased?.()) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      publicSite: {
+        suggestions: {
+          ...ctx.config.publicSite?.suggestions,
+          channelId: channel.id
+        }
+      }
+    });
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "suggestions",
+      label: "Suggestion channel updated",
+      details: `Set suggestions to #${channel.name}.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+    await ctx.message.reply(`Suggestions will now go to ${channel}.`);
+  }
+});
+
+define({
+  name: "suggest",
+  aliases: ["suggestion", "feedback"],
+  category: "Community",
+  description: "Send a suggestion to staff and the public suggestion queue.",
+  usage: "suggest your idea",
+  async run(ctx) {
+    const body = cleanText(ctx.rest, 1000);
+    if (body.length < 8) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    const suggestion = createSuggestionRecord({
+      source: "discord",
+      authorId: ctx.message.author.id,
+      authorTag: ctx.message.author.tag,
+      authorName: ctx.message.member?.displayName || ctx.message.author.username,
+      body
+    });
+    const nextSuggestions = [suggestion, ...storedSuggestions(ctx.config)].slice(0, 250);
+
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      community: {
+        ...ctx.config.community,
+        suggestions: nextSuggestions
+      }
+    });
+    await forwardSuggestionToChannel(ctx.message.client, ctx.config, suggestion);
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "suggestions",
+      label: "Suggestion submitted",
+      details: `${ctx.message.author.tag} submitted a suggestion.`,
+      actor: ctx.message.author.tag
+    }).catch(() => {});
+
+    const extra = suggestionChannelId(ctx.config) ? "It was also forwarded to the suggestion channel." : "No suggestion channel is set yet, but it is saved in the panel.";
+    await ctx.message.reply(`Suggestion submitted. ${extra}`);
   }
 });
 
