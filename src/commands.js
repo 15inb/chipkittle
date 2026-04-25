@@ -521,6 +521,10 @@ function hasCommandRoleOverride(member, config, commandName) {
   return hasAnyRole(member, roleIds);
 }
 
+function hasAdministratorBypass(member) {
+  return Boolean(member?.permissions?.has?.(PermissionsBitField.Flags.Administrator));
+}
+
 function isCommandDisabled(config, commandName) {
   return Boolean(config.commandRoles?.disabled?.[commandName]);
 }
@@ -569,6 +573,10 @@ function channelCommandRestrictions(config, message) {
 }
 
 function commandRestrictionMessage(command, message, config) {
+  if (hasAdministratorBypass(message.member)) {
+    return "";
+  }
+
   if (isCategoryDisabled(config, command.category || "Other")) {
     return `The ${command.category || "Other"} category is currently disabled in this server.`;
   }
