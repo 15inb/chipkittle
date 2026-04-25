@@ -941,8 +941,8 @@ function publicSiteWorkspace(config = {}, commandList = []) {
 function suggestionsWorkspace(guild, config = {}, panelUser = null) {
   const suggestions = storedSuggestions(config);
   const counts = Object.fromEntries(SUGGESTION_STATUSES.map((status) => [status, suggestions.filter((entry) => String(entry.status || "submitted") === status).length]));
-  const canSetChannel = panelAccessAtLeast(panelUser?.level || "root", "root");
-  const currentChannelId = suggestionChannelId(config);
+  const canSetStaffUser = panelAccessAtLeast(panelUser?.level || "root", "root");
+  const currentStaffUserId = suggestionStaffUserId(config);
   return `
     <section class="panel-section">
       <div class="section-heading">
@@ -957,20 +957,18 @@ function suggestionsWorkspace(guild, config = {}, panelUser = null) {
       </div>
     </section>
     ${
-      canSetChannel
+      canSetStaffUser
         ? `<section class="panel-section">
             <div class="section-heading">
-              <h2>Forwarding Channel</h2>
-              <p>Only root users can decide where new suggestions are copied in Discord.</p>
+              <h2>Staff DM Forwarding</h2>
+              <p>Only root users can decide which Discord user receives a DM when new suggestions arrive.</p>
             </div>
-            <form method="post" action="/guilds/${guild.id}/suggestions/channel" class="compact-form">
+            <form method="post" action="/guilds/${guild.id}/suggestions/staff-dm" class="compact-form">
               <label>
-                Suggestion channel
-                <select name="suggestionChannelId">
-                  ${optionList(guild.channels, currentChannelId, "Do not forward to Discord")}
-                </select>
+                Staff Discord user ID
+                <input name="suggestionStaffUserId" value="${escapeHtml(currentStaffUserId)}" maxlength="22" placeholder="203025242753335296">
               </label>
-              <button type="submit">Save Channel</button>
+              <button type="submit">Save DM User</button>
             </form>
           </section>`
         : ""
@@ -989,7 +987,7 @@ function suggestionsWorkspace(guild, config = {}, panelUser = null) {
                     <strong>${escapeHtml(suggestion.title || suggestion.body || "Suggestion").slice(0, 90)}</strong>
                     <span class="${suggestionStatusClass(suggestion.status)}">${escapeHtml(suggestionStatusLabel(suggestion.status))}</span>
                   </div>
-                  <small>${escapeHtml(suggestion.source === "website" ? "Website" : "Discord")} &middot; ${escapeHtml(suggestion.authorTag || suggestion.authorName || "Anonymous")} &middot; ${escapeHtml(suggestion.createdAt || "Unknown")}</small>
+                  <small>${escapeHtml(suggestion.source === "website" ? "Website" : "Discord")} &middot; ${escapeHtml(suggestion.authorTag || suggestion.authorName || "Anonymous")}${suggestion.authorId ? ` &middot; ${escapeHtml(suggestion.authorId)}` : ""} &middot; ${escapeHtml(suggestion.createdAt || "Unknown")}</small>
                   ${suggestion.title ? `<p class="muted">${escapeHtml(suggestion.body || "")}</p>` : `<p>${escapeHtml(suggestion.body || "")}</p>`}
                   ${suggestion.updatedBy ? `<small>Last updated by ${escapeHtml(suggestion.updatedBy)} at ${escapeHtml(suggestion.updatedAt || "")}</small>` : ""}
                 </div>
@@ -1715,8 +1713,8 @@ async function sendGameRecordAlert(client, channelId, entry, previousTop = null)
   }).catch(() => {});
 }
 
-function suggestionChannelId(config = {}) {
-  return String(config.publicSite?.suggestions?.channelId || "");
+function suggestionStaffUserId(config = {}) {
+  return String(config.publicSite?.suggestions?.staffUserId || "203025242753335296").replace(/\D/g, "");
 }
 
 function suggestionStatusLabel(status = "submitted") {
@@ -1736,7 +1734,7 @@ function createSuggestionRecord({ source = "website", authorId = "", authorTag =
   return {
     id: suggestionId(),
     source,
-    authorId: String(authorId || ""),
+    authorId: String(authorId || "").replace(/\D/g, "").slice(0, 22),
     authorTag: String(authorTag || "").trim().slice(0, 80),
     authorName: String(authorName || authorTag || "Anonymous").replace(/\s+/g, " ").trim().slice(0, 80) || "Anonymous",
     title: String(title || "").replace(/\s+/g, " ").trim().slice(0, 90),
@@ -1782,13 +1780,38 @@ function buildSuggestionEmbed(suggestion = {}) {
   });
 }
 
-async function sendSuggestionAlert(client, config = {}, suggestion = {}) {
-  const channelId = suggestionChannelId(config);
-  if (!channelId) return null;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased?.()) return null;
-  return channel.send({
+async function sendSuggestionStaffDm(client, config = {}, suggestion = {}) {
+  const userId = suggestionStaffUserId(config);
+  if (!userId) return null;
+  const user = await client.users.fetch(userId).catch(() => null);
+  if (!user) return null;
+  return user.send({
     embeds: [buildSuggestionEmbed(suggestion)],
+    allowedMentions: { parse: [], roles: [], users: [] }
+  }).catch(() => null);
+}
+
+function buildSuggestionStatusEmbed(suggestion = {}, previousStatus = "submitted") {
+  return buildPrettyEmbed({
+    title: "Suggestion Status Updated",
+    description: [
+      suggestion.title ? `**${suggestion.title}**` : "**Your suggestion**",
+      suggestion.body || "",
+      "",
+      `Status changed from **${suggestionStatusLabel(previousStatus)}** to **${suggestionStatusLabel(suggestion.status)}**.`
+    ].filter(Boolean).join("\n").slice(0, 3900),
+    color: 0x22c55e,
+    footer: `Suggestion ${suggestion.id || "unknown"}`
+  });
+}
+
+async function sendSuggestionAuthorStatusDm(client, suggestion = {}, previousStatus = "submitted") {
+  const userId = String(suggestion.authorId || "").replace(/\D/g, "");
+  if (!userId) return null;
+  const user = await client.users.fetch(userId).catch(() => null);
+  if (!user) return null;
+  return user.send({
+    embeds: [buildSuggestionStatusEmbed(suggestion, previousStatus)],
     allowedMentions: { parse: [], roles: [], users: [] }
   }).catch(() => null);
 }
@@ -3422,7 +3445,7 @@ export function createPanel({
         .filter((suggestion) => String(suggestion.status || "submitted") !== "denied")
         .slice(0, 12)
         .map(publicSuggestionPayload),
-      channelConfigured: Boolean(suggestionChannelId(config || {})),
+      staffDmConfigured: Boolean(suggestionStaffUserId(config || {})),
       updatedAt: new Date().toISOString()
     });
   });
@@ -3447,6 +3470,7 @@ export function createPanel({
 
       const suggestion = createSuggestionRecord({
         source: "website",
+        authorId: request.body?.discordId,
         authorName: request.body?.name,
         title: request.body?.title,
         body: request.body?.body || request.body?.suggestion
@@ -3463,7 +3487,7 @@ export function createPanel({
           suggestions: [suggestion, ...storedSuggestions(config)].slice(0, 250)
         }
       });
-      await sendSuggestionAlert(client, updatedConfig, suggestion);
+      await sendSuggestionStaffDm(client, updatedConfig, suggestion);
       await addAuditLog(store, targetGuildId, {
         type: "suggestions",
         label: "Website suggestion submitted",
@@ -4448,7 +4472,7 @@ export function createPanel({
     response.redirect(targetGuildId ? `/guilds/${encodeURIComponent(targetGuildId)}?section=games&saved=1` : "/?section=games");
   });
 
-  app.post("/guilds/:guildId/suggestions/channel", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+  app.post("/guilds/:guildId/suggestions/staff-dm", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
     try {
       const discordGuild = client.guilds.cache.get(request.params.guildId);
       if (!discordGuild) {
@@ -4456,20 +4480,20 @@ export function createPanel({
         return;
       }
       const config = store.getGuild(discordGuild.id);
-      const channelId = String(request.body?.suggestionChannelId || "");
+      const staffUserId = String(request.body?.suggestionStaffUserId || "").replace(/\D/g, "");
       await store.updateGuild(discordGuild.id, {
         publicSite: {
           ...config.publicSite,
           suggestions: {
             ...config.publicSite?.suggestions,
-            channelId
+            staffUserId
           }
         }
       });
       await addAuditLog(store, discordGuild.id, {
         type: "suggestions",
-        label: "Suggestion channel saved",
-        details: channelId ? `Suggestion forwarding set to ${channelId}.` : "Suggestion forwarding disabled.",
+        label: "Suggestion DM user saved",
+        details: staffUserId ? `Suggestion DMs set to ${staffUserId}.` : "Suggestion staff DM forwarding disabled.",
         actor: panelUserLabel(currentPanelUser(request, discordGuild.id))
       }).catch(() => {});
       response.redirect(`/guilds/${discordGuild.id}?section=suggestions&saved=1`);
@@ -4519,6 +4543,7 @@ export function createPanel({
         details: `Changed ${updatedSuggestion.id} from ${suggestionStatusLabel(previousStatus)} to ${suggestionStatusLabel(status)}.`,
         actor: panelUserLabel(panelUser)
       }).catch(() => {});
+      await sendSuggestionAuthorStatusDm(client, updatedSuggestion, previousStatus);
       response.redirect(`/guilds/${discordGuild.id}?section=suggestions&saved=1`);
     } catch (error) {
       next(error);

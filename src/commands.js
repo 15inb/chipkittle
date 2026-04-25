@@ -1408,8 +1408,8 @@ function gameRecordChannelId(config = {}) {
   return String(config.publicSite?.games?.recordAlertChannelId || "");
 }
 
-function suggestionChannelId(config = {}) {
-  return String(config.publicSite?.suggestions?.channelId || "");
+function suggestionStaffUserId(config = {}) {
+  return String(config.publicSite?.suggestions?.staffUserId || "203025242753335296").replace(/\D/g, "");
 }
 
 function suggestionId() {
@@ -1471,12 +1471,12 @@ function buildSuggestionEmbed(suggestion = {}) {
   });
 }
 
-async function forwardSuggestionToChannel(client, config = {}, suggestion = {}) {
-  const channelId = suggestionChannelId(config);
-  if (!channelId) return null;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased?.()) return null;
-  return channel.send({
+async function sendSuggestionStaffDm(client, config = {}, suggestion = {}) {
+  const userId = suggestionStaffUserId(config);
+  if (!userId) return null;
+  const user = await client.users.fetch(userId).catch(() => null);
+  if (!user) return null;
+  return user.send({
     embeds: [buildSuggestionEmbed(suggestion)],
     allowedMentions: NO_MENTIONS
   }).catch(() => null);
@@ -5421,21 +5421,21 @@ define({
 });
 
 define({
-  name: "suggestionchannel",
-  aliases: ["setsuggestionchannel", "suggestionlog"],
+  name: "suggestiondm",
+  aliases: ["setsuggestiondm", "suggestionstaff", "suggestionchannel", "setsuggestionchannel", "suggestionlog"],
   category: "Config",
-  description: "Set which channel receives website and Discord suggestions.",
-  usage: "suggestionchannel [#channel|off]",
+  description: "Set which Discord user receives suggestion DMs.",
+  usage: "suggestiondm [discord-user-id|off]",
   async run(ctx) {
     if (!isPanelRootUser(ctx.config, ctx.message.author.id)) {
-      await ctx.message.reply("Only root panel users can change the suggestion channel.");
+      await ctx.message.reply("Only root panel users can change the suggestion DM user.");
       return;
     }
 
     const raw = (ctx.args[0] || "").toLowerCase();
     if (!ctx.args[0]) {
-      const channelId = suggestionChannelId(ctx.config);
-      await ctx.message.reply(channelId ? `Suggestions go to <#${channelId}>.` : "No suggestion channel is configured.");
+      const userId = suggestionStaffUserId(ctx.config);
+      await ctx.message.reply(userId ? `Suggestions are DM'd to <@${userId}>.` : "No suggestion DM user is configured.");
       return;
     }
 
@@ -5444,41 +5444,42 @@ define({
         publicSite: {
           suggestions: {
             ...ctx.config.publicSite?.suggestions,
-            channelId: ""
+            staffUserId: ""
           }
         }
       });
       await addAuditLog(ctx.store, ctx.message.guild.id, {
         type: "suggestions",
-        label: "Suggestion channel disabled",
-        details: "Disabled public and Discord suggestion forwarding from a command.",
+        label: "Suggestion DMs disabled",
+        details: "Disabled staff suggestion DM forwarding from a command.",
         actor: ctx.message.author.tag
       }).catch(() => {});
-      await ctx.message.reply("Suggestion forwarding is now disabled.");
+      await ctx.message.reply("Suggestion DM forwarding is now disabled.");
       return;
     }
 
-    const channel = targetTextChannel(ctx.message);
-    if (!channel?.isTextBased?.()) {
+    const userId = String(ctx.args[0] || "").replace(/\D/g, "");
+    if (!/^\d{16,22}$/.test(userId)) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
       return;
     }
+    const user = await ctx.message.client.users.fetch(userId).catch(() => null);
 
     await ctx.store.updateGuild(ctx.message.guild.id, {
       publicSite: {
         suggestions: {
           ...ctx.config.publicSite?.suggestions,
-          channelId: channel.id
+          staffUserId: userId
         }
       }
     });
     await addAuditLog(ctx.store, ctx.message.guild.id, {
       type: "suggestions",
-      label: "Suggestion channel updated",
-      details: `Set suggestions to #${channel.name}.`,
+      label: "Suggestion DM user updated",
+      details: `Set suggestion DMs to ${user?.tag || userId}.`,
       actor: ctx.message.author.tag
     }).catch(() => {});
-    await ctx.message.reply(`Suggestions will now go to ${channel}.`);
+    await ctx.message.reply(`Suggestions will now be DM'd to ${user ? user.tag : `<@${userId}>`}.`);
   }
 });
 
@@ -5510,7 +5511,7 @@ define({
         suggestions: nextSuggestions
       }
     });
-    await forwardSuggestionToChannel(ctx.message.client, ctx.config, suggestion);
+    await sendSuggestionStaffDm(ctx.message.client, ctx.config, suggestion);
     await addAuditLog(ctx.store, ctx.message.guild.id, {
       type: "suggestions",
       label: "Suggestion submitted",
@@ -5518,7 +5519,7 @@ define({
       actor: ctx.message.author.tag
     }).catch(() => {});
 
-    const extra = suggestionChannelId(ctx.config) ? "It was also forwarded to the suggestion channel." : "No suggestion channel is set yet, but it is saved in the panel.";
+    const extra = suggestionStaffUserId(ctx.config) ? "It was also DM'd to staff." : "No staff DM user is set yet, but it is saved in the panel.";
     await ctx.message.reply(`Suggestion submitted. ${extra}`);
   }
 });

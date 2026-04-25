@@ -67,7 +67,8 @@ const DEFAULT_CONFIG = {
       recordAlertChannelId: ""
     },
     suggestions: {
-      channelId: ""
+      channelId: "",
+      staffUserId: "203025242753335296"
     }
   },
   ai: {
