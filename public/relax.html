@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Relax Room</title>
+  <meta name="description" content="A calm Chipkittle lofi room with a fireplace, breathing timer, and generated lofi music.">
+  <link rel="icon" type="image/png" href="/ckmascot.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell relax-page">
+    <header class="topbar relax-topbar">
+      <a class="brand" href="/">
+        <img src="/ckmascot.png" alt="">
+        <span>chipkittle</span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/status">Status</a>
+        <a href="/commands">Commands</a>
+        <a href="/archive">Archive</a>
+        <a href="/members">Members</a>
+        <a href="/commits">Commits</a>
+        <a href="/game">Games</a>
+        <a href="/relax" aria-current="page">Relax</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+
+    <section class="relax-room" aria-labelledby="relaxTitle">
+      <div class="relax-scene" aria-hidden="true">
+        <div class="room-window">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="fireplace">
+          <div class="mantel"></div>
+          <div class="firebox">
+            <span class="ember ember-one"></span>
+            <span class="ember ember-two"></span>
+            <span class="ember ember-three"></span>
+            <div class="logs"></div>
+            <div class="flame flame-one"></div>
+            <div class="flame flame-two"></div>
+            <div class="flame flame-three"></div>
+          </div>
+        </div>
+        <div class="chip-seat">
+          <div class="chip-body"></div>
+          <img src="/assets/chipkittle-hero.png" alt="">
+          <span class="chip-shadow"></span>
+        </div>
+      </div>
+
+      <article class="relax-panel">
+        <p class="pill">Lofi artifact room</p>
+        <h1 id="relaxTitle">Take five with the fireplace Chipkittle.</h1>
+        <p class="hero-text">Start the lofi loop, breathe with the artifact, and let the bread economy stop yelling for a minute.</p>
+
+        <div class="lofi-player" data-lofi-player>
+          <button class="button primary lofi-toggle" type="button" data-lofi-toggle>Start lofi</button>
+          <label>
+            Volume
+            <input type="range" min="0" max="100" value="48" data-lofi-volume>
+          </label>
+          <div class="lofi-visualizer" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+
+        <div class="breathing-card" aria-live="polite">
+          <div class="breathing-orb" aria-hidden="true"></div>
+          <div>
+            <strong data-breath-label>Breathe in</strong>
+            <span data-breath-count>4</span>
+          </div>
+        </div>
+
+        <div class="relax-actions">
+          <a class="button secondary" href="/game">Return to games</a>
+          <a class="button secondary" href="/">Back home</a>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const toggle = document.querySelector("[data-lofi-toggle]");
+      const volume = document.querySelector("[data-lofi-volume]");
+      const bars = [...document.querySelectorAll(".lofi-visualizer span")];
+      const breathLabel = document.querySelector("[data-breath-label]");
+      const breathCount = document.querySelector("[data-breath-count]");
+      const phases = [
+        { label: "Breathe in", seconds: 4 },
+        { label: "Hold", seconds: 4 },
+        { label: "Breathe out", seconds: 6 },
+        { label: "Rest", seconds: 2 }
+      ];
+
+      let audioContext;
+      let masterGain;
+      let filter;
+      let delay;
+      let feedback;
+      let crackle;
+      let chordTimer = 0;
+      let beatTimer = 0;
+      let isPlaying = false;
+      let audioWired = false;
+      let phaseIndex = 0;
+      let phaseRemaining = phases[0].seconds;
+
+      function createNoiseBuffer(context, lengthSeconds = 2) {
+        const buffer = context.createBuffer(1, context.sampleRate * lengthSeconds, context.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i += 1) {
+          data[i] = (Math.random() * 2 - 1) * 0.16;
+        }
+        return buffer;
+      }
+
+      function note(freq, start, duration, gainValue, type = "sine") {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        oscillator.connect(gain).connect(filter);
+        oscillator.start(start);
+        oscillator.stop(start + duration + 0.05);
+      }
+
+      function thump(start) {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(92, start);
+        oscillator.frequency.exponentialRampToValueAtTime(48, start + 0.18);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.2, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.28);
+        oscillator.connect(gain).connect(masterGain);
+        oscillator.start(start);
+        oscillator.stop(start + 0.3);
+      }
+
+      function tick(start) {
+        const source = audioContext.createBufferSource();
+        const gain = audioContext.createGain();
+        source.buffer = createNoiseBuffer(audioContext, 0.04);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.08, start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.06);
+        source.connect(gain).connect(filter);
+        source.start(start);
+        source.stop(start + 0.07);
+      }
+
+      function scheduleLoop() {
+        if (!isPlaying || !audioContext) return;
+        const now = audioContext.currentTime;
+        const chords = [
+          [261.63, 329.63, 392.0, 493.88],
+          [220.0, 261.63, 329.63, 392.0],
+          [246.94, 293.66, 369.99, 440.0],
+          [196.0, 246.94, 293.66, 392.0]
+        ];
+        for (let bar = 0; bar < 4; bar += 1) {
+          const start = now + bar * 2.4;
+          chords[bar].forEach((frequency, index) => note(frequency, start + index * 0.015, 2.05, 0.045, "triangle"));
+          note(chords[bar][0] / 2, start, 2.2, 0.08, "sine");
+        }
+        for (let beat = 0; beat < 16; beat += 1) {
+          const start = now + beat * 0.6;
+          if (beat % 2 === 0) thump(start);
+          if (beat % 2 === 1) tick(start + 0.04);
+        }
+        chordTimer = window.setTimeout(scheduleLoop, 9000);
+      }
+
+      function startAudio() {
+        audioContext = audioContext || new AudioContext();
+        if (audioContext.state === "suspended") audioContext.resume();
+        masterGain = masterGain || audioContext.createGain();
+        filter = filter || audioContext.createBiquadFilter();
+        delay = delay || audioContext.createDelay(1);
+        feedback = feedback || audioContext.createGain();
+
+        masterGain.gain.value = Number(volume.value) / 100 * 0.72;
+        filter.type = "lowpass";
+        filter.frequency.value = 1600;
+        delay.delayTime.value = 0.28;
+        feedback.gain.value = 0.18;
+
+        if (!audioWired) {
+          filter.connect(delay).connect(feedback).connect(delay);
+          filter.connect(masterGain);
+          delay.connect(masterGain);
+          masterGain.connect(audioContext.destination);
+          audioWired = true;
+        }
+
+        crackle = audioContext.createBufferSource();
+        const crackleGain = audioContext.createGain();
+        crackle.buffer = createNoiseBuffer(audioContext, 4);
+        crackle.loop = true;
+        crackleGain.gain.value = 0.025;
+        crackle.connect(crackleGain).connect(filter);
+        crackle.start();
+        isPlaying = true;
+        toggle.textContent = "Pause lofi";
+        bars.forEach((bar) => bar.classList.add("is-playing"));
+        scheduleLoop();
+      }
+
+      function stopAudio() {
+        isPlaying = false;
+        toggle.textContent = "Start lofi";
+        bars.forEach((bar) => bar.classList.remove("is-playing"));
+        window.clearTimeout(chordTimer);
+        window.clearTimeout(beatTimer);
+        if (crackle) {
+          crackle.stop();
+          crackle.disconnect();
+          crackle = null;
+        }
+        if (audioContext) audioContext.suspend();
+      }
+
+      toggle.addEventListener("click", () => {
+        if (isPlaying) stopAudio();
+        else startAudio();
+      });
+
+      volume.addEventListener("input", () => {
+        if (masterGain) masterGain.gain.value = Number(volume.value) / 100 * 0.72;
+      });
+
+      window.setInterval(() => {
+        phaseRemaining -= 1;
+        if (phaseRemaining <= 0) {
+          phaseIndex = (phaseIndex + 1) % phases.length;
+          phaseRemaining = phases[phaseIndex].seconds;
+        }
+        breathLabel.textContent = phases[phaseIndex].label;
+        breathCount.textContent = phaseRemaining;
+      }, 1000);
+    })();
+  </script>
+</body>
+</html>

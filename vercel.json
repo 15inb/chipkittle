@@ -20,6 +20,10 @@
       "destination": "/game.html"
     },
     {
+      "source": "/relax",
+      "destination": "/relax.html"
+    },
+    {
       "source": "/dash",
       "destination": "/dash.html"
     },
