@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chipkittle</title>
-  <meta name="description" content="The public home of Chipkittle, the Discord, the bot, the member directory, and recent project commits.">
+  <meta name="description" content="A private Discord companion site for #CK with lore chat, applications, moderation tools, games, and bread.">
   <link rel="icon" type="image/png" href="/ckmascot.png">
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/site.css">
@@ -20,15 +20,20 @@
         </a>
         <nav aria-label="Site navigation">
           <a href="#features">Features</a>
-          <a href="/status">Status</a>
           <a href="/commands">Commands</a>
-          <a href="/archive">Archive</a>
-          <a href="/members">Members</a>
-          <a href="/commits">Commits</a>
           <a href="/game">Games</a>
-          <a href="#suggestions">Suggest</a>
-          <a href="/relax">Relax</a>
+          <a href="/members">Members</a>
+          <a href="/status">Status</a>
           <a href="#about">About</a>
+          <details class="nav-more">
+            <summary>More</summary>
+            <div class="nav-more-menu">
+              <a href="/archive">Archive</a>
+              <a href="/commits">Commits</a>
+              <a href="#suggestions">Suggest</a>
+              <a href="/relax">Relax</a>
+            </div>
+          </details>
         </nav>
         <div class="nav-actions">
           <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
@@ -37,15 +42,17 @@
       </header>
 
       <div class="hero-copy">
-        <p class="pill">Your Discord's horned companion</p>
+        <p class="pill">Private #CK Discord companion</p>
         <h1>Run with your new <span>Chipkittle.</span></h1>
-        <p class="hero-text">A strange little home for the #CK Discord, powered by applications, lore chat, moderation tools, bread gambling, and a bot that takes the ancient artifact very seriously.</p>
+        <p class="hero-text">A strange little home for the #CK Discord, powered by lore chat, applications, moderation tools, bread gambling, and one deeply unserious mascot.</p>
+        <p class="hero-clarifier">Mostly private. Mostly useful. Occasionally concerning.</p>
         <div class="hero-actions">
           <a class="button primary" href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Join Discord</a>
           <a class="button secondary" href="/game">Play Games</a>
         </div>
+        <p class="cta-note">Not a product. Just the creature.</p>
         <div class="trusted">
-          <span>Currently involving</span>
+          <span>Inside the den</span>
           <strong>AI lore</strong>
           <strong>applications</strong>
           <strong>bread</strong>
@@ -58,21 +65,28 @@
           <span class="feature-icon">AI</span>
           <div>
             <strong>Talks Like Chipkittle</strong>
-            <p>Lore-aware AI chat with channel blacklists and image cooldowns.</p>
+            <p>Lore-aware AI chat with channel blacklists, cooldowns, and just enough restraint.</p>
           </div>
         </div>
         <div>
           <span class="feature-icon">CK</span>
           <div>
             <strong>Handles Applications</strong>
-            <p>New members apply through DMs while staff reviews in threads.</p>
+            <p>New members apply through DMs while staff reviews everything in Discord threads.</p>
           </div>
         </div>
         <div>
           <span class="feature-icon">BR</span>
           <div>
             <strong>Tracks Bread</strong>
-            <p>Gambling commands, balances, and all the bakery-grade risk.</p>
+            <p>Gambling commands, balances, wins, losses, and other bread-related mistakes.</p>
+          </div>
+        </div>
+        <div>
+          <span class="feature-icon">MD</span>
+          <div>
+            <strong>Moderates the Den</strong>
+            <p>Basic staff tools, logging, and whatever else the creature was taught to do.</p>
           </div>
         </div>
       </aside>
