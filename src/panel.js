@@ -1995,6 +1995,23 @@ function parseConfigForm(body, section = "general") {
       .map(([key, value]) => [key.replace("commandChannel_", ""), arrayFromFormValue(value).map(String)])
       .filter(([, channelIds]) => channelIds.length)
   );
+  const disabledCategories = Object.fromEntries(
+    Object.entries(body)
+      .filter(([key, value]) => key.startsWith("commandCategoryDisabled_") && value === "on")
+      .map(([key]) => [key.replace("commandCategoryDisabled_", ""), true])
+  );
+  const channelCommandAllowlist = Object.fromEntries(
+    Object.entries(body)
+      .filter(([key]) => key.startsWith("channelOnlyCommand_"))
+      .map(([key, value]) => [key.replace("channelOnlyCommand_", ""), arrayFromFormValue(value).map(String)])
+      .filter(([, commandNames]) => commandNames.length)
+  );
+  const channelCategoryAllowlist = Object.fromEntries(
+    Object.entries(body)
+      .filter(([key]) => key.startsWith("channelOnlyCategory_"))
+      .map(([key, value]) => [key.replace("channelOnlyCategory_", ""), arrayFromFormValue(value).map(String)])
+      .filter(([, categories]) => categories.length)
+  );
   switch (currentSection) {
     case "general":
       return {
@@ -2095,7 +2112,10 @@ function parseConfigForm(body, section = "general") {
         commandRoles: {
           overrides: commandOverrides,
           disabled: commandDisabled,
-          channelAllowlist: commandChannelAllowlist
+          channelAllowlist: commandChannelAllowlist,
+          disabledCategories,
+          channelCommandAllowlist,
+          channelCategoryAllowlist
         }
       };
     default:
@@ -2372,6 +2392,10 @@ function commandCatalog(commandList, prefix) {
     .join("");
 }
 
+function commandCategories(commandList) {
+  return [...new Set(commandList.map((command) => command.category || "Other"))].sort((a, b) => a.localeCompare(b));
+}
+
 function channelCheckboxes(channels, selectedIds, name = "aiChannelIds") {
   const selectedSet = new Set(selectedIds || []);
   return channels
@@ -2380,6 +2404,34 @@ function channelCheckboxes(channels, selectedIds, name = "aiChannelIds") {
         <label class="toggle">
           <input type="checkbox" name="${name}" value="${channel.id}" ${isChecked(selectedSet.has(channel.id))}>
           <span>#${escapeHtml(channel.name)}</span>
+        </label>`
+    )
+    .join("");
+}
+
+function commandCheckboxes(commandList, selectedNames, name, panelUser = null) {
+  const canEditGrantAccess = panelAccessAtLeast(panelUser?.level || "root", "root");
+  const selectedSet = new Set((selectedNames || []).map(String));
+  return commandList
+    .filter((command) => canEditGrantAccess || command.name !== "grantaccess")
+    .map(
+      (command) => `
+        <label class="toggle">
+          <input type="checkbox" name="${name}" value="${command.name}" ${isChecked(selectedSet.has(command.name))}>
+          <span>${escapeHtml(command.name)}</span>
+        </label>`
+    )
+    .join("");
+}
+
+function categoryCheckboxes(categories, selectedCategories, name) {
+  const selectedSet = new Set((selectedCategories || []).map(String));
+  return categories
+    .map(
+      (category) => `
+        <label class="toggle">
+          <input type="checkbox" name="${name}" value="${escapeHtml(category)}" ${isChecked(selectedSet.has(category))}>
+          <span>${escapeHtml(category)}</span>
         </label>`
     )
     .join("");
@@ -2394,6 +2446,49 @@ function roleCheckboxes(roles, selectedIds, name) {
           <input type="checkbox" name="${name}" value="${role.id}" ${isChecked(selectedSet.has(role.id))}>
           <span>${escapeHtml(role.name)}</span>
         </label>`
+    )
+    .join("");
+}
+
+function categoryAccessRules(commandList, commandRoles = {}) {
+  const disabledCategories = commandRoles?.disabledCategories || {};
+  return commandCategories(commandList)
+    .map(
+      (category) => `
+        <label class="toggle">
+          <input type="checkbox" name="commandCategoryDisabled_${escapeHtml(category)}" ${isChecked(Boolean(disabledCategories[category]))}>
+          <span>Disable <strong>${escapeHtml(category)}</strong> commands</span>
+        </label>`
+    )
+    .join("");
+}
+
+function channelCommandRules(commandList, channels, commandRoles = {}, panelUser = null) {
+  const allowedCommandsByChannel = commandRoles?.channelCommandAllowlist || {};
+  const allowedCategoriesByChannel = commandRoles?.channelCategoryAllowlist || {};
+  const categories = commandCategories(commandList);
+
+  return channels
+    .map(
+      (channel) => `
+        <details class="permission-row">
+          <summary>
+            <span>#${escapeHtml(channel.name)}</span>
+            <small>Only selected commands and categories can run here. Leave both empty to allow all commands.</small>
+          </summary>
+          <div class="permission-rule-block">
+            <p class="field-help">Allowed commands in #${escapeHtml(channel.name)}</p>
+            <div class="checkbox-grid compact">
+              ${commandCheckboxes(commandList, allowedCommandsByChannel[channel.id] || [], `channelOnlyCommand_${channel.id}`, panelUser)}
+            </div>
+          </div>
+          <div class="permission-rule-block">
+            <p class="field-help">Allowed categories in #${escapeHtml(channel.name)}</p>
+            <div class="checkbox-grid compact">
+              ${categoryCheckboxes(categories, allowedCategoriesByChannel[channel.id] || [], `channelOnlyCategory_${channel.id}`)}
+            </div>
+          </div>
+        </details>`
     )
     .join("");
 }
@@ -3005,9 +3100,30 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
           <section class="panel-section">
             <div class="section-heading">
               <h2>Command Access Rules</h2>
-              <p>Disable commands, limit them to selected channels, or grant specific roles access without the matching Discord permission.</p>
+              <p>Disable whole categories, lock channels to specific commands, or grant role overrides without the matching Discord permission.</p>
             </div>
-            <p class="field-help">Open a command to manage its disable switch, allowed channels, and role overrides.</p>
+            <p class="field-help">Use category toggles for broad shutdowns, channel rules for places like #welcome where only one command should work, and per-command rules for finer control.</p>
+            <div class="permission-rule-block standalone">
+              <p class="field-help">Disabled categories</p>
+              <div class="checkbox-grid compact">
+                ${categoryAccessRules(commandList, config.commandRoles)}
+              </div>
+            </div>
+          </section>
+          <section class="panel-section">
+            <div class="section-heading">
+              <h2>Channel-Only Commands</h2>
+              <p>Pick the commands or categories allowed in each channel. If both lists are empty for a channel, every command is still allowed there.</p>
+            </div>
+            <div class="permission-list">
+              ${channelCommandRules(commandList, guild.channels, config.commandRoles, panelUser)}
+            </div>
+          </section>
+          <section class="panel-section">
+            <div class="section-heading">
+              <h2>Per-Command Rules</h2>
+              <p>Open a command to manage its disable switch, allowed channels, and role overrides.</p>
+            </div>
             <div class="permission-list">
               ${commandRoleAccess(commandList, guild.roles, guild.channels, config.commandRoles, panelUser)}
             </div>
@@ -4678,6 +4794,18 @@ export function createPanel({
             ...(store.getGuild(discordGuild.id).commandRoles?.channelAllowlist?.grantaccess
               ? { grantaccess: store.getGuild(discordGuild.id).commandRoles.channelAllowlist.grantaccess }
               : {})
+          },
+          disabledCategories: {
+            ...(nextConfig.commandRoles?.disabledCategories || {}),
+            ...(store.getGuild(discordGuild.id).commandRoles?.disabledCategories?.Config
+              ? { Config: store.getGuild(discordGuild.id).commandRoles.disabledCategories.Config }
+              : {})
+          },
+          channelCommandAllowlist: {
+            ...(nextConfig.commandRoles?.channelCommandAllowlist || {})
+          },
+          channelCategoryAllowlist: {
+            ...(nextConfig.commandRoles?.channelCategoryAllowlist || {})
           }
         };
       }

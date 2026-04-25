@@ -525,19 +525,54 @@ function isCommandDisabled(config, commandName) {
   return Boolean(config.commandRoles?.disabled?.[commandName]);
 }
 
+function isCategoryDisabled(config, categoryName) {
+  return Boolean(config.commandRoles?.disabledCategories?.[categoryName || "Other"]);
+}
+
 function commandAllowedChannelIds(config, commandName) {
   const channelIds = config.commandRoles?.channelAllowlist?.[commandName];
   return Array.isArray(channelIds) ? channelIds.map(String).filter(Boolean) : [];
 }
 
+function messageChannelKeys(message) {
+  const keys = [];
+  const directId = String(message.channelId || message.channel?.id || "");
+  const parentId = String(message.channel?.parentId || "");
+  if (directId) keys.push(directId);
+  if (parentId && parentId !== directId) keys.push(parentId);
+  return keys;
+}
+
 function commandChannelAllowed(message, allowedChannelIds = []) {
   if (!message.guild || !allowedChannelIds.length) return true;
   const allowedSet = new Set(allowedChannelIds);
-  return allowedSet.has(String(message.channelId || message.channel?.id || "")) ||
-    allowedSet.has(String(message.channel?.parentId || ""));
+  return messageChannelKeys(message).some((channelId) => allowedSet.has(channelId));
+}
+
+function channelCommandRestrictions(config, message) {
+  if (!message.guild) return { commands: [], categories: [] };
+  const channelKeys = messageChannelKeys(message);
+  const allowedCommandsByChannel = config.commandRoles?.channelCommandAllowlist || {};
+  const allowedCategoriesByChannel = config.commandRoles?.channelCategoryAllowlist || {};
+  const commands = [];
+  const categories = [];
+
+  for (const channelId of channelKeys) {
+    commands.push(...(Array.isArray(allowedCommandsByChannel[channelId]) ? allowedCommandsByChannel[channelId] : []));
+    categories.push(...(Array.isArray(allowedCategoriesByChannel[channelId]) ? allowedCategoriesByChannel[channelId] : []));
+  }
+
+  return {
+    commands: [...new Set(commands.map(String).filter(Boolean))],
+    categories: [...new Set(categories.map(String).filter(Boolean))]
+  };
 }
 
 function commandRestrictionMessage(command, message, config) {
+  if (isCategoryDisabled(config, command.category || "Other")) {
+    return `The ${command.category || "Other"} category is currently disabled in this server.`;
+  }
+
   if (isCommandDisabled(config, command.name)) {
     return "That command is currently disabled in this server.";
   }
@@ -545,6 +580,22 @@ function commandRestrictionMessage(command, message, config) {
   const allowedChannelIds = commandAllowedChannelIds(config, command.name);
   if (!commandChannelAllowed(message, allowedChannelIds)) {
     return `That command can only be used in ${allowedChannelIds.map((channelId) => `<#${channelId}>`).join(", ")}.`;
+  }
+
+  const channelRestrictions = channelCommandRestrictions(config, message);
+  if (channelRestrictions.commands.length || channelRestrictions.categories.length) {
+    const commandAllowed = channelRestrictions.commands.includes(command.name);
+    const categoryAllowed = channelRestrictions.categories.includes(command.category || "Other");
+    if (!commandAllowed && !categoryAllowed) {
+      const parts = [];
+      if (channelRestrictions.commands.length) {
+        parts.push(`commands: ${channelRestrictions.commands.map((name) => `\`${config.prefix}${name}\``).join(", ")}`);
+      }
+      if (channelRestrictions.categories.length) {
+        parts.push(`categories: ${channelRestrictions.categories.join(", ")}`);
+      }
+      return `That command is not allowed in this channel. Allowed here: ${parts.join(" | ")}.`;
+    }
   }
 
   return "";
@@ -6528,6 +6579,7 @@ define({
     await ctx.message.reply([
       `**Command Access: ${ctx.config.prefix}${command.name}**`,
       `Category: ${command.category || "Other"}`,
+      `Category disabled: ${isCategoryDisabled(ctx.config, command.category || "Other") ? "Yes" : "No"}`,
       `Disabled: ${isCommandDisabled(ctx.config, command.name) ? "Yes" : "No"}`,
       `Allowed channels: ${allowedChannelIds.length ? allowedChannelIds.map((channelId) => `<#${channelId}>`).join(", ") : "Any channel"}`,
       `Role overrides: ${roleIds.length ? roleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "None"}`

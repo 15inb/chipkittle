@@ -694,6 +694,13 @@ textarea:focus {
   padding: 12px 14px;
 }
 
+.permission-rule-block.standalone {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-top: 14px;
+  background: var(--surface-2);
+}
+
 .permission-rule-block .field-help {
   margin: 0 0 10px;
 }

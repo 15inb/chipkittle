@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
 const DEFAULT_CONFIG = {
   prefix: "!",
   welcome: {
@@ -22,7 +26,10 @@ const DEFAULT_CONFIG = {
   commandRoles: {
     overrides: {},
     disabled: {},
-    channelAllowlist: {}
+    channelAllowlist: {},
+    disabledCategories: {},
+    channelCommandAllowlist: {},
+    channelCategoryAllowlist: {}
   },
   panelAccess: {
     users: {},
@@ -155,6 +162,18 @@ function mergeConfig(config = {}) {
       channelAllowlist: {
         ...clone(DEFAULT_CONFIG.commandRoles.channelAllowlist),
         ...(config.commandRoles?.channelAllowlist || {})
+      },
+      disabledCategories: {
+        ...clone(DEFAULT_CONFIG.commandRoles.disabledCategories),
+        ...(config.commandRoles?.disabledCategories || {})
+      },
+      channelCommandAllowlist: {
+        ...clone(DEFAULT_CONFIG.commandRoles.channelCommandAllowlist),
+        ...(config.commandRoles?.channelCommandAllowlist || {})
+      },
+      channelCategoryAllowlist: {
+        ...clone(DEFAULT_CONFIG.commandRoles.channelCategoryAllowlist),
+        ...(config.commandRoles?.channelCategoryAllowlist || {})
       }
     },
     panelAccess: {
@@ -277,18 +296,24 @@ export class ConfigStore {
       commandRoles: {
         ...this.getGuild(guildId).commandRoles,
         ...(partialConfig.commandRoles || {}),
-        overrides: {
-          ...(this.getGuild(guildId).commandRoles.overrides || {}),
-          ...(partialConfig.commandRoles?.overrides || {})
-        },
-        disabled: {
-          ...(this.getGuild(guildId).commandRoles.disabled || {}),
-          ...(partialConfig.commandRoles?.disabled || {})
-        },
-        channelAllowlist: {
-          ...(this.getGuild(guildId).commandRoles.channelAllowlist || {}),
-          ...(partialConfig.commandRoles?.channelAllowlist || {})
-        }
+        overrides: hasOwn(partialConfig.commandRoles || {}, "overrides")
+          ? { ...(partialConfig.commandRoles?.overrides || {}) }
+          : { ...(this.getGuild(guildId).commandRoles.overrides || {}) },
+        disabled: hasOwn(partialConfig.commandRoles || {}, "disabled")
+          ? { ...(partialConfig.commandRoles?.disabled || {}) }
+          : { ...(this.getGuild(guildId).commandRoles.disabled || {}) },
+        channelAllowlist: hasOwn(partialConfig.commandRoles || {}, "channelAllowlist")
+          ? { ...(partialConfig.commandRoles?.channelAllowlist || {}) }
+          : { ...(this.getGuild(guildId).commandRoles.channelAllowlist || {}) },
+        disabledCategories: hasOwn(partialConfig.commandRoles || {}, "disabledCategories")
+          ? { ...(partialConfig.commandRoles?.disabledCategories || {}) }
+          : { ...(this.getGuild(guildId).commandRoles.disabledCategories || {}) },
+        channelCommandAllowlist: hasOwn(partialConfig.commandRoles || {}, "channelCommandAllowlist")
+          ? { ...(partialConfig.commandRoles?.channelCommandAllowlist || {}) }
+          : { ...(this.getGuild(guildId).commandRoles.channelCommandAllowlist || {}) },
+        channelCategoryAllowlist: hasOwn(partialConfig.commandRoles || {}, "channelCategoryAllowlist")
+          ? { ...(partialConfig.commandRoles?.channelCategoryAllowlist || {}) }
+          : { ...(this.getGuild(guildId).commandRoles.channelCategoryAllowlist || {}) }
       },
       panelAccess: {
         ...this.getGuild(guildId).panelAccess,
