@@ -113,14 +113,15 @@ const DEFAULT_ECONOMY_SETTINGS = {
   upgradeCosts: {}
 };
 
+const DEFAULT_STARTING_BREAD = 500;
 const PANEL_ECONOMY_UPGRADES = [
-  { id: "daily-oven", name: "Daily Oven", baseCost: 1500, costGrowth: 1.75, description: "Adds bread to every daily claim." },
-  { id: "streak-vault", name: "Streak Vault", baseCost: 2000, costGrowth: 1.8, description: "Raises the daily streak bonus cap." },
-  { id: "interest-altar", name: "Interest Altar", baseCost: 3000, costGrowth: 1.9, description: "Improves bank interest payouts." },
-  { id: "interest-clock", name: "Interest Clock", baseCost: 2800, costGrowth: 1.75, description: "Shortens bank interest cooldowns." },
-  { id: "work-tools", name: "Work Tools", baseCost: 1250, costGrowth: 1.65, description: "Adds bread to work payouts." },
-  { id: "casino-disguise", name: "Casino Disguise", baseCost: 4000, costGrowth: 2, description: "Improves casino robbery outcomes." },
-  { id: "bread-shield", name: "Bread Shield", baseCost: 2500, costGrowth: 1.8, description: "Protects more wallet bread from robberies." }
+  { id: "daily-oven", name: "Daily Oven", maxLevel: 5, baseCost: 1500, costGrowth: 1.75, description: "Adds bread to every daily claim." },
+  { id: "streak-vault", name: "Streak Vault", maxLevel: 4, baseCost: 2000, costGrowth: 1.8, description: "Raises the daily streak bonus cap." },
+  { id: "interest-altar", name: "Interest Altar", maxLevel: 5, baseCost: 3000, costGrowth: 1.9, description: "Improves bank interest payouts." },
+  { id: "interest-clock", name: "Interest Clock", maxLevel: 5, baseCost: 2800, costGrowth: 1.75, description: "Shortens bank interest cooldowns." },
+  { id: "work-tools", name: "Work Tools", maxLevel: 5, baseCost: 1250, costGrowth: 1.65, description: "Adds bread to work payouts." },
+  { id: "casino-disguise", name: "Casino Disguise", maxLevel: 4, baseCost: 4000, costGrowth: 2, description: "Improves casino robbery outcomes." },
+  { id: "bread-shield", name: "Bread Shield", maxLevel: 4, baseCost: 2500, costGrowth: 1.8, description: "Protects more wallet bread from robberies." }
 ];
 
 const BUILT_IN_BLOCKED_LEADERBOARD_TERMS = [
@@ -1390,7 +1391,7 @@ function parseEconomySettings(body = {}) {
   };
 }
 
-function economyWorkspace(config = {}) {
+function economySettingsWorkspace(config = {}) {
   const settings = economyPanelSettings(config);
   const balances = config.economy?.balances || {};
   const bankBalances = config.economy?.bankBalances || {};
@@ -1481,6 +1482,125 @@ function economyWorkspace(config = {}) {
         }).join("")}
       </div>
     </section>
+  `;
+}
+
+function economyUserSnapshot(config = {}, userId = "") {
+  const economy = config.economy || {};
+  const stats = economy.stats?.[userId] || {};
+  return {
+    wallet: Math.max(Math.floor(Number(economy.balances?.[userId] ?? DEFAULT_STARTING_BREAD) || 0), 0),
+    bank: Math.max(Math.floor(Number(economy.bankBalances?.[userId] || 0) || 0), 0),
+    upgrades: { ...(economy.upgrades?.[userId] || {}) },
+    stats: {
+      gamesPlayed: Math.max(Math.floor(Number(stats.gamesPlayed) || 0), 0),
+      gamesWon: Math.max(Math.floor(Number(stats.gamesWon) || 0), 0),
+      wagered: Math.max(Math.floor(Number(stats.wagered) || 0), 0),
+      profit: Math.floor(Number(stats.profit) || 0),
+      biggestWin: Math.max(Math.floor(Number(stats.biggestWin) || 0), 0)
+    }
+  };
+}
+
+function economyMemberBrowser(guildId, memberPage = { members: [] }, config = {}) {
+  memberPage = memberPage || { members: [] };
+  const members = Array.isArray(memberPage.members) ? memberPage.members : [];
+  const search = memberPage.search || "";
+  const after = memberPage.after || "";
+  return `
+    <section class="panel-section moderation-browser">
+      <div class="section-heading">
+        <h2>User Economy Editor</h2>
+        <p>Search or browse members, then edit wallet, bank, and upgrade levels. Root-only.</p>
+      </div>
+      <form method="get" action="/guilds/${guildId}" class="moderation-search">
+        <input type="hidden" name="section" value="economy">
+        <label>
+          Search members
+          <input name="econSearch" value="${escapeHtml(search)}" placeholder="username, display name, or user ID">
+        </label>
+        <button type="submit">Search</button>
+        <a class="primary-link secondary-link" href="/guilds/${guildId}?section=economy">Reset</a>
+      </form>
+      ${memberPage.error ? `<p class="form-error">${escapeHtml(memberPage.error)}</p>` : ""}
+      <div class="member-action-list">
+        ${
+          members.length
+            ? members.map((member) => economyMemberRow(guildId, member, search, after, config)).join("")
+            : '<p class="muted">No members matched that search.</p>'
+        }
+      </div>
+      <div class="pagination-actions">
+        <a class="primary-link secondary-link" href="/guilds/${guildId}?section=economy">First page</a>
+        ${
+          memberPage.nextAfter
+            ? `<a class="primary-link" href="/guilds/${guildId}?section=economy&econAfter=${encodeURIComponent(memberPage.nextAfter)}">Next page</a>`
+            : ""
+        }
+      </div>
+    </section>
+  `;
+}
+
+function economyMemberRow(guildId, member, search = "", after = "", config = {}) {
+  const snapshot = economyUserSnapshot(config, member.id);
+  const netWorth = snapshot.wallet + snapshot.bank;
+  return `
+    <article class="member-action-row">
+      <div class="member-action-main">
+        <span class="member-action-avatar">${member.avatarUrl ? `<img src="${escapeHtml(member.avatarUrl)}" alt="">` : escapeHtml(member.displayName[0] || "?")}</span>
+        <div>
+          <strong>${escapeHtml(member.displayName)} ${member.bot ? '<small class="member-bot-label">Bot</small>' : ""}</strong>
+          <small>${escapeHtml(member.tag)} &middot; ${escapeHtml(member.id)}</small>
+          <div class="mini-stats">
+            <span>Wallet ${snapshot.wallet.toLocaleString()}</span>
+            <span>Bank ${snapshot.bank.toLocaleString()}</span>
+            <span>Net ${netWorth.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+      <details class="member-action-details">
+        <summary>Edit economy</summary>
+        <form method="post" action="/guilds/${guildId}/economy/${escapeHtml(member.id)}/update" class="member-action-form" onsubmit="return confirm('Save economy changes for this member?');">
+          <input type="hidden" name="econSearch" value="${escapeHtml(search)}">
+          <input type="hidden" name="econAfter" value="${escapeHtml(after)}">
+          <div class="field-pair">
+            <label>
+              Wallet bread
+              <input type="number" name="wallet" min="0" max="1000000000000" value="${escapeHtml(snapshot.wallet)}">
+            </label>
+            <label>
+              Bank bread
+              <input type="number" name="bank" min="0" max="1000000000000" value="${escapeHtml(snapshot.bank)}">
+            </label>
+          </div>
+          <div class="field-pair">
+            ${PANEL_ECONOMY_UPGRADES.map((upgrade) => `
+              <label>
+                ${escapeHtml(upgrade.name)}
+                <input type="number" name="economyUpgrade_${escapeHtml(upgrade.id)}" min="0" max="${escapeHtml(upgrade.maxLevel)}" value="${escapeHtml(Math.max(Math.floor(Number(snapshot.upgrades[upgrade.id]) || 0), 0))}">
+              </label>
+            `).join("")}
+          </div>
+          <div class="inline-controls">
+            <label class="toggle">
+              <input type="checkbox" name="resetDailyClaim">
+              <span>Reset daily claim cooldown</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" name="resetDailyStreak">
+              <span>Reset daily streak</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" name="clearEconomyCooldowns">
+              <span>Clear gambling, rob, interest, and heist cooldowns</span>
+            </label>
+          </div>
+          <p class="field-help">Stats: ${snapshot.stats.gamesPlayed.toLocaleString()} games, ${snapshot.stats.gamesWon.toLocaleString()} wins, ${snapshot.stats.wagered.toLocaleString()} bread wagered, ${snapshot.stats.profit.toLocaleString()} net profit.</p>
+          <button type="submit">Save user economy</button>
+        </form>
+      </details>
+    </article>
   `;
 }
 
@@ -2322,7 +2442,7 @@ function guildSummaryStrip(guild, config = {}) {
   `;
 }
 
-function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, currentSection, currentMeta, gameSettings, moderationMembers, warningMemberLabels, panelUser }) {
+function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, currentSection, currentMeta, gameSettings, moderationMembers, economyMembers, warningMemberLabels, panelUser }) {
   switch (currentSection) {
     case "dashboard":
       return dashboardCards(guild, config);
@@ -2607,12 +2727,15 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
         ${gameLeaderboardControls(guild.id, gameSettings)}
       `;
     case "economy":
-      return sectionForm(
-        guild.id,
-        currentSection,
-        currentMeta,
-        economyWorkspace(config)
-      );
+      return `
+        ${sectionForm(
+          guild.id,
+          currentSection,
+          currentMeta,
+          economySettingsWorkspace(config)
+        )}
+        ${economyMemberBrowser(guild.id, economyMembers, config)}
+      `;
     case "community":
       return sectionForm(
         guild.id,
@@ -2691,7 +2814,7 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
   }
 }
 
-function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general", moderationMembers = null, warningMemberLabels = {}, panelUser = null }) {
+function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, activeSection = "general", moderationMembers = null, economyMembers = null, warningMemberLabels = {}, panelUser = null }) {
   const currentSection = allowedPanelSection(activeSection, panelUser?.level || "root");
   const currentMeta = activeSectionMeta(currentSection);
   const gameSettings = publicGameSettings(config);
@@ -2843,6 +2966,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               currentMeta,
               gameSettings,
               moderationMembers,
+              economyMembers,
               warningMemberLabels,
               panelUser
             })}
@@ -3345,6 +3469,13 @@ export function createPanel({
               after: String(request.query.modAfter || "")
             })
           : null;
+      const economyMembers =
+        activeSection === "economy"
+          ? await moderationMemberPage(discordGuild, config, {
+              search: String(request.query.econSearch || ""),
+              after: String(request.query.econAfter || "")
+            })
+          : null;
       const labels = activeSection === "moderation" ? await warningMemberLabels(discordGuild, config) : {};
       response.send(guildPage({
         guild,
@@ -3355,6 +3486,7 @@ export function createPanel({
         flash: flashFromQuery(request.query),
         activeSection,
         moderationMembers,
+        economyMembers,
         warningMemberLabels: labels,
         panelUser
       }));
@@ -3701,6 +3833,95 @@ export function createPanel({
         moderatorTag: actor
       }).catch(() => {});
       response.redirect(`/guilds/${discordGuild.id}?saved=1&section=moderation`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/economy/:userId/update", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+
+      const targetUserId = String(request.params.userId || "").trim();
+      if (!/^\d{16,22}$/.test(targetUserId)) {
+        response.redirect(`/guilds/${discordGuild.id}?section=economy&modAction=missing-target`);
+        return;
+      }
+
+      const config = store.getGuild(discordGuild.id);
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      const member = await discordGuild.members.fetch(targetUserId).catch(() => null);
+      const wallet = Math.floor(clampPanelNumber(request.body?.wallet, DEFAULT_STARTING_BREAD, 0, 1000000000000));
+      const bank = Math.floor(clampPanelNumber(request.body?.bank, 0, 0, 1000000000000));
+      const userUpgrades = Object.fromEntries(
+        PANEL_ECONOMY_UPGRADES.map((upgrade) => [
+          upgrade.id,
+          Math.floor(clampPanelNumber(request.body?.[`economyUpgrade_${upgrade.id}`], 0, 0, upgrade.maxLevel))
+        ])
+      );
+      const economy = config.economy || {};
+      const balances = { ...(economy.balances || {}), [targetUserId]: wallet };
+      const bankBalances = { ...(economy.bankBalances || {}), [targetUserId]: bank };
+      const upgrades = {
+        ...(economy.upgrades || {}),
+        [targetUserId]: userUpgrades
+      };
+      const dailyClaims = { ...(economy.dailyClaims || {}) };
+      const dailyStreaks = { ...(economy.dailyStreaks || {}) };
+      const cooldowns = {
+        ...(economy.cooldowns || {}),
+        gambling: { ...(economy.cooldowns?.gambling || {}) },
+        beg: { ...(economy.cooldowns?.beg || {}) },
+        work: { ...(economy.cooldowns?.work || {}) },
+        interest: { ...(economy.cooldowns?.interest || {}) },
+        casinoRobbery: { ...(economy.cooldowns?.casinoRobbery || {}) },
+        robbers: { ...(economy.cooldowns?.robbers || {}) },
+        robVictims: { ...(economy.cooldowns?.robVictims || {}) }
+      };
+
+      if (request.body?.resetDailyClaim === "on") delete dailyClaims[targetUserId];
+      if (request.body?.resetDailyStreak === "on") delete dailyStreaks[targetUserId];
+      if (request.body?.clearEconomyCooldowns === "on") {
+        delete cooldowns.gambling[targetUserId];
+        delete cooldowns.beg[targetUserId];
+        delete cooldowns.work[targetUserId];
+        delete cooldowns.interest[targetUserId];
+        delete cooldowns.casinoRobbery[targetUserId];
+        delete cooldowns.robbers[targetUserId];
+        delete cooldowns.robVictims[targetUserId];
+      }
+
+      await store.updateGuild(discordGuild.id, {
+        economy: {
+          ...economy,
+          balances,
+          bankBalances,
+          upgrades,
+          dailyClaims,
+          dailyStreaks,
+          cooldowns
+        }
+      });
+
+      await addAuditLog(store, discordGuild.id, {
+        type: "economy",
+        label: "User economy edited",
+        details: `Set ${member?.user?.tag || targetUserId} to ${wallet.toLocaleString()} wallet bread, ${bank.toLocaleString()} bank bread, and updated economy upgrades.`,
+        actor: panelUserLabel(panelUser),
+        action: "economy_user_update",
+        targetId: targetUserId,
+        targetTag: member?.user?.tag || "",
+        moderatorId: panelUser?.userId || "panel",
+        moderatorTag: panelUserLabel(panelUser)
+      }).catch(() => {});
+
+      const search = encodeURIComponent(String(request.body?.econSearch || targetUserId));
+      const after = String(request.body?.econAfter || "");
+      response.redirect(`/guilds/${discordGuild.id}?saved=1&section=economy&econSearch=${search}${after ? `&econAfter=${encodeURIComponent(after)}` : ""}`);
     } catch (error) {
       next(error);
     }
