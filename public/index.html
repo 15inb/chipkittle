@@ -167,6 +167,11 @@
           Suggestion
           <textarea name="body" rows="6" maxlength="1000" placeholder="Write the actual idea here." required></textarea>
         </label>
+        <label>
+          Human check: <span id="suggestionCaptchaQuestion">loading...</span>
+          <input name="captchaAnswer" inputmode="numeric" maxlength="4" placeholder="Answer" required>
+          <input name="captchaId" type="hidden">
+        </label>
         <button class="button primary" type="submit">Send Suggestion</button>
         <p class="suggestion-message" id="suggestionMessage" role="status"></p>
       </form>
@@ -207,6 +212,7 @@
     const suggestionForm = document.querySelector("#suggestionForm");
     const suggestionMessage = document.querySelector("#suggestionMessage");
     const suggestionPreview = document.querySelector("#suggestionPreview");
+    const suggestionCaptchaQuestion = document.querySelector("#suggestionCaptchaQuestion");
     const cacheKey = "chipkittle-public-home-status-v1";
     const suggestionsCacheKey = "chipkittle-public-suggestions-v1";
     const cacheTtlMs = 60 * 1000;
@@ -298,6 +304,22 @@
       ttlMs: cacheTtlMs
     }).then(renderSuggestions).catch(() => {});
 
+    async function loadSuggestionCaptcha() {
+      suggestionCaptchaQuestion.textContent = "loading...";
+      suggestionForm.elements.captchaAnswer.value = "";
+      suggestionForm.elements.captchaId.value = "";
+      try {
+        const response = await fetch("https://panel.chipkittle.com/api/public/suggestions/captcha");
+        const payload = await response.json();
+        suggestionCaptchaQuestion.textContent = payload.question || "try again";
+        suggestionForm.elements.captchaId.value = payload.id || "";
+      } catch {
+        suggestionCaptchaQuestion.textContent = "could not load";
+      }
+    }
+
+    loadSuggestionCaptcha();
+
     suggestionForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       suggestionMessage.textContent = "Sending...";
@@ -314,8 +336,10 @@
         suggestionMessage.textContent = "Suggestion sent. Staff can review it from the panel now.";
         renderSuggestions({ suggestions: [payload.suggestion, ...(cachedSuggestions?.suggestions || [])] });
         localStorage.removeItem(suggestionsCacheKey);
+        loadSuggestionCaptcha();
       } catch (error) {
         suggestionMessage.textContent = error.message || "Could not send that suggestion.";
+        loadSuggestionCaptcha();
       }
     });
   </script>

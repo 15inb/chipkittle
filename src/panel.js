@@ -111,6 +111,7 @@ const SUGGESTION_STATUS_LABELS = {
   implemented: "Implemented"
 };
 const PUBLIC_SUGGESTION_COOLDOWN_MS = 60 * 1000;
+const PUBLIC_SUGGESTION_CAPTCHA_TTL_MS = 10 * 60 * 1000;
 
 const DEFAULT_ECONOMY_SETTINGS = {
   dailyBread: 300,
@@ -1845,6 +1846,12 @@ function blockedLeaderboardTerm(name = "", config = {}) {
   return blockedTerms.find((term) => normalized.includes(normalizeNameModerationText(term))) || "";
 }
 
+function blockedSuggestionTerm(payload = {}, config = {}) {
+  return ["name", "title", "body", "suggestion"]
+    .map((key) => blockedLeaderboardTerm(payload?.[key], config))
+    .find(Boolean) || "";
+}
+
 function readGameLeaderboard() {
   try {
     const parsed = JSON.parse(fs.readFileSync(leaderboardPath(), "utf8"));
@@ -3178,6 +3185,7 @@ export function createPanel({
   const useSecureCookies = String(publicUrl || "").startsWith("https://");
   const loginAttempts = new Map();
   const publicSuggestionCooldowns = new Map();
+  const publicSuggestionCaptchas = new Map();
 
   app.disable("x-powered-by");
   if (useSecureCookies) {
@@ -3339,6 +3347,38 @@ export function createPanel({
       .slice(0, 80);
   }
 
+  function sweepSuggestionCaptchas() {
+    const now = Date.now();
+    for (const [id, captcha] of publicSuggestionCaptchas.entries()) {
+      if (!captcha || captcha.expiresAt <= now) {
+        publicSuggestionCaptchas.delete(id);
+      }
+    }
+  }
+
+  function createSuggestionCaptcha() {
+    sweepSuggestionCaptchas();
+    const left = Math.floor(Math.random() * 8) + 2;
+    const right = Math.floor(Math.random() * 8) + 2;
+    const id = crypto.randomUUID();
+    publicSuggestionCaptchas.set(id, {
+      answer: left + right,
+      expiresAt: Date.now() + PUBLIC_SUGGESTION_CAPTCHA_TTL_MS
+    });
+    return {
+      id,
+      question: `${left} + ${right}`
+    };
+  }
+
+  function verifySuggestionCaptcha(id = "", answer = "") {
+    sweepSuggestionCaptchas();
+    const captcha = publicSuggestionCaptchas.get(String(id || ""));
+    publicSuggestionCaptchas.delete(String(id || ""));
+    if (!captcha) return false;
+    return Number(answer) === captcha.answer;
+  }
+
   app.options("/api/public/members", (_request, response) => {
     setPublicApiHeaders(response);
     response.sendStatus(204);
@@ -3360,6 +3400,11 @@ export function createPanel({
   });
 
   app.options("/api/public/suggestions", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
+  app.options("/api/public/suggestions/captcha", (_request, response) => {
     setPublicApiHeaders(response);
     response.sendStatus(204);
   });
@@ -3450,6 +3495,11 @@ export function createPanel({
     });
   });
 
+  app.get("/api/public/suggestions/captcha", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.json(createSuggestionCaptcha());
+  });
+
   app.post("/api/public/suggestions", async (request, response) => {
     try {
       setPublicApiHeaders(response);
@@ -3465,6 +3515,17 @@ export function createPanel({
       const config = targetGuildId ? store.getGuild(targetGuildId) : getPublicGuildConfig();
       if (!targetGuildId || !config) {
         response.status(503).json({ error: "The suggestion box is not ready yet." });
+        return;
+      }
+
+      const blockedTerm = blockedSuggestionTerm(request.body, config);
+      if (blockedTerm) {
+        response.status(400).json({ error: "That suggestion contains blocked language." });
+        return;
+      }
+
+      if (!verifySuggestionCaptcha(request.body?.captchaId, request.body?.captchaAnswer)) {
+        response.status(400).json({ error: "Captcha failed. Please answer the new question and try again." });
         return;
       }
 

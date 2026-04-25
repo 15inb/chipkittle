@@ -88,6 +88,26 @@ const MAX_REMINDER_TIMEOUT_MS = 2_147_000_000;
 const PROFILE_BIO_MAX = 220;
 
 const pendingDateRequests = new Map();
+
+const BUILT_IN_BLOCKED_SUGGESTION_TERMS = [
+  "fuck",
+  "shit",
+  "bitch",
+  "asshole",
+  "bastard",
+  "cunt",
+  "dick",
+  "pussy",
+  "fag",
+  "faggot",
+  "nigger",
+  "nigga",
+  "kike",
+  "spic",
+  "chink",
+  "gook",
+  "retard"
+];
 const currentDates = new Map();
 const PUBLIC_GAME_IDS = ["dash", "runner", "mines", "catch"];
 
@@ -372,6 +392,37 @@ function mentionTargetUser(message) {
 
 function cleanText(value = "", maxLength = 120) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function normalizeSuggestionModerationText(value = "") {
+  const substitutions = {
+    "0": "o",
+    "1": "i",
+    "!": "i",
+    "3": "e",
+    "4": "a",
+    "@": "a",
+    "5": "s",
+    "$": "s",
+    "7": "t"
+  };
+
+  return String(value || "")
+    .toLowerCase()
+    .split("")
+    .map((character) => substitutions[character] || character)
+    .join("")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function blockedSuggestionTerm(value = "", config = {}) {
+  const normalized = normalizeSuggestionModerationText(value);
+  if (!normalized) return "";
+  const configuredTerms = Array.isArray(config.publicSite?.games?.blockedLeaderboardWords)
+    ? config.publicSite.games.blockedLeaderboardWords
+    : [];
+  const blockedTerms = [...BUILT_IN_BLOCKED_SUGGESTION_TERMS, ...configuredTerms];
+  return blockedTerms.find((term) => normalized.includes(normalizeSuggestionModerationText(term))) || "";
 }
 
 function splitPipe(text = "") {
@@ -5493,6 +5544,10 @@ define({
     const body = cleanText(ctx.rest, 1000);
     if (body.length < 8) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (blockedSuggestionTerm(body, ctx.config)) {
+      await ctx.message.reply("That suggestion contains blocked language.");
       return;
     }
 
