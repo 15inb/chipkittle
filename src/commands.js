@@ -1743,22 +1743,41 @@ function blackjackHandText(hand, hidden = false) {
   return `${hand.map((card) => card.name).join(", ")} (${blackjackHandValue(hand)})`;
 }
 
-function blackjackOutcome(session) {
-  const playerTotal = blackjackHandValue(session.player);
+function blackjackCurrentHand(session) {
+  return session.hands?.[session.activeHandIndex || 0] || {
+    cards: session.player || [],
+    bet: session.bet || 0,
+    doubled: Boolean(session.doubled)
+  };
+}
+
+function blackjackTotalBet(session) {
+  return (session.hands || []).reduce((sum, hand) => sum + Math.max(Math.floor(Number(hand.bet) || 0), 0), 0) || session.bet || 0;
+}
+
+function blackjackCanSplit(session) {
+  const hand = blackjackCurrentHand(session);
+  return !session.split && hand.cards?.length === 2 && hand.cards[0]?.value === hand.cards[1]?.value;
+}
+
+function blackjackOutcome(session, hand = blackjackCurrentHand(session)) {
+  const playerTotal = blackjackHandValue(hand.cards || session.player);
   const dealerTotal = blackjackHandValue(session.dealer);
-  const natural = session.player.length === 2 && playerTotal === 21;
+  const bet = hand.bet || session.bet;
+  const natural = !hand.fromSplit && (hand.cards || session.player).length === 2 && playerTotal === 21;
   const dealerNatural = session.dealer.length === 2 && dealerTotal === 21;
   if (playerTotal > 21) return { payout: 0, label: "Bust. House wins." };
-  if (natural && dealerNatural) return { payout: session.bet, label: "Both hands have natural blackjack. Push." };
-  if (natural) return { payout: Math.floor(session.bet * 2.5), label: "Natural blackjack." };
+  if (natural && dealerNatural) return { payout: bet, label: "Both hands have natural blackjack. Push." };
+  if (natural) return { payout: Math.floor(bet * 2.5), label: "Natural blackjack." };
   if (dealerNatural) return { payout: 0, label: "Dealer has natural blackjack." };
-  if (dealerTotal > 21) return { payout: session.bet * 2, label: "Dealer busts. You win." };
-  if (playerTotal > dealerTotal) return { payout: session.bet * 2, label: "You beat the dealer." };
-  if (playerTotal === dealerTotal) return { payout: session.bet, label: "Push. Bet returned." };
+  if (dealerTotal > 21) return { payout: bet * 2, label: "Dealer busts. You win." };
+  if (playerTotal > dealerTotal) return { payout: bet * 2, label: "You beat the dealer." };
+  if (playerTotal === dealerTotal) return { payout: bet, label: "Push. Bet returned." };
   return { payout: 0, label: "Dealer wins." };
 }
 
 function blackjackButtons(session, disabled = false) {
+  const hand = blackjackCurrentHand(session);
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -1775,19 +1794,28 @@ function blackjackButtons(session, disabled = false) {
         .setCustomId(`bj:${session.id}:double`)
         .setLabel("Double")
         .setStyle(ButtonStyle.Success)
-        .setDisabled(disabled || session.player.length !== 2 || session.doubled)
+        .setDisabled(disabled || hand.cards.length !== 2 || hand.doubled),
+      new ButtonBuilder()
+        .setCustomId(`bj:${session.id}:split`)
+        .setLabel("Split")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(disabled || !blackjackCanSplit(session))
     )
   ];
 }
 
 function blackjackTableText(session, revealDealer = false, footer = "Choose hit, stand, or double.") {
-  const playerTotal = blackjackHandValue(session.player);
+  const hands = session.hands || [{ cards: session.player, bet: session.bet, doubled: session.doubled }];
+  const handLines = hands.map((hand, index) => {
+    const active = !session.settled && index === (session.activeHandIndex || 0) ? " ->" : "";
+    const suffix = hand.settled ? " [done]" : hand.doubled ? " [doubled]" : "";
+    return `${active} Hand ${index + 1}: **${blackjackHandText(hand.cards)}** - Bet ${formatBread(hand.bet)}${suffix}`;
+  });
   return [
     `**Bread Blackjack**`,
-    `Bet: ${formatBread(session.bet)}`,
-    `Your hand: **${blackjackHandText(session.player)}**`,
+    `Total bet: ${formatBread(blackjackTotalBet(session))}`,
+    ...handLines,
     `Dealer hand: **${blackjackHandText(session.dealer, !revealDealer)}**`,
-    `Total: **${playerTotal}**`,
     footer
   ].join("\n");
 }
@@ -3344,6 +3372,7 @@ define({
       setPersistentCooldown(economy, "gambling", userId);
       setBreadBalance(economy, userId, balance - bet.amount);
       const deck = createBlackjackDeck();
+      const player = [drawBlackjackCard(deck), drawBlackjackCard(deck)];
       return {
         id: `${Date.now()}:${randomInt(1000, 9999)}`,
         key: sessionKey,
@@ -3352,7 +3381,9 @@ define({
         bet: bet.amount,
         originalBet: bet.amount,
         deck,
-        player: [drawBlackjackCard(deck), drawBlackjackCard(deck)],
+        player,
+        hands: [{ cards: player, bet: bet.amount, doubled: false, settled: false, fromSplit: false }],
+        activeHandIndex: 0,
         dealer: [drawBlackjackCard(deck), drawBlackjackCard(deck)],
         doubled: false,
         settled: false
@@ -3366,27 +3397,49 @@ define({
 
     blackjackSessions.set(sessionKey, session);
 
+    const advanceOrSettle = async (interaction, reason = "") => {
+      const hand = blackjackCurrentHand(session);
+      hand.settled = true;
+      while (session.activeHandIndex < session.hands.length - 1) {
+        session.activeHandIndex += 1;
+        if (!blackjackCurrentHand(session).settled) {
+          await interaction.update({
+            content: blackjackTableText(session, false, reason || "Next split hand. Hit, stand, double, or survive."),
+            components: blackjackButtons(session),
+            allowedMentions: NO_MENTIONS
+          });
+          return;
+        }
+      }
+      await settle(reason || "All hands played. Dealer resolves the table.", interaction);
+    };
+
     const settle = async (reason, interaction = null) => {
       if (session.settled) return;
       session.settled = true;
-      const playerTotal = blackjackHandValue(session.player);
-      const playerNatural = session.player.length === 2 && blackjackHandValue(session.player) === 21;
+      const playableHands = session.hands.filter((hand) => blackjackHandValue(hand.cards) <= 21);
+      const playerNatural = session.hands.length === 1 && session.hands[0].cards.length === 2 && blackjackHandValue(session.hands[0].cards) === 21;
       const dealerNatural = session.dealer.length === 2 && blackjackHandValue(session.dealer) === 21;
-      while (playerTotal <= 21 && !playerNatural && !dealerNatural && blackjackHandValue(session.dealer) < 17) {
+      while (playableHands.length && !playerNatural && !dealerNatural && blackjackHandValue(session.dealer) < 17) {
         session.dealer.push(drawBlackjackCard(session.deck));
       }
-      const outcome = blackjackOutcome(session);
+      const outcomes = session.hands.map((hand) => ({ hand, ...blackjackOutcome(session, hand) }));
+      const payout = outcomes.reduce((sum, outcome) => sum + outcome.payout, 0);
+      const totalBet = blackjackTotalBet(session);
       const balance = await updateBreadEconomy(ctx, async (economy) => {
         const current = breadBalance(economy, userId);
-        setBreadBalance(economy, userId, current + outcome.payout);
-        recordGamblingStats(economy, userId, { bet: session.bet, payout: outcome.payout, game: "Bread Blackjack" });
+        setBreadBalance(economy, userId, current + payout);
+        recordGamblingStats(economy, userId, { bet: totalBet, payout, game: "Bread Blackjack" });
         return breadBalance(economy, userId);
       });
       blackjackSessions.delete(sessionKey);
+      const resultText = outcomes
+        .map((outcome, index) => `Hand ${index + 1}: ${outcome.label} Payout ${formatBread(outcome.payout)}.`)
+        .join("\n");
       const text = blackjackTableText(
         session,
         true,
-        `${reason || outcome.label}\nPayout: ${formatBread(outcome.payout)}\nNet: ${formatNetBread(outcome.payout - session.bet)}\nBalance: ${formatBread(balance)}`
+        `${reason || "Dealer resolves the table."}\n${resultText}\nTotal payout: ${formatBread(payout)}\nNet: ${formatNetBread(payout - totalBet)}\nBalance: ${formatBread(balance)}`
       );
       if (interaction) {
         await interaction.update({ content: text, components: blackjackButtons(session, true), allowedMentions: NO_MENTIONS });
@@ -3395,7 +3448,7 @@ define({
       }
     };
 
-    if (blackjackHandValue(session.player) === 21 || blackjackHandValue(session.dealer) === 21) {
+    if (blackjackHandValue(session.hands[0].cards) === 21 || blackjackHandValue(session.dealer) === 21) {
       const message = await ctx.message.reply({
         content: blackjackTableText(session, true, "Natural check."),
         components: blackjackButtons(session, true),
@@ -3425,11 +3478,12 @@ define({
       }
 
       const action = interaction.customId.split(":").pop();
+      const hand = blackjackCurrentHand(session);
       if (action === "hit") {
-        session.player.push(drawBlackjackCard(session.deck));
-        if (blackjackHandValue(session.player) >= 21) {
-          await settle(blackjackHandValue(session.player) === 21 ? "Twenty-one. Dealer resolves the hand." : "Bust. House wins.", interaction);
-          collector.stop("settled");
+        hand.cards.push(drawBlackjackCard(session.deck));
+        if (blackjackHandValue(hand.cards) >= 21) {
+          await advanceOrSettle(interaction, blackjackHandValue(hand.cards) === 21 ? "Twenty-one. Moving along." : "Bust. Moving along.");
+          if (session.settled) collector.stop("settled");
           return;
         }
         await interaction.update({
@@ -3441,13 +3495,13 @@ define({
       }
 
       if (action === "stand") {
-        await settle("Standing. Dealer resolves the hand.", interaction);
-        collector.stop("settled");
+        await advanceOrSettle(interaction, "Standing. Moving along.");
+        if (session.settled) collector.stop("settled");
         return;
       }
 
       if (action === "double") {
-        if (session.player.length !== 2 || session.doubled) {
+        if (hand.cards.length !== 2 || hand.doubled) {
           await interaction.reply({ content: "You can only double on your first move.", ephemeral: true });
           return;
         }
@@ -3461,11 +3515,42 @@ define({
           await interaction.reply({ content: `You need another ${formatBread(session.originalBet)} to double.`, ephemeral: true });
           return;
         }
-        session.bet += session.originalBet;
-        session.doubled = true;
-        session.player.push(drawBlackjackCard(session.deck));
-        await settle("Doubled down. Dealer resolves the hand.", interaction);
-        collector.stop("settled");
+        hand.bet += session.originalBet;
+        hand.doubled = true;
+        hand.cards.push(drawBlackjackCard(session.deck));
+        await advanceOrSettle(interaction, "Doubled down. Moving along.");
+        if (session.settled) collector.stop("settled");
+        return;
+      }
+
+      if (action === "split") {
+        if (!blackjackCanSplit(session)) {
+          await interaction.reply({ content: "You can only split your first two matching-value cards.", ephemeral: true });
+          return;
+        }
+        const paid = await updateBreadEconomy(ctx, async (economy) => {
+          const current = breadBalance(economy, userId);
+          if (current < session.originalBet) return false;
+          setBreadBalance(economy, userId, current - session.originalBet);
+          return true;
+        });
+        if (!paid) {
+          await interaction.reply({ content: `You need another ${formatBread(session.originalBet)} to split.`, ephemeral: true });
+          return;
+        }
+        const [first, second] = hand.cards;
+        session.split = true;
+        session.hands = [
+          { cards: [first, drawBlackjackCard(session.deck)], bet: session.originalBet, doubled: false, settled: false, fromSplit: true },
+          { cards: [second, drawBlackjackCard(session.deck)], bet: session.originalBet, doubled: false, settled: false, fromSplit: true }
+        ];
+        session.player = session.hands[0].cards;
+        session.activeHandIndex = 0;
+        await interaction.update({
+          content: blackjackTableText(session, false, "Split into two hands. Play hand 1 first."),
+          components: blackjackButtons(session),
+          allowedMentions: NO_MENTIONS
+        });
       }
     });
 
@@ -3473,13 +3558,14 @@ define({
       if (reason === "settled" || session.settled) return;
       session.settled = true;
       blackjackSessions.delete(sessionKey);
+      const refund = blackjackTotalBet(session);
       const balance = await updateBreadEconomy(ctx, async (economy) => {
         const current = breadBalance(economy, userId);
-        setBreadBalance(economy, userId, current + session.bet);
+        setBreadBalance(economy, userId, current + refund);
         return breadBalance(economy, userId);
       });
       await message.edit({
-        content: blackjackTableText(session, true, `Hand expired. Refunded ${formatBread(session.bet)}.\nBalance: ${formatBread(balance)}`),
+        content: blackjackTableText(session, true, `Hand expired. Refunded ${formatBread(refund)}.\nBalance: ${formatBread(balance)}`),
         components: blackjackButtons(session, true),
         allowedMentions: NO_MENTIONS
       }).catch(() => {});

@@ -18,7 +18,7 @@ import {
   topCommands,
 } from "./communityFeatures.js";
 import { CHIPKITTLE_LORE } from "./chipkittleLore.js";
-import { createDashClaim } from "./dashClaims.js";
+import { createDashClaim, redeemDashClaim } from "./dashClaims.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
 import {
   PANEL_ACCESS_LEVELS,
@@ -3566,6 +3566,11 @@ export function createPanel({
     response.sendStatus(204);
   });
 
+  app.options("/api/public/dash-claim/redeem", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
   app.options("/api/public/eight-ball/*", (_request, response) => {
     setPublicApiHeaders(response);
     response.sendStatus(204);
@@ -3780,6 +3785,70 @@ export function createPanel({
       claimBread: claim?.bread || 0,
       updatedAt: new Date().toISOString()
     });
+  });
+
+  app.post("/api/public/dash-claim/redeem", async (request, response) => {
+    setPublicApiHeaders(response);
+    try {
+      const targetGuildId = getPublicGuildId();
+      const discordId = String(request.body?.discordId || "").replace(/\D/g, "");
+      if (!targetGuildId) {
+        response.status(503).json({ error: "The Discord server is not available yet." });
+        return;
+      }
+      if (!/^\d{16,22}$/.test(discordId)) {
+        response.status(400).json({ error: "Enter a valid Discord user ID." });
+        return;
+      }
+
+      const discordGuild = client.guilds.cache.get(targetGuildId);
+      const member = await discordGuild?.members.fetch(discordId).catch(() => null);
+      if (!member) {
+        response.status(404).json({ error: "That Discord ID was not found in the #CK server." });
+        return;
+      }
+
+      const claim = redeemDashClaim({
+        code: request.body?.code,
+        guildId: targetGuildId,
+        userId: discordId
+      });
+      if (!claim.ok) {
+        response.status(400).json({ error: claim.error });
+        return;
+      }
+
+      const config = store.getGuild(targetGuildId);
+      const economy = config.economy || {};
+      const balances = { ...(economy.balances || {}) };
+      const current = Math.max(Math.floor(Number(balances[discordId]) || 0), 0);
+      balances[discordId] = current + claim.bread;
+      await store.updateGuild(targetGuildId, {
+        economy: {
+          ...economy,
+          balances
+        }
+      });
+      await addAuditLog(store, targetGuildId, {
+        type: "economy",
+        label: "Dash claim redeemed",
+        details: `${member.user.tag} claimed ${claim.bread.toLocaleString()} bread from ${claim.name || "a Dash run"} on the website.`,
+        actor: "Website",
+        action: "dash_claim_redeem",
+        targetId: discordId,
+        targetTag: member.user.tag
+      }).catch(() => {});
+      response.json({
+        ok: true,
+        bread: claim.bread,
+        balance: balances[discordId],
+        userTag: member.user.tag,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Dash claim redeem failed:", error);
+      response.status(500).json({ error: "Could not redeem that claim right now." });
+    }
   });
 
   app.post("/api/public/eight-ball/create", (request, response) => {

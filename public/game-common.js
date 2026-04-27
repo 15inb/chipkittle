@@ -1,5 +1,6 @@
 const PANEL_BASE = "https://panel.chipkittle.com";
 const PLAYER_NAME_KEY = "chipkittle-player-name";
+const DISCORD_ID_KEY = "chipkittle-discord-id";
 
 export function safeName(value) {
   return String(value || "")
@@ -73,8 +74,10 @@ export function createGameServices(gameId, options) {
   } = options;
   const leaderboardUrl = `${PANEL_BASE}/api/public/game-leaderboard?game=${encodeURIComponent(gameId)}`;
   const claimUrl = `${PANEL_BASE}/api/public/dash-claim`;
+  const claimRedeemUrl = `${PANEL_BASE}/api/public/dash-claim/redeem`;
   const leaderboardKey = `chipkittle-${gameId}-leaderboard`;
   let claimRequested = false;
+  let activeClaim = null;
 
   function hydratePlayerName() {
     if (!playerName) return;
@@ -113,9 +116,68 @@ export function createGameServices(gameId, options) {
   }
 
   function setClaimCard(message, code = "", amount = 0) {
+    activeClaim = code ? { code, amount: Number(amount) || 0 } : null;
+    const savedDiscordId = localStorage.getItem(DISCORD_ID_KEY) || "";
     claimCard.innerHTML = code
-      ? `<span>Discord claim</span><strong>${escapeHtml(code)}</strong><small>Use <code>!claimdash ${escapeHtml(code)}</code> for ${Number(amount) || 0} bread.</small>`
+      ? `
+          <span>Discord claim</span>
+          <strong>${escapeHtml(code)}</strong>
+          <small>Use <code>!claimdash ${escapeHtml(code)}</code> for ${Number(amount) || 0} bread, or claim straight from here.</small>
+          <div class="claim-actions">
+            <button type="button" data-copy-claim>Copy Command</button>
+          </div>
+          <form class="claim-direct-form" data-direct-claim>
+            <label>
+              Discord ID
+              <input name="discordId" inputmode="numeric" maxlength="22" value="${escapeHtml(savedDiscordId)}" placeholder="Your Discord user ID">
+            </label>
+            <button type="submit">Claim to Discord</button>
+          </form>
+          <small data-claim-status></small>
+        `
       : `<span>Discord claim</span><small>${escapeHtml(message)}</small>`;
+  }
+
+  function setClaimStatus(message = "") {
+    const status = claimCard?.querySelector("[data-claim-status]");
+    if (status) status.textContent = message;
+  }
+
+  async function copyClaimCommand() {
+    if (!activeClaim?.code) return;
+    const command = `!claimdash ${activeClaim.code}`;
+    try {
+      await navigator.clipboard.writeText(command);
+      setClaimStatus("Copied claim command.");
+    } catch {
+      setClaimStatus(`Copy failed. Command: ${command}`);
+    }
+  }
+
+  async function redeemClaimDirect(form) {
+    if (!activeClaim?.code) return;
+    const discordId = String(new FormData(form).get("discordId") || "").replace(/\D/g, "");
+    if (!/^\d{16,22}$/.test(discordId)) {
+      setClaimStatus("Enter a valid Discord user ID.");
+      form.querySelector("input[name='discordId']")?.focus();
+      return;
+    }
+
+    localStorage.setItem(DISCORD_ID_KEY, discordId);
+    setClaimStatus("Claiming bread...");
+    try {
+      const response = await fetch(claimRedeemUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: activeClaim.code, discordId })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Claim failed.");
+      setClaimCard(`Claimed ${Number(payload.bread || 0).toLocaleString()} bread for ${payload.userTag || discordId}. Balance: ${Number(payload.balance || 0).toLocaleString()} bread.`);
+      claimRequested = true;
+    } catch (error) {
+      setClaimStatus(error?.message || "Claim failed.");
+    }
   }
 
   function renderLeaderboard(scores = loadLocalLeaderboard(leaderboardKey)) {
@@ -228,6 +290,17 @@ export function createGameServices(gameId, options) {
       persistPlayerName();
     });
   }
+  claimCard?.addEventListener("click", (event) => {
+    if (event.target?.closest?.("[data-copy-claim]")) {
+      copyClaimCommand();
+    }
+  });
+  claimCard?.addEventListener("submit", (event) => {
+    const form = event.target?.closest?.("[data-direct-claim]");
+    if (!form) return;
+    event.preventDefault();
+    redeemClaimDirect(form);
+  });
 
   return {
     hydratePlayerName,

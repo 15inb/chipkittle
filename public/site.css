@@ -1266,6 +1266,51 @@ a {
   font-weight: 950;
 }
 
+.claim-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.claim-actions button,
+.claim-direct-form button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--green);
+  color: var(--white);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.claim-direct-form {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.claim-direct-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--soft-ink);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.claim-direct-form input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--card-bg);
+  color: var(--ink);
+  font: inherit;
+}
+
 .leaderboard {
   display: grid;
   gap: 10px;
