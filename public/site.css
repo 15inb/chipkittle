@@ -1797,6 +1797,54 @@ a {
   color: var(--green-dark);
 }
 
+.status-hero-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: -18px 0 24px;
+  padding: clamp(22px, 4vw, 34px);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 90% 20%, rgba(82, 215, 101, 0.22), transparent 34%),
+    var(--card-bg);
+  box-shadow: 0 30px 86px rgba(16, 25, 21, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.status-hero-card strong {
+  display: block;
+  font-size: clamp(30px, 5vw, 54px);
+  line-height: 0.98;
+  margin-bottom: 10px;
+}
+
+.status-hero-card p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--soft-ink);
+  font-size: 18px;
+  line-height: 1.55;
+}
+
+.status-hero-card > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.14);
+  color: #ef4444;
+  font-weight: 950;
+}
+
+.status-hero-card.is-online > span {
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
 .member-grid,
 .commit-list {
   display: grid;
@@ -1806,6 +1854,36 @@ a {
   border-radius: 12px;
   background: var(--line);
   box-shadow: 0 30px 86px rgba(16, 25, 21, 0.12);
+}
+
+.commit-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: -18px 0 24px;
+}
+
+.commit-summary-grid article {
+  min-height: 112px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card-bg);
+  box-shadow: 0 20px 55px rgba(16, 25, 21, 0.1);
+  backdrop-filter: blur(18px);
+}
+
+.commit-summary-grid strong {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.commit-summary-grid span {
+  color: var(--soft-ink);
+  font-weight: 750;
 }
 
 .member-card,
@@ -1860,6 +1938,28 @@ a {
   display: grid;
   min-width: 0;
   gap: 8px;
+}
+
+.commit-title-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.commit-title-line em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--green-dark);
+  background: var(--green-soft);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .commit-details {
@@ -1935,6 +2035,15 @@ a {
   .mines-shell,
   .game-shell {
     grid-template-columns: 1fr;
+  }
+
+  .commit-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .status-hero-card {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .pool-layout,

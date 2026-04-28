@@ -36,7 +36,13 @@
     <section class="page-head">
       <p class="eyebrow">Build log</p>
       <h1>Recent Commits</h1>
-      <p>Public changes from the Chipkittle repository, pulled straight from GitHub.</p>
+      <p>Public changes from the Chipkittle repository, pulled straight from GitHub and translated into something closer to a changelog.</p>
+    </section>
+
+    <section class="commit-summary-grid" id="commitSummary">
+      <article><strong>Loading</strong><span>Latest change</span></article>
+      <article><strong>--</strong><span>Commits shown</span></article>
+      <article><strong>GitHub</strong><span>Source</span></article>
     </section>
 
     <section class="commit-shell">
@@ -49,6 +55,7 @@
   <script>
     const { readCachedJson, fetchCachedJson } = window.ChipkittleSite;
     const list = document.querySelector("#commitList");
+    const summary = document.querySelector("#commitSummary");
     const cacheKey = "chipkittle-public-commits-v1";
     const cacheTtlMs = 5 * 60 * 1000;
 
@@ -83,6 +90,27 @@
         .slice(0, 6);
     }
 
+    function relativeDate(value) {
+      const time = value ? new Date(value).getTime() : NaN;
+      if (!Number.isFinite(time)) return "Unknown";
+      const seconds = Math.max(0, Math.floor((Date.now() - time) / 1000));
+      if (seconds >= 86400) return `${Math.floor(seconds / 86400)}d ago`;
+      if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h ago`;
+      if (seconds >= 60) return `${Math.floor(seconds / 60)}m ago`;
+      return "Just now";
+    }
+
+    function categoryForCommit(item) {
+      const message = normalizeMessage(item.commit?.message || "").toLowerCase();
+      const files = [item.commit?.url || "", item.html_url || ""].join(" ").toLowerCase();
+      const haystack = `${message} ${files}`;
+      if (haystack.includes("panel") || haystack.includes("oauth") || haystack.includes("access")) return "Panel";
+      if (haystack.includes("game") || haystack.includes("8ball") || haystack.includes("dash")) return "Games";
+      if (haystack.includes("public") || haystack.includes("site") || haystack.includes("homepage")) return "Public site";
+      if (haystack.includes("workflow") || haystack.includes("deploy") || haystack.includes("commit")) return "Ops";
+      return "Bot";
+    }
+
     function renderCommits(commits) {
       if (!Array.isArray(commits) || commits.length === 0) {
         list.innerHTML = '<p class="empty">No commits could be loaded right now.</p>';
@@ -94,6 +122,13 @@
         return !message.includes("silent") && !message.startsWith("merge branch 'main'");
       });
 
+      const latest = visibleCommits[0];
+      summary.innerHTML = `
+        <article><strong>${text(relativeDate(latest?.commit?.author?.date))}</strong><span>Latest change</span></article>
+        <article><strong>${visibleCommits.length}</strong><span>Commits shown</span></article>
+        <article><strong>${text(displayAuthor(latest?.commit?.author?.name))}</strong><span>Latest author</span></article>
+      `;
+
       list.innerHTML = visibleCommits.map((item) => {
         const hash = text(item.sha || "");
         const shortHash = hash.slice(0, 7);
@@ -101,14 +136,15 @@
         const subject = text(message.split("\n")[0] || "Untitled commit");
         const details = commitDetails(message);
         const author = text(displayAuthor(item.commit?.author?.name));
-        const date = item.commit?.author?.date ? new Date(item.commit.author.date).toLocaleDateString() : "";
+        const date = item.commit?.author?.date ? relativeDate(item.commit.author.date) : "";
         const url = item.html_url || "https://github.com/15inb/chipkittle";
+        const category = text(categoryForCommit(item));
 
         return `
           <a class="commit-row" href="${text(url)}" target="_blank" rel="noreferrer">
             <code>${shortHash}</code>
             <span>
-              <strong>${subject}</strong>
+              <span class="commit-title-line"><strong>${subject}</strong><em>${category}</em></span>
               ${details.length ? `<span class="commit-details">${details.map((line) => `<span>${text(line)}</span>`).join("")}</span>` : ""}
             </span>
             <small>${author}${date ? ` / ${text(date)}` : ""}</small>

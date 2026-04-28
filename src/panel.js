@@ -2371,7 +2371,32 @@ function layout({ title, body, user, flash = "" }) {
 </html>`;
 }
 
-function loginPage(error = "", discordUrl = "") {
+function oauthExpectedRedirect(publicUrl = "") {
+  const base = publicUrl || "https://panel.chipkittle.com";
+  try {
+    return new URL("/auth/discord/callback", base).toString();
+  } catch {
+    return "https://panel.chipkittle.com/auth/discord/callback";
+  }
+}
+
+function oauthConfigRows({ publicUrl = "", clientId = "", discordClientSecret = "", redirectUri = "" } = {}) {
+  const rows = [
+    ["PUBLIC_URL", publicUrl || "missing"],
+    ["CLIENT_ID", clientId || "missing"],
+    ["DISCORD_CLIENT_SECRET", discordClientSecret ? "set" : "missing"],
+    ["Discord redirect URI", redirectUri || oauthExpectedRedirect(publicUrl)]
+  ];
+  return rows.map(([label, value]) => `
+    <div class="oauth-check-row">
+      <span>${escapeHtml(label)}</span>
+      <code>${escapeHtml(value)}</code>
+    </div>
+  `).join("");
+}
+
+function loginPage(error = "", discordUrl = "", oauthInfo = {}) {
+  const redirectUri = oauthInfo.redirectUri || oauthExpectedRedirect(oauthInfo.publicUrl);
   return layout({
     title: "Sign in",
     body: `
@@ -2389,6 +2414,19 @@ function loginPage(error = "", discordUrl = "") {
           <p class="field-help">If you were granted access before, sign in with the same Discord account. Password logins are disabled.</p>
           <a class="primary-link secondary-link" href="/recovery">Use root recovery code</a>
         </div>
+      </section>
+      <section class="panel-section oauth-diagnostics">
+        <div class="section-heading">
+          <h2>OAuth Setup Check</h2>
+          <p>Discord must have this exact redirect URI saved in the Developer Portal. Tiny differences count.</p>
+        </div>
+        <div class="oauth-redirect-copy">
+          <code>${escapeHtml(redirectUri)}</code>
+        </div>
+        <div class="oauth-check-list">
+          ${oauthConfigRows({ ...oauthInfo, redirectUri })}
+        </div>
+        <p class="field-help">Developer Portal path: Application &rarr; OAuth2 &rarr; Redirects. Save the redirect above, then restart the panel after changing <code>.env</code>.</p>
       </section>
     `
   });
@@ -2409,6 +2447,19 @@ function accountFlash(code = "") {
     "all-sessions-revoked": "All other panel sessions were signed out."
   };
   return messages[String(code || "")] || "";
+}
+
+function formatAccessExpiry(expiresAt = "") {
+  if (!expiresAt) return { label: "Never", warning: "" };
+  const time = Date.parse(expiresAt);
+  if (!Number.isFinite(time)) return { label: expiresAt, warning: "" };
+  const ms = time - Date.now();
+  if (ms <= 0) return { label: expiresAt, warning: "Expired" };
+  const days = Math.ceil(ms / (24 * 60 * 60 * 1000));
+  return {
+    label: expiresAt,
+    warning: days <= 7 ? `Expires in ${days} day${days === 1 ? "" : "s"}` : ""
+  };
 }
 
 function recoveryPage(error = "", success = "") {
@@ -2441,6 +2492,8 @@ function recoveryPage(error = "", success = "") {
 }
 
 function accountPage({ panelUser, sessions = [], currentSessionId = "", flash = "", isRoot = false }) {
+  const expiry = formatAccessExpiry(panelUser.expiresAt || "");
+  const currentSession = sessions.find((sessionEntry) => sessionEntry.id === currentSessionId);
   return layout({
     title: "My account",
     user: true,
@@ -2451,11 +2504,14 @@ function accountPage({ panelUser, sessions = [], currentSessionId = "", flash = 
           <h2>My Account</h2>
           <p>Discord OAuth is the required sign-in method. Recovery passwords are kept only for account administration and future recovery workflows.</p>
         </div>
+        ${expiry.warning ? `<p class="form-error">${escapeHtml(expiry.warning)}. Ask a root user to extend access if you still need the panel.</p>` : ""}
         <div class="stats-grid">
           <article class="stat-card"><strong>${escapeHtml(panelUser.username || panelUser.userId)}</strong><span>Discord account</span></article>
           <article class="stat-card"><strong>${escapeHtml(panelAccessLabel(panelUser.level))}</strong><span>Access level</span></article>
           <article class="stat-card"><strong>${escapeHtml(panelUser.lastLoginAt || "Unknown")}</strong><span>Last login</span></article>
-          <article class="stat-card"><strong>${escapeHtml(panelUser.expiresAt || "Never")}</strong><span>Access expires</span></article>
+          <article class="stat-card"><strong>${escapeHtml(expiry.label)}</strong><span>Access expires</span></article>
+          <article class="stat-card"><strong>${escapeHtml(currentSession?.ip || panelUser.lastLoginIp || "Unknown")}</strong><span>Current IP</span></article>
+          <article class="stat-card"><strong>${sessions.length}</strong><span>Tracked sessions</span></article>
         </div>
       </section>
       <section class="panel-section">
@@ -3811,6 +3867,15 @@ export function createPanel({
     return new URL("/auth/discord/callback", base).toString();
   }
 
+  function oauthDiagnosticInfo(request) {
+    return {
+      publicUrl,
+      clientId,
+      discordClientSecret,
+      redirectUri: oauthRedirectUri(request)
+    };
+  }
+
   function discordOAuthUrl(request) {
     if (!clientId || !discordClientSecret) return "";
     const state = crypto.randomBytes(OAUTH_STATE_BYTES).toString("base64url");
@@ -3832,6 +3897,7 @@ export function createPanel({
     const messages = {
       denied: "That Discord account does not have panel access.",
       oauth: "Discord sign-in failed. Try again in a moment.",
+      "oauth-redirect": "Discord rejected the OAuth redirect URI. Copy the exact redirect below into the Discord Developer Portal.",
       state: "That sign-in session expired. Please try again.",
       lockout: "Emergency lockout is active. Only root users can sign in.",
       "access-expired": "Your panel access is expired or revoked.",
@@ -4468,7 +4534,7 @@ export function createPanel({
       return;
     }
 
-    response.send(loginPage(loginErrorMessage(request.query.error), discordOAuthUrl(request)));
+    response.send(loginPage(loginErrorMessage(request.query.error), discordOAuthUrl(request), oauthDiagnosticInfo(request)));
   });
 
   app.post("/login", (request, response) => {
@@ -4536,7 +4602,7 @@ export function createPanel({
     const url = discordOAuthUrl(request);
     if (!url) {
       recordFailedLogin(request, "discord-oauth");
-      response.status(503).send(loginPage("Discord OAuth is not configured. Set DISCORD_CLIENT_SECRET and restart the panel.", ""));
+      response.status(503).send(loginPage("Discord OAuth is not configured. Set DISCORD_CLIENT_SECRET and restart the panel.", "", oauthDiagnosticInfo(request)));
       return;
     }
     response.redirect(url);
@@ -4566,7 +4632,12 @@ export function createPanel({
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: tokenBody
       });
-      if (!tokenResponse.ok) throw new Error(`Token exchange failed: ${tokenResponse.status}`);
+      if (!tokenResponse.ok) {
+        const body = await tokenResponse.text().catch(() => "");
+        const error = new Error(`Token exchange failed: ${tokenResponse.status} ${body}`);
+        error.oauthRedirectProblem = /redirect_uri|invalid_grant/i.test(body);
+        throw error;
+      }
       const token = await tokenResponse.json();
       const userResponse = await fetch("https://discord.com/api/users/@me", {
         headers: { Authorization: `Bearer ${token.access_token}` }
@@ -4589,7 +4660,7 @@ export function createPanel({
       console.error("Discord OAuth login failed:", error);
       recordFailedLogin(request, "discord-oauth");
       await auditPanelLogin(currentPanelGuildId(), "Panel OAuth failed", `OAuth callback failed from ${request.ip}.`, "Panel Auth");
-      response.redirect("/login?error=oauth");
+      response.redirect(`/login?error=${error.oauthRedirectProblem ? "oauth-redirect" : "oauth"}`);
     }
   });
 

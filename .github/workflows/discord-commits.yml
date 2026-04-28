@@ -90,6 +90,28 @@ jobs:
           removed = set()
           changelog_lines = []
           commit_lines = []
+          category_lines = {
+              "Panel": [],
+              "Bot": [],
+              "Public site": [],
+              "Games": [],
+              "Config/CI": [],
+              "Other": [],
+          }
+
+          def commit_category(title, changed_files):
+              haystack = f"{title} {' '.join(changed_files)}".lower()
+              if any(token in haystack for token in ["panel", "oauth", "access", "audit", "session"]):
+                  return "Panel"
+              if any(token in haystack for token in ["public/", "website", "homepage", "site.css", "commits.html", "status.html", "members.html", "relax"]):
+                  return "Public site"
+              if any(token in haystack for token in ["8ball", "runner", "dash", "mines", "catch", "loaf", "game"]):
+                  return "Games"
+              if any(token in haystack for token in [".github", "workflow", "deploy", "package", "config", "env"]):
+                  return "Config/CI"
+              if any(token in haystack for token in ["command", "bot", "ai", "economy", "gambling", "moderation", "ticket", "application", "tts"]):
+                  return "Bot"
+              return "Other"
 
           for commit in commits[-8:]:
               message = normalize_message(commit.get("message") or "")
@@ -97,6 +119,13 @@ jobs:
               title = (title or "Untitled commit")[:120]
               commit_sha = (commit.get("id") or "")[:7]
               commit_author = (commit.get("author") or {}).get("name") or author
+              changed_files = [
+                  *(commit.get("added") or []),
+                  *(commit.get("modified") or []),
+                  *(commit.get("removed") or []),
+              ]
+              category = commit_category(title, changed_files)
+              category_lines[category].append(f"+ {title} ({commit_sha})")
               commit_lines.append(f"+ {title} ({commit_sha} by {commit_author})")
 
               for line in body_lines:
@@ -124,7 +153,13 @@ jobs:
 
           file_summary = shorten_lines(file_sections, max_chars=950, max_lines=6) if file_sections else "Files changed are listed on the public commit page."
           commit_count = len(commits) or 1
-          changelog_block = shorten_lines(changelog_lines, max_chars=1200, max_lines=12)
+          category_block_lines = []
+          for category, lines in category_lines.items():
+              if lines:
+                  category_block_lines.append(f"@@ {category} @@")
+                  category_block_lines.extend(lines[:5])
+          changelog_block = shorten_lines(category_block_lines or changelog_lines, max_chars=1200, max_lines=14)
+          details_block = shorten_lines(changelog_lines, max_chars=900, max_lines=8)
           commit_block = shorten_lines(commit_lines, max_chars=900, max_lines=8)
 
           relative_time = "Just now"
@@ -154,8 +189,10 @@ jobs:
                       "description": (
                           f"**{relative_time}**\n\n"
                           f"[View the public commit page]({commits_url})\n\n"
-                          "**What changed**\n"
+                          "**Changelog**\n"
                           f"```diff\n{changelog_block}\n```\n"
+                          "**Details**\n"
+                          f"```diff\n{details_block}\n```\n"
                           "**Commits included**\n"
                           f"```diff\n{commit_block}\n```"
                       ),

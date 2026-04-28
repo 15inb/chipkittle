@@ -452,7 +452,8 @@ export function communitySnapshot(config = {}) {
     moderationActions: totals.moderationActions,
     casesOpened: totals.casesOpened,
     artifactsRegistered: totals.artifactsRegistered,
-    shopPurchases: totals.shopPurchases
+    shopPurchases: totals.shopPurchases,
+    suggestions: Array.isArray(community.suggestions) ? community.suggestions.length : 0
   };
 }
 

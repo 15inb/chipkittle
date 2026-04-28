@@ -2187,6 +2187,30 @@ define({
 });
 
 define({
+  name: "oauthcheck",
+  aliases: ["paneloauth", "redirectcheck"],
+  category: "Config",
+  description: "Show the exact Discord OAuth redirect URI the panel expects.",
+  async run(ctx) {
+    if (!requirePanelRoot(ctx)) return;
+    const publicUrl = String(ctx.publicUrl || "").replace(/\/+$/, "");
+    const redirectUri = publicUrl
+      ? `${publicUrl}/auth/discord/callback`
+      : "PUBLIC_URL is not configured";
+    const rows = [
+      `**Panel OAuth Check**`,
+      `PUBLIC_URL: ${ctx.publicUrl || "not configured"}`,
+      `Expected Discord redirect URI:`,
+      `\`${redirectUri}\``,
+      "",
+      "Discord Developer Portal path: Application -> OAuth2 -> Redirects.",
+      "The saved redirect must match exactly, including https and no extra slash."
+    ];
+    await ctx.message.reply(rows.join("\n"));
+  }
+});
+
+define({
   name: "configdoctor",
   aliases: ["doctor", "configaudit"],
   category: "Config",

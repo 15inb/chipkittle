@@ -31,7 +31,14 @@
     <section class="page-head">
       <p class="eyebrow">Telemetry</p>
       <h1>Artifact Status</h1>
-      <p>Live runtime stats, ritual state, and the health of the current Chipkittle apparatus.</p>
+      <p>Live runtime stats, ritual state, and whether the current Chipkittle apparatus is behaving like a tool or a haunted cabinet.</p>
+    </section>
+    <section class="status-hero-card" id="statusHero">
+      <div>
+        <strong>Checking signal</strong>
+        <p>Consulting the panel feed.</p>
+      </div>
+      <span>...</span>
     </section>
     <section class="feature-grid status-cards" id="statusCards">
       <article><strong>Loading</strong><p>Consulting the panel.</p></article>
@@ -42,17 +49,37 @@
     const cards = document.querySelector("#statusCards");
     const cacheKey = "chipkittle-public-status-v1";
     const cacheTtlMs = 60 * 1000;
+    const hero = document.querySelector("#statusHero");
+
+    function text(value) {
+      return String(value || "").replace(/[&<>"']/g, (match) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[match]));
+    }
 
     function renderStatus(payload) {
+      const ready = Boolean(payload.ready);
+      hero.classList.toggle("is-online", ready);
+      hero.innerHTML = `
+        <div>
+          <strong>${ready ? "Chipkittle is awake" : "Chipkittle is sleeping"}</strong>
+          <p>${text(payload.botTag || "The bot")} ${ready ? "is connected, listening, and probably judging the channel." : "is currently disconnected from Discord."}</p>
+        </div>
+        <span>${ready ? "Online" : "Offline"}</span>
+      `;
       cards.innerHTML = `
-        <article><strong>${payload.ready ? "Online" : "Offline"}</strong><p>${payload.botTag || "Chipkittle"} is ${payload.ready ? "connected and responsive." : "currently disconnected."}</p></article>
-        <article><strong>${payload.guildCount || 0}</strong><p>Guilds connected</p></article>
-        <article><strong>${payload.memberCount || 0}</strong><p>Members in the primary server</p></article>
-        <article><strong>${payload.snapshot?.commandsRun || 0}</strong><p>Total tracked command runs</p></article>
+        <article><strong>${payload.guildCount || 0}</strong><p>Connected server count</p></article>
+        <article><strong>${payload.memberCount || 0}</strong><p>Members in the primary den</p></article>
+        <article><strong>${payload.snapshot?.commandsRun || 0}</strong><p>Tracked command runs</p></article>
         <article><strong>${payload.snapshot?.aiReplies || 0}</strong><p>AI replies recorded</p></article>
         <article><strong>${payload.snapshot?.applicationsOpened || 0}</strong><p>Applications opened</p></article>
-        <article><strong>${payload.currentEvent || "No event set"}</strong><p>Current ritual</p></article>
-        <article><strong>${payload.seasonalMessage || "No season set"}</strong><p>Seasonal message</p></article>
+        <article><strong>${text(payload.currentEvent || "No event set")}</strong><p>Current ritual</p></article>
+        <article><strong>${text(payload.seasonalMessage || "No season set")}</strong><p>Seasonal message</p></article>
+        <article><strong>${payload.snapshot?.suggestions || 0}</strong><p>Suggestions handled</p></article>
       `;
     }
 
