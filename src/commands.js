@@ -55,6 +55,7 @@ import {
   normalizePanelAccessLevel,
   panelAccessAtLeast,
   panelAccessLabel,
+  panelAccessRank,
   panelAccessUsers,
   randomPanelPassword
 } from "./panelAccess.js";
@@ -1139,6 +1140,86 @@ function botCanSend(channel) {
   return permissions.has(PermissionsBitField.Flags.ViewChannel) && permissions.has(PermissionsBitField.Flags.SendMessages);
 }
 
+function botPermissionSummary(channel, extraPermissions = []) {
+  const me = channel?.guild?.members?.me;
+  if (!channel || !me) return "missing channel";
+  const permissions = me.permissionsIn(channel);
+  const required = [
+    PermissionsBitField.Flags.ViewChannel,
+    PermissionsBitField.Flags.SendMessages,
+    ...extraPermissions
+  ];
+  const missing = required.filter((permission) => !permissions.has(permission));
+  return missing.length ? `missing ${missing.length} required permission${missing.length === 1 ? "" : "s"}` : "ready";
+}
+
+function configuredChannelRefs(config = {}) {
+  const refs = [
+    ["Welcome channel", config.welcome?.channelId],
+    ["Moderation log", config.moderation?.logChannelId],
+    ["Application start", config.applications?.channelId],
+    ["Application threads", config.applications?.threadChannelId],
+    ["Application category", config.applications?.categoryId],
+    ["Game record alerts", config.publicSite?.games?.recordAlertChannelId],
+    ...((config.ai?.channelIds || []).map((id) => [`AI chat ${id}`, id])),
+    ...((config.ai?.blacklistedChannelIds || []).map((id) => [`AI blacklist ${id}`, id]))
+  ];
+  return refs.filter(([, id]) => id);
+}
+
+function configuredRoleRefs(config = {}) {
+  const refs = [
+    ["Autorole", config.autoRoleId],
+    ["Application approved", config.applications?.approvedRoleId],
+    ...((config.applications?.reviewerRoleIds || []).map((id) => [`Application reviewer ${id}`, id])),
+    ...((config.applications?.blockedRoleIds || []).map((id) => [`Application blocked ${id}`, id])),
+    ...((config.ai?.allowedRoleIds || []).map((id) => [`AI allowed ${id}`, id]))
+  ];
+  for (const [commandName, roleIds] of Object.entries(config.commandRoles?.overrides || {})) {
+    for (const roleId of roleIds || []) refs.push([`Command override ${commandName}`, roleId]);
+  }
+  return refs.filter(([, id]) => id);
+}
+
+function missingConfiguredRefs(guild, config = {}) {
+  const missingChannels = configuredChannelRefs(config)
+    .filter(([, id]) => !guild.channels.cache.has(id))
+    .map(([label, id]) => `${label}: ${id}`);
+  const missingRoles = configuredRoleRefs(config)
+    .filter(([, id]) => !guild.roles.cache.has(id))
+    .map(([label, id]) => `${label}: ${id}`);
+  return { missingChannels, missingRoles };
+}
+
+function compactRows(rows = [], limit = 12) {
+  if (!rows.length) return "None.";
+  const visible = rows.slice(0, limit);
+  const hidden = rows.length - visible.length;
+  return `${visible.join("\n")}${hidden > 0 ? `\n...and ${hidden} more.` : ""}`;
+}
+
+function localGitRevision() {
+  try {
+    const head = fs.readFileSync(path.join(process.cwd(), ".git", "HEAD"), "utf8").trim();
+    if (head.startsWith("ref:")) {
+      const refPath = head.replace("ref:", "").trim();
+      return fs.readFileSync(path.join(process.cwd(), ".git", refPath), "utf8").trim().slice(0, 7);
+    }
+    return head.slice(0, 7);
+  } catch {
+    return "unknown";
+  }
+}
+
+function countNestedEntries(value = {}) {
+  return Object.values(value || {}).reduce((sum, entry) => {
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      return sum + Object.keys(entry).length;
+    }
+    return sum + 1;
+  }, 0);
+}
+
 function splitArgs(content, prefix) {
   const withoutPrefix = content.slice(prefix.length).trim();
   const parts = withoutPrefix.split(/\s+/);
@@ -2102,6 +2183,399 @@ define({
     ];
 
     await ctx.message.reply(rows.join("\n"));
+  }
+});
+
+define({
+  name: "configdoctor",
+  aliases: ["doctor", "configaudit"],
+  category: "Config",
+  description: "Find missing channel and role references in saved config.",
+  usage: "configdoctor [repair]",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const repair = ctx.args[0]?.toLowerCase() === "repair";
+    const { missingChannels, missingRoles } = missingConfiguredRefs(ctx.message.guild, ctx.config);
+
+    if (!repair) {
+      await ctx.message.reply([
+        `**Config Doctor**`,
+        `Missing channels: **${missingChannels.length}**`,
+        compactRows(missingChannels),
+        "",
+        `Missing roles: **${missingRoles.length}**`,
+        compactRows(missingRoles),
+        "",
+        `Run \`${ctx.config.prefix}configdoctor repair\` to remove missing AI/app/public references that are safe to clean automatically.`
+      ].join("\n"));
+      return;
+    }
+
+    if (!requirePanelRoot(ctx)) return;
+    const guild = ctx.message.guild;
+    const keepChannel = (id) => !id || guild.channels.cache.has(id);
+    const keepRole = (id) => !id || guild.roles.cache.has(id);
+    const nextCommandOverrides = Object.fromEntries(
+      Object.entries(ctx.config.commandRoles?.overrides || {})
+        .map(([commandName, roleIds]) => [
+          commandName,
+          (roleIds || []).filter((roleId) => guild.roles.cache.has(roleId))
+        ])
+        .filter(([, roleIds]) => roleIds.length)
+    );
+
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      welcome: { ...ctx.config.welcome, channelId: keepChannel(ctx.config.welcome.channelId) ? ctx.config.welcome.channelId : "" },
+      autoRoleId: keepRole(ctx.config.autoRoleId) ? ctx.config.autoRoleId : "",
+      moderation: { ...ctx.config.moderation, logChannelId: keepChannel(ctx.config.moderation.logChannelId) ? ctx.config.moderation.logChannelId : "" },
+      applications: {
+        ...ctx.config.applications,
+        channelId: keepChannel(ctx.config.applications.channelId) ? ctx.config.applications.channelId : "",
+        threadChannelId: keepChannel(ctx.config.applications.threadChannelId) ? ctx.config.applications.threadChannelId : "",
+        categoryId: keepChannel(ctx.config.applications.categoryId) ? ctx.config.applications.categoryId : "",
+        approvedRoleId: keepRole(ctx.config.applications.approvedRoleId) ? ctx.config.applications.approvedRoleId : "",
+        reviewerRoleIds: (ctx.config.applications.reviewerRoleIds || []).filter(keepRole),
+        blockedRoleIds: (ctx.config.applications.blockedRoleIds || []).filter(keepRole)
+      },
+      ai: {
+        ...ctx.config.ai,
+        channelIds: (ctx.config.ai.channelIds || []).filter(keepChannel),
+        blacklistedChannelIds: (ctx.config.ai.blacklistedChannelIds || []).filter(keepChannel),
+        allowedRoleIds: (ctx.config.ai.allowedRoleIds || []).filter(keepRole)
+      },
+      publicSite: {
+        ...ctx.config.publicSite,
+        games: {
+          ...ctx.config.publicSite.games,
+          recordAlertChannelId: keepChannel(ctx.config.publicSite?.games?.recordAlertChannelId) ? ctx.config.publicSite.games.recordAlertChannelId : ""
+        }
+      },
+      commandRoles: {
+        ...ctx.config.commandRoles,
+        overrides: nextCommandOverrides
+      }
+    });
+    await ctx.message.reply(`Config repair complete. Removed **${missingChannels.length}** missing channel reference${missingChannels.length === 1 ? "" : "s"} and **${missingRoles.length}** missing role reference${missingRoles.length === 1 ? "" : "s"} where safe.`);
+  }
+});
+
+define({
+  name: "permissionaudit",
+  aliases: ["permaudit", "botperms"],
+  category: "Config",
+  description: "Audit bot permissions in important configured channels.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const rows = [
+      ["Moderation log", textChannelById(ctx.message.guild, ctx.config.moderation?.logChannelId), []],
+      ["Application start", textChannelById(ctx.message.guild, ctx.config.applications?.channelId), []],
+      ["Application threads", textChannelById(ctx.message.guild, ctx.config.applications?.threadChannelId || ctx.config.applications?.channelId), [
+        PermissionsBitField.Flags.CreatePrivateThreads,
+        PermissionsBitField.Flags.ManageThreads,
+        PermissionsBitField.Flags.SendMessagesInThreads
+      ]],
+      ["Game record alerts", textChannelById(ctx.message.guild, gameRecordChannelId(ctx.config)), []],
+      ...((ctx.config.ai.channelIds || []).map((id) => [`AI channel ${id}`, textChannelById(ctx.message.guild, id), []]))
+    ].map(([label, channel, extras]) => `${channel ? `${channel}` : "Missing"} - **${label}**: ${botPermissionSummary(channel, extras)}`);
+
+    await ctx.message.reply([`**Bot Permission Audit**`, compactRows(rows, 16)].join("\n"));
+  }
+});
+
+define({
+  name: "securitycheck",
+  aliases: ["accessaudit", "panelsecurity"],
+  category: "Config",
+  description: "Review risky panel, AI, and command-access settings.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const panelUsers = Object.values(panelAccessUsers(ctx.config)).filter((user) => !user.revokedAt);
+    const rootUsers = panelUsers.filter((user) => normalizePanelAccessLevel(user.level) === "root");
+    const grantOverrides = ctx.config.commandRoles?.overrides?.grantaccess || [];
+    const rows = [
+      healthLine(rootUsers.length > 0, "Root panel users", `${rootUsers.length} active`),
+      healthLine(grantOverrides.length > 0, "Grant access roles", grantOverrides.length ? grantOverrides.map((roleId) => `<@&${roleId}>`).join(", ") : "only root users through fallback"),
+      healthLine((ctx.config.ai.allowedRoleIds || []).length > 0 || !ctx.config.ai.enabled, "AI role gate", ctx.config.ai.enabled ? ((ctx.config.ai.allowedRoleIds || []).length ? "restricted" : "everyone can use AI") : "AI disabled"),
+      healthLine(ctx.config.ai.monthlyBudget > 0 || !ctx.config.ai.enabled, "AI monthly budget", ctx.config.ai.enabled ? (ctx.config.ai.monthlyBudget ? `${ctx.config.ai.monthlyBudget.toLocaleString()} estimated tokens` : "unlimited") : "AI disabled"),
+      healthLine(true, "Backups", "restore center is root-only"),
+      healthLine(Boolean(ctx.config.moderation?.logChannelId), "Moderation logs", ctx.config.moderation?.logChannelId ? `<#${ctx.config.moderation.logChannelId}>` : "not configured")
+    ];
+    await ctx.message.reply([`**Security Check**`, ...rows].join("\n"));
+  }
+});
+
+define({
+  name: "appcleanup",
+  aliases: ["applicationcleanup", "cleanstaleapps"],
+  category: "Applications",
+  description: "Clean saved application tickets whose review threads are gone.",
+  usage: "appcleanup [run]",
+  async run(ctx) {
+    if (!isApplicationStaff(ctx) && !requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const run = ctx.args[0]?.toLowerCase() === "run";
+    const tickets = Object.entries(ctx.config.applications?.tickets || {});
+    const stale = [];
+    for (const [userId, ticket] of tickets) {
+      const channel = ticket.channelId ? await ctx.client.channels.fetch(ticket.channelId).catch(() => null) : null;
+      if (!channel || channel.archived || channel.locked) stale.push([userId, ticket]);
+    }
+
+    if (!run) {
+      await ctx.message.reply([
+        `**Application Cleanup**`,
+        `Open ticket records: **${tickets.length}**`,
+        `Stale or closed records: **${stale.length}**`,
+        stale.length ? compactRows(stale.map(([userId, ticket]) => `<@${userId}> - ${ticket.channelId || "missing channel"}`), 10) : "Nothing to clean.",
+        stale.length ? `Run \`${ctx.config.prefix}appcleanup run\` to remove stale records.` : ""
+      ].filter(Boolean).join("\n"));
+      return;
+    }
+
+    for (const [userId] of stale) {
+      await clearApplicationTicket(ctx.store, ctx.message.guild.id, userId);
+    }
+    await ctx.message.reply(`Application cleanup removed **${stale.length}** stale ticket record${stale.length === 1 ? "" : "s"}.`);
+  }
+});
+
+define({
+  name: "economyaudit",
+  aliases: ["breadaudit", "loanreport"],
+  category: "Gambling",
+  description: "Review economy totals, active loans, and debt-cap health.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const economy = normalizeEconomy(ctx.config.economy || {});
+    const walletTotal = Object.values(economy.balances || {}).reduce((sum, amount) => sum + Math.max(Math.floor(Number(amount) || 0), 0), 0);
+    const bankTotal = Object.values(economy.bankBalances || {}).reduce((sum, amount) => sum + Math.max(Math.floor(Number(amount) || 0), 0), 0);
+    const loans = Object.entries(economy.loans || {})
+      .map(([userId, loan]) => [userId, activeLoan(economy, userId) || loan])
+      .filter(([, loan]) => loan && loan.status !== "paid" && Number(loan.owed) > 0);
+    const capped = loans.filter(([, loan]) => Math.floor(Number(loan.owed) || 0) >= maxLoanDebt(loan));
+    await ctx.message.reply([
+      `**Bread Economy Audit**`,
+      `Wallet total: **${formatBread(walletTotal)}**`,
+      `Bank total: **${formatBread(bankTotal)}**`,
+      `Tracked users: **${new Set([...Object.keys(economy.balances || {}), ...Object.keys(economy.bankBalances || {})]).size}**`,
+      `Active loans: **${loans.length}**`,
+      `Loans at 5x cap: **${capped.length}**`,
+      loans.length ? compactRows(loans.sort((a, b) => Number(b[1].owed) - Number(a[1].owed)).slice(0, 8).map(([userId, loan]) => `<@${userId}> owes **${formatBread(loan.owed)}** / cap **${formatBread(maxLoanDebt(loan))}**`), 8) : "No active loans."
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "loancapsweep",
+  aliases: ["caploans", "fixloans"],
+  category: "Gambling",
+  description: "Clamp all active loan debt to the 5x principal cap.",
+  async run(ctx) {
+    if (!requirePanelRoot(ctx)) return;
+    const economy = normalizeEconomy(ctx.config.economy || {});
+    let changed = 0;
+    for (const [userId, loan] of Object.entries(economy.loans || {})) {
+      const before = Math.max(Math.floor(Number(loan.owed) || 0), 0);
+      clampLoanDebt(loan);
+      if (loan.owed !== before) {
+        changed += 1;
+        recordEconomyTransaction(economy, {
+          userId,
+          type: "loan-cap-sweep",
+          amount: loan.owed - before,
+          owed: loan.owed
+        });
+      }
+    }
+    await ctx.store.updateGuild(ctx.message.guild.id, { economy });
+    await ctx.message.reply(`Loan cap sweep complete. Adjusted **${changed}** loan${changed === 1 ? "" : "s"}.`);
+  }
+});
+
+define({
+  name: "commandhealth",
+  aliases: ["commandaudit", "commandreport"],
+  category: "Config",
+  description: "Summarize disabled commands, disabled categories, and top usage.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const disabledCommands = Object.keys(ctx.config.commandRoles?.disabled || {}).filter((name) => ctx.config.commandRoles.disabled[name]);
+    const disabledCategories = Object.keys(ctx.config.commandRoles?.disabledCategories || {}).filter((name) => ctx.config.commandRoles.disabledCategories[name]);
+    const top = topCommands(ctx.config, 8).map((item) => `${item.name}: ${item.count} uses`);
+    await ctx.message.reply([
+      `**Command Health**`,
+      `Registered commands: **${commandDefinitions.length}**`,
+      `Disabled commands: **${disabledCommands.length}**`,
+      compactRows(disabledCommands, 10),
+      "",
+      `Disabled categories: **${disabledCategories.length}**`,
+      compactRows(disabledCategories, 10),
+      "",
+      `Top usage:`,
+      compactRows(top, 8)
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "panelusers",
+  aliases: ["accesslist", "panelaccesslist"],
+  category: "Config",
+  description: "List active panel users and access levels.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const users = Object.entries(panelAccessUsers(ctx.config))
+      .filter(([, user]) => !user.revokedAt)
+      .sort((a, b) => panelAccessRank(b[1].level) - panelAccessRank(a[1].level))
+      .map(([userId, user]) => `<@${userId}> - **${panelAccessLabel(user.level)}**${user.passwordResetRequired ? " - reset required" : ""}`);
+    await ctx.message.reply([`**Panel Users**`, compactRows(users, 15)].join("\n"));
+  }
+});
+
+define({
+  name: "configsummary",
+  aliases: ["serversummary", "setupsummary"],
+  category: "Config",
+  description: "Show a compact overview of the current bot setup.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const config = ctx.config;
+    await ctx.message.reply([
+      `**Chipkittle Setup Summary**`,
+      `Prefix: \`${config.prefix}\` | AI: **${config.ai.enabled ? config.ai.mode || "on" : "off"}** | Applications: **${config.applications.enabled ? "on" : "off"}**`,
+      `Moderation log: ${config.moderation.logChannelId ? `<#${config.moderation.logChannelId}>` : "not set"}`,
+      `AI channels: **${(config.ai.channelIds || []).length}** | AI blocked channels: **${(config.ai.blacklistedChannelIds || []).length}** | AI allowed roles: **${(config.ai.allowedRoleIds || []).length || "everyone"}**`,
+      `Application reviewers: **${(config.applications.reviewerRoleIds || []).length}** | Approved role: ${config.applications.approvedRoleId ? `<@&${config.applications.approvedRoleId}>` : "not set"}`,
+      `Public members: **${(config.publicSite.members || []).length}** | Suggestions: **${storedSuggestions(config).length}** | Artifacts: **${(config.community.artifacts || []).length}**`,
+      `Panel users: **${Object.values(panelAccessUsers(config)).filter((user) => !user.revokedAt).length}** | Command overrides: **${Object.keys(config.commandRoles.overrides || {}).length}**`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "cooldownaudit",
+  aliases: ["cooldowns", "cooldownreport"],
+  category: "Config",
+  description: "Show persistent cooldown counts for economy and applications.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const economyCooldowns = ctx.config.economy?.cooldowns || {};
+    const appCooldowns = ctx.config.applications?.cooldowns || {};
+    await ctx.message.reply([
+      `**Cooldown Audit**`,
+      `Application cooldowns: **${Object.keys(appCooldowns).length}**`,
+      `Economy cooldown entries: **${countNestedEntries(economyCooldowns)}**`,
+      `Gambling: **${Object.keys(economyCooldowns.gambling || {}).length}**`,
+      `Robbers: **${Object.keys(economyCooldowns.robbers || {}).length}** | Victims: **${Object.keys(economyCooldowns.robVictims || {}).length}**`,
+      `Beg: **${Object.keys(economyCooldowns.beg || {}).length}** | Work: **${Object.keys(economyCooldowns.work || {}).length}** | Interest: **${Object.keys(economyCooldowns.interest || {}).length}**`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "prunecooldowns",
+  aliases: ["cooldownprune"],
+  category: "Config",
+  description: "Root-only cleanup for very old persistent cooldown records.",
+  usage: "prunecooldowns",
+  async run(ctx) {
+    if (!requirePanelRoot(ctx)) return;
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const economy = normalizeEconomy(ctx.config.economy || {});
+    let removed = 0;
+    for (const bucket of Object.keys(economy.cooldowns || {})) {
+      const entries = economy.cooldowns[bucket];
+      if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;
+      for (const [key, value] of Object.entries(entries)) {
+        const time = Date.parse(value);
+        if (Number.isFinite(time) && time < cutoff) {
+          delete entries[key];
+          removed += 1;
+        }
+      }
+    }
+    const applicationCooldowns = { ...(ctx.config.applications?.cooldowns || {}) };
+    for (const [userId, entry] of Object.entries(applicationCooldowns)) {
+      const time = Date.parse(entry?.lastAppliedAt || "");
+      if (Number.isFinite(time) && time < cutoff) {
+        delete applicationCooldowns[userId];
+        removed += 1;
+      }
+    }
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      economy,
+      applications: {
+        ...ctx.config.applications,
+        cooldowns: applicationCooldowns
+      }
+    });
+    await ctx.message.reply(`Cooldown prune complete. Removed **${removed}** record${removed === 1 ? "" : "s"} older than 30 days.`);
+  }
+});
+
+define({
+  name: "deployversion",
+  aliases: ["version", "build"],
+  category: "Info",
+  description: "Show the running bot version and local git revision.",
+  async run(ctx) {
+    await ctx.message.reply([
+      `**Chipkittle Runtime**`,
+      `Git revision: **${localGitRevision()}**`,
+      `Node: **${process.version}**`,
+      `Uptime: **${formatUptime(Math.round(process.uptime()))}**`,
+      `Public URL: ${ctx.publicUrl || "not configured"}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "modsetup",
+  aliases: ["modconfig", "moderationsetup"],
+  category: "Moderation",
+  description: "Show moderation setup, logging, warning totals, and automod state.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const warnings = ctx.config.moderation?.warnings || {};
+    const warningTotal = Object.values(warnings).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0);
+    await ctx.message.reply([
+      `**Moderation Setup**`,
+      `Log channel: ${ctx.config.moderation.logChannelId ? `<#${ctx.config.moderation.logChannelId}>` : "not configured"}`,
+      `Automod: **${ctx.config.automod.enabled ? "on" : "off"}**`,
+      `Blocked words: **${(ctx.config.automod.blockedWords || []).length}**`,
+      `Delete invites: **${ctx.config.automod.deleteInvites ? "yes" : "no"}** | Delete links: **${ctx.config.automod.deleteLinks ? "yes" : "no"}**`,
+      `Warning ledger: **${warningTotal}** warning${warningTotal === 1 ? "" : "s"} across **${Object.keys(warnings).length}** member${Object.keys(warnings).length === 1 ? "" : "s"}`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "prioritystatus",
+  aliases: ["top15", "opsstatus"],
+  category: "Config",
+  description: "Show the completed operational priority checklist.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const priorities = [
+      "Detailed Discord commit changelogs",
+      "Config health check",
+      "Missing config reference doctor",
+      "Bot permission audit",
+      "Panel/security access audit",
+      "Application ticket cleanup",
+      "AI role gates",
+      "AI monthly budget and usage tracking",
+      "AI lore/chaos/length tuning",
+      "AI channel personalities",
+      "AI channel memory reset",
+      "Loan debt capped at 5x principal",
+      "Loan cap sweep",
+      "Economy audit",
+      "Cooldown audit and pruning"
+    ];
+    await ctx.message.reply([
+      `**Top 15 Priority Status**`,
+      priorities.map((item, index) => `${index + 1}. ${item} - done`).join("\n")
+    ].join("\n"));
   }
 });
 

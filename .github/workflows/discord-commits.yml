@@ -42,14 +42,64 @@ jobs:
           sha = os.environ["SHA"]
           short_sha = sha[:7]
           commits_url = "https://www.chipkittle.com/commits"
-          head_message = os.environ["HEAD_MESSAGE"].splitlines()[0][:180] or "No commit message"
-          head_message = head_message.replace("```", "'")
+          event_path = os.environ.get("GITHUB_EVENT_PATH")
+          event = {}
+          if event_path:
+              with open(event_path, "r", encoding="utf-8") as file:
+                  event = json.load(file)
+
+          commits = event.get("commits") or []
+          head_commit = event.get("head_commit") or {}
+          head_message_full = (head_commit.get("message") or os.environ["HEAD_MESSAGE"] or "").replace("```", "'").strip()
+          head_message = (head_message_full.splitlines()[0] if head_message_full else "No commit message")[:180]
 
           if head_message.strip().lower().startswith("silent"):
               print("Commit message starts with 'silent'; skipping Discord notification.")
               sys.exit(0)
 
           author = os.environ.get("HEAD_AUTHOR") or actor
+
+          added = set()
+          modified = set()
+          removed = set()
+          changelog_lines = []
+          commit_lines = []
+
+          for commit in commits[-8:]:
+              message = (commit.get("message") or "").replace("```", "'").strip()
+              title, *body_lines = message.splitlines()
+              title = (title or "Untitled commit")[:120]
+              commit_sha = (commit.get("id") or "")[:7]
+              commit_author = (commit.get("author") or {}).get("name") or author
+              commit_lines.append(f"+ {title} ({commit_sha} by {commit_author})")
+
+              for line in body_lines:
+                  cleaned = line.strip().lstrip("-* ").strip()
+                  if cleaned:
+                      changelog_lines.append(f"+ {cleaned[:150]}")
+
+              added.update(commit.get("added") or [])
+              modified.update(commit.get("modified") or [])
+              removed.update(commit.get("removed") or [])
+
+          if not commit_lines:
+              commit_lines = [f"+ {head_message} ({short_sha} by {author})"]
+
+          if not changelog_lines:
+              changelog_lines = commit_lines[:6]
+
+          file_sections = []
+          if added:
+              file_sections.append("Added: " + ", ".join(sorted(added)[:8]))
+          if modified:
+              file_sections.append("Changed: " + ", ".join(sorted(modified)[:8]))
+          if removed:
+              file_sections.append("Removed: " + ", ".join(sorted(removed)[:8]))
+
+          file_summary = "\n".join(file_sections)[:850] or "Files changed are listed on the public commit page."
+          commit_count = len(commits) or 1
+          changelog_block = "\n".join(changelog_lines[:10])[:950]
+          commit_block = "\n".join(commit_lines[:8])[:850]
 
           relative_time = "Just now"
           timestamp = os.environ.get("HEAD_TIMESTAMP")
@@ -73,16 +123,25 @@ jobs:
               "allowed_mentions": {"parse": []},
               "embeds": [
                   {
-                      "title": "Chipkittle Commit",
+                      "title": f"Chipkittle Changelog - {commit_count} commit{'s' if commit_count != 1 else ''}",
                       "url": commits_url,
                       "description": (
                           f"**{relative_time}**\n\n"
-                          "Latest public changes:\n"
-                          f"[View the commit log]({commits_url})\n\n"
-                          f"```diff\n+ {head_message}\n```"
+                          f"[View the public commit page]({commits_url})\n\n"
+                          "**What changed**\n"
+                          f"```diff\n{changelog_block}\n```\n"
+                          "**Commits included**\n"
+                          f"```diff\n{commit_block}\n```"
                       ),
                       "color": 3447003,
-                      "footer": {"text": f"By {author} | {short_sha} | {repository}"}
+                      "fields": [
+                          {
+                              "name": "Files",
+                              "value": file_summary[:1024],
+                              "inline": False
+                          }
+                      ],
+                      "footer": {"text": f"Latest by {author} | {short_sha} | {repository}"}
                   }
               ]
           }
