@@ -2617,3 +2617,341 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* Ground-up panel deck redesign: top launcher, no sidebar-first workflow. */
+.panel-ui {
+  --bg: #040609;
+  --surface: #0a0e14;
+  --surface-2: #0f151e;
+  --surface-3: #171f2a;
+  --line: rgba(148, 163, 184, 0.2);
+  --line-soft: rgba(255, 255, 255, 0.06);
+}
+
+.panel-content {
+  width: min(1760px, 100%);
+  padding: 18px clamp(14px, 2vw, 26px) 44px;
+}
+
+.panel-deck {
+  display: grid;
+  gap: 16px;
+}
+
+.panel-deck .workspace-stage {
+  display: grid;
+  gap: 14px;
+}
+
+.panel-launchpad {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
+  border-radius: 22px;
+  padding: 16px;
+  background:
+    linear-gradient(120deg, rgba(var(--accent-rgb), 0.14), transparent 34%),
+    radial-gradient(circle at 92% 8%, rgba(var(--accent-2-rgb), 0.15), transparent 26%),
+    linear-gradient(180deg, rgba(12, 17, 24, 0.98), rgba(5, 8, 12, 0.96));
+}
+
+.launchpad-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+
+.launchpad-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.launchpad-identity .guild-icon.large {
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+}
+
+.launchpad-identity h1 {
+  margin: 0 0 8px;
+  font-size: clamp(34px, 5vw, 64px);
+  letter-spacing: 0;
+}
+
+.launchpad-identity p:not(.eyebrow) {
+  max-width: 800px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.launchpad-command {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.launchpad-user-pill {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.launchpad-statbar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.launchpad-statbar span {
+  display: grid;
+  gap: 5px;
+  min-height: 70px;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.028);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.launchpad-statbar strong {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  text-transform: none;
+}
+
+.launchpad-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.launchpad-group {
+  display: grid;
+  gap: 10px;
+  min-height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.018));
+}
+
+.launchpad-group-head {
+  min-height: 48px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.launchpad-group-head span {
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.launchpad-group-head small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.launchpad-links {
+  display: grid;
+  gap: 7px;
+}
+
+.launchpad-link {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 70px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.16);
+  position: relative;
+}
+
+.launchpad-link b {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.launchpad-link span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.launchpad-link strong {
+  color: var(--text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.launchpad-link small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.launchpad-link em {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 6px;
+  background: rgba(0, 0, 0, 0.16);
+  color: var(--subtle);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.launchpad-link:hover,
+.launchpad-link.active {
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.launchpad-link.active b {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.launchpad-current {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.launchpad-current span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.launchpad-current strong {
+  white-space: nowrap;
+}
+
+.launchpad-current small {
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.control-layout,
+.panel-deck {
+  grid-template-columns: 1fr;
+}
+
+.settings-rail {
+  position: static;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+
+.workspace-command-bar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-radius: 18px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(10, 14, 20, 0.98), rgba(8, 11, 16, 0.94));
+}
+
+.workspace-title-block h1 {
+  font-size: clamp(26px, 3vw, 38px);
+}
+
+.workspace-context-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-radius: 16px;
+}
+
+.guild-summary-strip {
+  display: none;
+}
+
+.dashboard-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.panel-section {
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(11, 16, 23, 0.98), rgba(8, 12, 17, 0.95));
+}
+
+@media (max-width: 1240px) {
+  .launchpad-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .launchpad-statbar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .launchpad-top,
+  .launchpad-grid,
+  .launchpad-statbar,
+  .workspace-command-bar,
+  .workspace-context-strip,
+  .launchpad-current {
+    grid-template-columns: 1fr;
+  }
+
+  .launchpad-identity {
+    grid-template-columns: 1fr;
+  }
+
+  .launchpad-link em {
+    position: static;
+    justify-self: start;
+    grid-column: 2;
+  }
+
+  .workspace-actions {
+    justify-content: stretch;
+  }
+
+  .workspace-actions a,
+  .mobile-section-switcher {
+    width: 100%;
+  }
+}

@@ -2718,58 +2718,63 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
     })).filter((group) => group.sections.length);
     const totalVisibleSections = visibleGroups.reduce((sum, group) => sum + group.sections.length, 0);
     return `
-      <aside class="settings-rail" aria-label="Settings categories">
-        <section class="settings-rail-card settings-rail-card--guild panel-profile-card">
-          <div class="settings-rail-guild">
-            <span class="guild-icon">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
+      <section class="panel-launchpad" aria-label="Panel launcher">
+        <div class="launchpad-top">
+          <div class="launchpad-identity">
+            <span class="guild-icon large">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
             <div>
-              <p class="eyebrow">Workspace</p>
-              <strong>${escapeHtml(guild.name)}</strong>
-              <small>Prefix ${escapeHtml(config.prefix)} &middot; ${guild.memberCount ?? 0} members</small>
+              <p class="eyebrow">Panel deck</p>
+              <h1>${escapeHtml(guild.name)}</h1>
+              <p>Jump between bot operations, Discord staff tools, public site controls, games, bread, and runtime work without digging through one giant settings wall.</p>
             </div>
+          </div>
+          <div class="launchpad-command">
+            <label class="nav-search-label">
+              Find a panel area
+              <input data-nav-filter type="search" autocomplete="off" placeholder="Search ${escapeHtml(String(totalVisibleSections))} sections">
+            </label>
+            <div class="launchpad-user-pill">${escapeHtml(panelUserLabel(panelUser))}</div>
+          </div>
         </div>
-        <div class="rail-mini-stats">
+        <div class="launchpad-statbar">
+          <span><strong>${escapeHtml(guild.memberCount ?? 0)}</strong> Members</span>
           <span><strong>${escapeHtml(community.commandsRun)}</strong> Commands</span>
           <span><strong>${escapeHtml(community.aiReplies)}</strong> AI replies</span>
           <span><strong>${escapeHtml((config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").length)}</strong> Punishments</span>
-            <span><strong>${escapeHtml(community.applicationsOpened)}</strong> Apps</span>
-          </div>
-        </section>
-        <section class="settings-rail-card nav-search-card">
-          <label class="nav-search-label">
-            Find setting
-            <input data-nav-filter type="search" autocomplete="off" placeholder="Search ${escapeHtml(String(totalVisibleSections))} sections">
-          </label>
-          <div class="rail-focus">
-            <span>${escapeHtml(panelUserLabel(panelUser))}</span>
-          </div>
-        </section>
-        <nav class="settings-nav settings-nav-rail" aria-label="Settings categories">
-        ${visibleGroups.map((group) => `
-          <section class="settings-nav-group settings-nav-panel" data-nav-group>
-            <div class="settings-nav-group-head">
-              <p class="settings-nav-label">${escapeHtml(group.label)}</p>
-              <small>${escapeHtml(group.description || "")}</small>
-            </div>
-            <div class="settings-nav-links">
-            ${group.sections.map((sectionId) => {
-              const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
-              if (!section) return "";
-              return `
-                <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}" data-nav-link data-nav-text="${escapeHtml(`${section.label} ${section.description} ${group.label}`)}">
-                  <b>${escapeHtml(SETTINGS_NAV_MARKS[section.id] || section.label.slice(0, 2).toUpperCase())}</b>
-                  <span>
-                    <strong>${escapeHtml(section.label)}</strong>
-                    <small>${escapeHtml(section.description)}</small>
-                  </span>
-                  <em>${sectionStatusLabel(section.id)}</em>
-                </a>`;
-            }).join("")}
-            </div>
-          </section>
-        `).join("")}
+          <span><strong>${escapeHtml(community.applicationsOpened)}</strong> Apps</span>
+          <span><strong>${escapeHtml(config.prefix)}</strong> Prefix</span>
+        </div>
+        <nav class="launchpad-grid" aria-label="Panel sections">
+          ${visibleGroups.map((group) => `
+            <section class="launchpad-group" data-nav-group>
+              <div class="launchpad-group-head">
+                <span>${escapeHtml(group.label)}</span>
+                <small>${escapeHtml(group.description || "")}</small>
+              </div>
+              <div class="launchpad-links">
+              ${group.sections.map((sectionId) => {
+                const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
+                if (!section) return "";
+                return `
+                  <a class="launchpad-link ${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}" data-nav-link data-nav-text="${escapeHtml(`${section.label} ${section.description} ${group.label}`)}">
+                    <b>${escapeHtml(SETTINGS_NAV_MARKS[section.id] || section.label.slice(0, 2).toUpperCase())}</b>
+                    <span>
+                      <strong>${escapeHtml(section.label)}</strong>
+                      <small>${escapeHtml(section.description)}</small>
+                    </span>
+                    <em>${sectionStatusLabel(section.id)}</em>
+                  </a>`;
+              }).join("")}
+              </div>
+            </section>
+          `).join("")}
         </nav>
-      </aside>
+        <div class="launchpad-current">
+          <span>Current</span>
+          <strong>${escapeHtml(currentMeta.label)}</strong>
+          <small>${escapeHtml(currentMeta.description)}</small>
+        </div>
+      </section>
     `;
   }
 
@@ -3314,7 +3319,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
     user: true,
     flash,
     body: `
-      <section class="control-layout">
+      <section class="panel-deck">
         ${settingsNav(guild, config, currentSection, currentMeta, panelUser)}
         <div class="workspace-stage">
           <section class="workspace-command-bar">
