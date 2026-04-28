@@ -67,6 +67,22 @@
       return author.toLowerCase() === "elijahenglish" ? "English" : author || "Unknown";
     }
 
+    function normalizeMessage(message) {
+      return String(message || "")
+        .replace(/\\r\\n/g, "\n")
+        .replace(/\\n/g, "\n")
+        .trim();
+    }
+
+    function commitDetails(message) {
+      return normalizeMessage(message)
+        .split("\n")
+        .slice(1)
+        .map((line) => line.trim().replace(/^[-*]\s*/, ""))
+        .filter(Boolean)
+        .slice(0, 6);
+    }
+
     function renderCommits(commits) {
       if (!Array.isArray(commits) || commits.length === 0) {
         list.innerHTML = '<p class="empty">No commits could be loaded right now.</p>';
@@ -81,7 +97,9 @@
       list.innerHTML = visibleCommits.map((item) => {
         const hash = text(item.sha || "");
         const shortHash = hash.slice(0, 7);
-        const subject = text(item.commit?.message?.split("\n")[0] || "Untitled commit");
+        const message = normalizeMessage(item.commit?.message || "");
+        const subject = text(message.split("\n")[0] || "Untitled commit");
+        const details = commitDetails(message);
         const author = text(displayAuthor(item.commit?.author?.name));
         const date = item.commit?.author?.date ? new Date(item.commit.author.date).toLocaleDateString() : "";
         const url = item.html_url || "https://github.com/15inb/chipkittle";
@@ -89,7 +107,10 @@
         return `
           <a class="commit-row" href="${text(url)}" target="_blank" rel="noreferrer">
             <code>${shortHash}</code>
-            <strong>${subject}</strong>
+            <span>
+              <strong>${subject}</strong>
+              ${details.length ? `<span class="commit-details">${details.map((line) => `<span>${text(line)}</span>`).join("")}</span>` : ""}
+            </span>
             <small>${author}${date ? ` / ${text(date)}` : ""}</small>
           </a>
         `;

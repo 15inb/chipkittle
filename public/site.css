@@ -1856,6 +1856,33 @@ a {
   color: var(--soft-ink);
 }
 
+.commit-row > span {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.commit-details {
+  display: grid;
+  gap: 5px;
+  color: var(--soft-ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.commit-details span {
+  position: relative;
+  padding-left: 16px;
+}
+
+.commit-details span::before {
+  content: "+";
+  position: absolute;
+  left: 0;
+  color: var(--green-dark);
+  font-weight: 900;
+}
+
 .empty {
   margin: 0;
   padding: 24px;

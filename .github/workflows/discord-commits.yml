@@ -50,7 +50,33 @@ jobs:
 
           commits = event.get("commits") or []
           head_commit = event.get("head_commit") or {}
-          head_message_full = (head_commit.get("message") or os.environ["HEAD_MESSAGE"] or "").replace("```", "'").strip()
+          def normalize_message(value):
+              return (
+                  str(value or "")
+                  .replace("\\r\\n", "\n")
+                  .replace("\\n", "\n")
+                  .replace("```", "'")
+                  .strip()
+              )
+
+          def shorten_lines(lines, max_chars=900, max_lines=8):
+              output = []
+              total = 0
+              for line in lines:
+                  cleaned = str(line or "").strip()
+                  if not cleaned:
+                      continue
+                  if total + len(cleaned) + 1 > max_chars:
+                      output.append("+ ...more on the public commit page")
+                      break
+                  output.append(cleaned)
+                  total += len(cleaned) + 1
+                  if len(output) >= max_lines:
+                      output.append("+ ...more on the public commit page")
+                      break
+              return "\n".join(output) or "+ No details provided"
+
+          head_message_full = normalize_message(head_commit.get("message") or os.environ["HEAD_MESSAGE"] or "")
           head_message = (head_message_full.splitlines()[0] if head_message_full else "No commit message")[:180]
 
           if head_message.strip().lower().startswith("silent"):
@@ -66,7 +92,7 @@ jobs:
           commit_lines = []
 
           for commit in commits[-8:]:
-              message = (commit.get("message") or "").replace("```", "'").strip()
+              message = normalize_message(commit.get("message") or "")
               title, *body_lines = message.splitlines()
               title = (title or "Untitled commit")[:120]
               commit_sha = (commit.get("id") or "")[:7]
@@ -96,10 +122,10 @@ jobs:
           if removed:
               file_sections.append("Removed: " + ", ".join(sorted(removed)[:8]))
 
-          file_summary = "\n".join(file_sections)[:850] or "Files changed are listed on the public commit page."
+          file_summary = shorten_lines(file_sections, max_chars=950, max_lines=6) if file_sections else "Files changed are listed on the public commit page."
           commit_count = len(commits) or 1
-          changelog_block = "\n".join(changelog_lines[:10])[:950]
-          commit_block = "\n".join(commit_lines[:8])[:850]
+          changelog_block = shorten_lines(changelog_lines, max_chars=1200, max_lines=12)
+          commit_block = shorten_lines(commit_lines, max_chars=900, max_lines=8)
 
           relative_time = "Just now"
           timestamp = os.environ.get("HEAD_TIMESTAMP")
