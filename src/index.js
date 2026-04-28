@@ -10,6 +10,7 @@ const port = Number(process.env.PORT || 3000);
 const publicUrl = process.env.PUBLIC_URL || `http://localhost:${port}`;
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
+const discordClientSecret = process.env.DISCORD_CLIENT_SECRET || "";
 const guildId = process.env.GUILD_ID;
 const defaultAiModel = process.env.OPENAI_MODEL || "gpt-5.2";
 const panelPassword = process.env.PANEL_PASSWORD || "";
@@ -43,6 +44,7 @@ const app = createPanel({
   allowLegacyPanelPasswordLogin,
   sessionSecret,
   clientId,
+  discordClientSecret,
   guildId,
   ai,
   publicUrl,

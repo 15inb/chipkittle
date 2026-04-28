@@ -51,6 +51,10 @@ export function randomPanelPassword() {
   return crypto.randomBytes(12).toString("base64url");
 }
 
+export function randomRecoveryCode() {
+  return crypto.randomBytes(10).toString("base64url").match(/.{1,5}/g).join("-");
+}
+
 export function hashPanelPassword(password = "") {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.scryptSync(String(password), salt, 64).toString("hex");
@@ -72,12 +76,15 @@ export function panelAccessUsers(config = {}) {
 export function panelAccessUser(config = {}, userId = "") {
   const entry = panelAccessUsers(config)[String(userId || "")];
   if (!entry || entry.revokedAt) return null;
+  if (entry.expiresAt && Date.parse(entry.expiresAt) <= Date.now()) return null;
   return {
     userId: String(userId),
     username: String(entry.username || ""),
     level: normalizePanelAccessLevel(entry.level),
     grantedBy: String(entry.grantedBy || ""),
-    grantedAt: String(entry.grantedAt || "")
+    grantedAt: String(entry.grantedAt || ""),
+    expiresAt: String(entry.expiresAt || ""),
+    lastLoginAt: String(entry.lastLoginAt || "")
   };
 }
 

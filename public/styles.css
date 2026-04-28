@@ -1322,6 +1322,37 @@ code {
   grid-template-columns: 1fr;
 }
 
+.permission-matrix {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.permission-matrix table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+}
+
+.permission-matrix th,
+.permission-matrix td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  color: var(--text);
+}
+
+.permission-matrix th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.oauth-login-button {
+  width: 100%;
+  justify-content: center;
+}
+
 .access-user-row strong,
 .access-user-row small {
   display: block;

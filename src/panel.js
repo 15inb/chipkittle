@@ -30,6 +30,7 @@ import {
   panelAccessRank,
   panelAccessUser,
   panelAccessUsers,
+  randomRecoveryCode,
   randomPanelPassword,
   verifyPanelPassword
 } from "./panelAccess.js";
@@ -47,6 +48,14 @@ const ACTIVE_UPDATE_STATUSES = new Set(["running", "updating", "restarting"]);
 const MOD_MEMBER_PAGE_SIZE = 20;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
+const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 12;
+const OAUTH_STATE_BYTES = 18;
+const PANEL_ROLE_TEMPLATE_LEVELS = {
+  moderator: "round_table",
+  senior_moderator: "keeper",
+  contributor: "artifact_contributor",
+  administrator: "root"
+};
 const PANEL_SECTION_MIN_LEVEL = {
   dashboard: "round_table",
   audit: "round_table",
@@ -193,6 +202,12 @@ function isChecked(value) {
 
 function selected(currentValue, optionValue) {
   return currentValue === optionValue ? "selected" : "";
+}
+
+function datetimeLocalValue(value = "") {
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return "";
+  return new Date(time).toISOString().slice(0, 16);
 }
 
 function normalizeSettingsSection(section) {
@@ -1204,6 +1219,7 @@ function auditLogWorkspace(guildId, config = {}, panelUser = null) {
         <h2>Audit Log</h2>
         <p>Every panel tier can review actions here. Root can remove stale or noisy entries.</p>
       </div>
+      <a class="primary-link secondary-link" href="/admin/export/audit">Export audit log</a>
       ${auditLog.length
         ? `<div class="audit-log-list">${rows}</div>`
         : '<p class="muted">No audit activity has been recorded yet.</p>'}
@@ -1378,6 +1394,13 @@ function sanitizePanelAccessForExport(panelAccess = {}) {
 
   return {
     ...panelAccess,
+    recoveryCodes: Array.isArray(panelAccess?.recoveryCodes)
+      ? panelAccess.recoveryCodes.map((entry) => ({
+          createdAt: entry?.createdAt || "",
+          createdBy: entry?.createdBy || "",
+          hasHash: Boolean(entry?.hash || entry)
+        }))
+      : [],
     users
   };
 }
@@ -2285,6 +2308,7 @@ function layout({ title, body, user, flash = "" }) {
         <button type="button" class="mode-toggle" data-mode-toggle aria-label="Toggle panel light or dark mode">Dark mode</button>
         <a href="/">Panel</a>
         <a href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
+        ${user ? '<a href="/account">My account</a>' : ""}
         ${user ? '<a href="/commits">Commits</a>' : ""}
         ${user ? '<a href="/logout">Sign out</a>' : '<a href="/login">Sign in</a>'}
       </nav>
@@ -2347,28 +2371,24 @@ function layout({ title, body, user, flash = "" }) {
 </html>`;
 }
 
-function loginPage(error = "") {
+function loginPage(error = "", discordUrl = "") {
   return layout({
     title: "Sign in",
     body: `
       <section class="login-panel">
         <div>
-          <p class="eyebrow">Admin access</p>
-          <h1>Sign in to configure your bot.</h1>
-          <p class="muted">Use the panel username and password that were granted to you. Passwords are delivered once by Discord DM.</p>
+          <p class="eyebrow">Discord access</p>
+          <h1>Sign in with Discord.</h1>
+          <p class="muted">The panel now uses Discord OAuth only. Your Discord account must already have a Chipkittle panel access grant.</p>
         </div>
-        <form method="post" action="/login" class="stack">
+        <div class="stack">
           ${error ? `<p class="form-error">${escapeHtml(error)}</p>` : ""}
-          <label>
-            Username
-            <input name="username" autocomplete="username" placeholder="Discord username">
-          </label>
-          <label>
-            Password
-            <input type="password" name="password" autocomplete="current-password" required autofocus>
-          </label>
-          <button type="submit">Sign in</button>
-        </form>
+          ${discordUrl
+            ? `<a class="primary-link oauth-login-button" href="${escapeHtml(discordUrl)}">Continue with Discord</a>`
+            : '<p class="form-error">Discord OAuth is not configured. Set DISCORD_CLIENT_SECRET and restart the panel.</p>'}
+          <p class="field-help">If you were granted access before, sign in with the same Discord account. Password logins are disabled.</p>
+          <a class="primary-link secondary-link" href="/recovery">Use root recovery code</a>
+        </div>
       </section>
     `
   });
@@ -2379,6 +2399,105 @@ function inviteUrl(clientId) {
 
   const permissions = "361048837200";
   return `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=${permissions}&scope=bot%20applications.commands`;
+}
+
+function accountFlash(code = "") {
+  const messages = {
+    "password-invalid": "Password must be at least 12 characters and match the confirmation.",
+    "password-updated": "Recovery password updated. Discord OAuth is still the only normal sign-in method.",
+    "session-revoked": "Session revoked.",
+    "all-sessions-revoked": "All other panel sessions were signed out."
+  };
+  return messages[String(code || "")] || "";
+}
+
+function recoveryPage(error = "", success = "") {
+  return layout({
+    title: "Root recovery",
+    body: `
+      <section class="login-panel">
+        <div>
+          <p class="eyebrow">Emergency access</p>
+          <h1>Use a backup root recovery code.</h1>
+          <p class="muted">This grants root access to the Discord ID below, then you still sign in with Discord OAuth.</p>
+        </div>
+        <form method="post" action="/recovery" class="stack">
+          ${error ? `<p class="form-error">${escapeHtml(error)}</p>` : ""}
+          ${success ? `<p class="flash">${escapeHtml(success)}</p>` : ""}
+          <label>
+            Discord user ID
+            <input name="discordId" inputmode="numeric" autocomplete="off" required>
+          </label>
+          <label>
+            Recovery code
+            <input name="code" autocomplete="one-time-code" required>
+          </label>
+          <button type="submit">Redeem Recovery Code</button>
+          <a class="primary-link secondary-link" href="/login">Back to Discord sign in</a>
+        </form>
+      </section>
+    `
+  });
+}
+
+function accountPage({ panelUser, sessions = [], currentSessionId = "", flash = "", isRoot = false }) {
+  return layout({
+    title: "My account",
+    user: true,
+    flash,
+    body: `
+      <section class="panel-section">
+        <div class="section-heading">
+          <h2>My Account</h2>
+          <p>Discord OAuth is the required sign-in method. Recovery passwords are kept only for account administration and future recovery workflows.</p>
+        </div>
+        <div class="stats-grid">
+          <article class="stat-card"><strong>${escapeHtml(panelUser.username || panelUser.userId)}</strong><span>Discord account</span></article>
+          <article class="stat-card"><strong>${escapeHtml(panelAccessLabel(panelUser.level))}</strong><span>Access level</span></article>
+          <article class="stat-card"><strong>${escapeHtml(panelUser.lastLoginAt || "Unknown")}</strong><span>Last login</span></article>
+          <article class="stat-card"><strong>${escapeHtml(panelUser.expiresAt || "Never")}</strong><span>Access expires</span></article>
+        </div>
+      </section>
+      <section class="panel-section">
+        <div class="section-heading">
+          <h2>Change Recovery Password</h2>
+          <p>This does not enable password login. Sign-in remains Discord-only.</p>
+        </div>
+        <form method="post" action="/account/password" class="field-pair">
+          <label>
+            New recovery password
+            <input type="password" name="password" autocomplete="new-password" minlength="12" required>
+          </label>
+          <label>
+            Confirm password
+            <input type="password" name="confirmPassword" autocomplete="new-password" minlength="12" required>
+          </label>
+          <button type="submit">Update Password</button>
+        </form>
+      </section>
+      <section class="panel-section">
+        <div class="section-heading">
+          <h2>Sessions</h2>
+          <p>Review active browser sessions for your account.</p>
+        </div>
+        ${isRoot ? `<form method="post" action="/admin/sessions/logout-all" onsubmit="return confirm('Sign out every other panel session?');"><button type="submit" class="danger-button">Log out all sessions</button></form>` : ""}
+        <div class="member-action-list">
+          ${sessions.map((sessionEntry) => `
+            <article class="access-user-row">
+              <div>
+                <strong>${sessionEntry.id === currentSessionId ? "Current session" : "Panel session"}</strong>
+                <small>${escapeHtml(sessionEntry.ip || "unknown IP")} &middot; ${escapeHtml(sessionEntry.userAgent || "unknown browser")}</small>
+                <small>Created ${escapeHtml(sessionEntry.createdAt || "unknown")} &middot; Last seen ${escapeHtml(sessionEntry.lastSeenAt || "unknown")}</small>
+              </div>
+              ${sessionEntry.id !== currentSessionId
+                ? `<form method="post" action="/account/sessions/${encodeURIComponent(sessionEntry.id)}/revoke"><button type="submit" class="secondary-button">Revoke</button></form>`
+                : '<span class="muted">Active now</span>'}
+            </article>
+          `).join("") || '<p class="muted">No active sessions are currently tracked.</p>'}
+        </div>
+      </section>
+    `
+  });
 }
 
 function dashboardPage({ guilds, client, clientId, ai, commandList, flash }) {
@@ -2661,11 +2780,12 @@ function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
     .filter(([, entry]) => !entry?.revokedAt)
     .sort((a, b) => String(a[1]?.username || "").localeCompare(String(b[1]?.username || "")));
   const actorLevel = panelUser?.level || "root";
+  const canRoot = panelAccessAtLeast(panelUser?.level || "root", "root");
   return `
     <section class="panel-section">
       <div class="section-heading">
         <h2>Panel Users</h2>
-        <p>Panel access is granted from Discord with <code>!grantaccess @user accesslevel</code>. Passwords are only shown once in DMs.</p>
+        <p>Panel access is granted from Discord with <code>!grantaccess @user accesslevel</code>. Sign-in is Discord OAuth only.</p>
       </div>
       <div class="access-tier-grid">
         ${PANEL_ACCESS_LEVELS.map((level) => `
@@ -2675,7 +2795,28 @@ function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
           </article>
         `).join("")}
       </div>
-      ${panelAccessAtLeast(panelUser?.level || "root", "root") ? `
+      ${canRoot ? `
+        <div class="dashboard-grid">
+          <form method="post" action="/guilds/${guildId}/panel-access/emergency-lockout" class="sub-panel">
+            <div class="section-heading">
+              <h2>Emergency Lockout</h2>
+              <p>When enabled, only root users can sign in.</p>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" name="emergencyLockout" ${isChecked(Boolean(config.panelAccess?.emergencyLockout))}>
+              <span>Root-only emergency lockout</span>
+            </label>
+            <button type="submit">Save Lockout</button>
+          </form>
+          <form method="post" action="/guilds/${guildId}/panel-access/recovery-codes" class="sub-panel" onsubmit="return confirm('Generate new backup root recovery codes?');">
+            <div class="section-heading">
+              <h2>Backup Root Recovery Codes</h2>
+              <p>Generate one-time emergency codes. Store the revealed codes somewhere private.</p>
+            </div>
+            <p class="muted">${escapeHtml((config.panelAccess?.recoveryCodes || []).length)} recovery code hash${(config.panelAccess?.recoveryCodes || []).length === 1 ? "" : "es"} saved.</p>
+            <button type="submit">Generate Codes</button>
+          </form>
+        </div>
         <form method="post" action="/guilds/${guildId}/panel-access/grant-levels" class="sub-panel">
           <div class="section-heading">
             <h2>Grant Command Access</h2>
@@ -2691,7 +2832,38 @@ function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
           </div>
           <button type="submit">Save Grant Access</button>
         </form>
+        <form method="post" action="/guilds/${guildId}/panel-access/templates" class="sub-panel">
+          <div class="section-heading">
+            <h2>Panel Role Templates</h2>
+            <p>Templates are defaults for temporary grants and access reviews.</p>
+          </div>
+          <div class="field-pair">
+            ${Object.entries(PANEL_ROLE_TEMPLATE_LEVELS).map(([templateId, defaultLevel]) => {
+              const template = config.panelAccess?.roleTemplates?.[templateId] || {};
+              return `
+                <label>
+                  ${escapeHtml(templateId.replace(/_/g, " "))}
+                  <select name="template_${templateId}">
+                    ${PANEL_ACCESS_LEVELS.map((level) => `<option value="${level}" ${selected(template.level || defaultLevel, level)}>${escapeHtml(panelAccessLabel(level))}</option>`).join("")}
+                  </select>
+                </label>
+                <label>
+                  ${escapeHtml(templateId.replace(/_/g, " "))} expiration days
+                  <input type="number" name="templateDays_${templateId}" min="0" max="365" value="${escapeHtml(template.days ?? "")}" placeholder="0 = never">
+                </label>
+              `;
+            }).join("")}
+          </div>
+          <button type="submit">Save Templates</button>
+        </form>
       ` : ""}
+      <section class="sub-panel">
+        <div class="section-heading">
+          <h2>Permission Matrix</h2>
+          <p>Preview what each access rank can open.</p>
+        </div>
+        ${permissionMatrixViewer(panelUser)}
+      </section>
       <div class="member-action-list">
         ${
           users.length
@@ -2700,6 +2872,36 @@ function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
         }
       </div>
     </section>
+  `;
+}
+
+function permissionMatrixViewer(panelUser = null) {
+  const actorLevel = panelUser?.level || "root";
+  return `
+    <div class="permission-matrix">
+      <table>
+        <thead>
+          <tr>
+            <th>Section</th>
+            ${PANEL_ACCESS_LEVELS.map((level) => `<th>${escapeHtml(panelAccessLabel(level))}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${SETTINGS_SECTIONS.map((section) => `
+            <tr>
+              <td>${escapeHtml(section.label)}</td>
+              ${PANEL_ACCESS_LEVELS.map((level) => `<td>${canAccessPanelSection(level, section.id) ? "Yes" : "No"}</td>`).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="access-tier-grid">
+      ${PANEL_ACCESS_LEVELS
+        .filter((level) => panelAccessAtLeast(actorLevel, level) || panelAccessAtLeast(actorLevel, "root"))
+        .map((level) => `<a class="primary-link secondary-link" href="?section=${SETTINGS_SECTIONS.find((section) => canAccessPanelSection(level, section.id))?.id || "dashboard"}&viewAs=${level}">View as ${escapeHtml(panelAccessLabel(level))}</a>`)
+        .join("")}
+    </div>
   `;
 }
 
@@ -2716,6 +2918,7 @@ function panelAccessUserRow(guildId, userId, entry, actorLevel = "root") {
         <strong>${escapeHtml(entry.username || userId)}</strong>
         <small>${escapeHtml(userId)} &middot; ${escapeHtml(panelAccessLabel(entry.level))}</small>
         <small>Granted ${escapeHtml(entry.grantedAt || "unknown")} by ${escapeHtml(entry.grantedBy || "unknown")}</small>
+        <small>Last login ${escapeHtml(entry.lastLoginAt || "never")} &middot; Expires ${escapeHtml(entry.expiresAt || "never")}</small>
       </div>
       ${manageable
         ? `<div class="access-user-actions">
@@ -2726,7 +2929,14 @@ function panelAccessUserRow(guildId, userId, entry, actorLevel = "root") {
               </label>
               <button type="submit">Update</button>
             </form>
-            <form method="post" action="/guilds/${guildId}/panel-access/${userId}/reset-password" onsubmit="return confirm('Reset this panel password and DM the user?');">
+            <form method="post" action="/guilds/${guildId}/panel-access/${userId}/expiration">
+              <label>
+                Expiration
+                <input type="datetime-local" name="expiresAt" value="${escapeHtml(datetimeLocalValue(entry.expiresAt))}">
+              </label>
+              <button type="submit">Save Expiration</button>
+            </form>
+            <form method="post" action="/guilds/${guildId}/panel-access/${userId}/reset-password" onsubmit="return confirm('Reset this panel recovery password and DM the user?');">
               <button type="submit" class="secondary-button">Reset password</button>
             </form>
             <form method="post" action="/guilds/${guildId}/panel-access/${userId}/revoke" onsubmit="return confirm('Revoke this panel user?');">
@@ -3494,6 +3704,7 @@ export function createPanel({
   allowLegacyPanelPasswordLogin,
   sessionSecret,
   clientId,
+  discordClientSecret,
   guildId,
   ai,
   publicUrl,
@@ -3504,6 +3715,9 @@ export function createPanel({
   const panelStatic = express.static("public", { index: false });
   const useSecureCookies = String(publicUrl || "").startsWith("https://");
   const loginAttempts = new Map();
+  const activePanelSessions = new Map();
+  const oauthStates = new Map();
+  const sessionStore = new session.MemoryStore();
   const publicSuggestionCooldowns = new Map();
   const publicSuggestionCaptchas = new Map();
 
@@ -3523,6 +3737,7 @@ export function createPanel({
   });
   app.use(
     session({
+      store: sessionStore,
       name: "bot_panel.sid",
       secret: sessionSecret,
       resave: false,
@@ -3531,18 +3746,51 @@ export function createPanel({
         httpOnly: true,
         sameSite: "lax",
         secure: useSecureCookies,
-        maxAge: 1000 * 60 * 60 * 12
+        maxAge: SESSION_MAX_AGE_MS
       }
     })
   );
 
+  app.use((request, _response, next) => {
+    if (request.session?.authenticated) {
+      activePanelSessions.set(request.sessionID, {
+        id: request.sessionID,
+        userId: request.session.panelUserId || "",
+        username: request.session.panelUsername || "",
+        guildId: request.session.panelGuildId || currentPanelGuildId(),
+        createdAt: request.session.createdAt || new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+        ip: request.ip,
+        userAgent: String(request.get("user-agent") || "").slice(0, 180)
+      });
+      request.session.lastSeenAt = new Date().toISOString();
+    }
+    next();
+  });
+
   function requireAuth(request, response, next) {
-    if (request.session.authenticated) {
-      next();
+    if (!request.session.authenticated) {
+      response.redirect("/login");
       return;
     }
-
-    response.redirect("/login");
+    const targetGuildId = request.params.guildId || request.body?.guildId || request.session.panelGuildId || currentPanelGuildId();
+    const config = targetGuildId ? store.getGuild(targetGuildId) : null;
+    const user = currentPanelUser(request, targetGuildId);
+    const revokedBefore = Date.parse(config?.panelAccess?.sessionsRevokedBefore || "");
+    const sessionCreated = Date.parse(request.session.createdAt || "");
+    if (Number.isFinite(revokedBefore) && Number.isFinite(sessionCreated) && sessionCreated < revokedBefore) {
+      request.session.destroy(() => response.redirect("/login?error=session-revoked"));
+      return;
+    }
+    if (config?.panelAccess?.emergencyLockout && !panelAccessAtLeast(user?.level || "", "root")) {
+      request.session.destroy(() => response.redirect("/login?error=lockout"));
+      return;
+    }
+    if (!user) {
+      request.session.destroy(() => response.redirect("/login?error=access-expired"));
+      return;
+    }
+    next();
   }
 
   function currentPanelGuildId() {
@@ -3551,16 +3799,142 @@ export function createPanel({
 
   function currentPanelUser(request, targetGuildId = currentPanelGuildId()) {
     if (request.session.panelLegacyRoot) {
-      return {
-        userId: "legacy-root",
-        username: "Legacy Root",
-        level: "root",
-        legacy: true
-      };
+      return null;
     }
     const sessionUserId = String(request.session.panelUserId || "");
     if (!sessionUserId || !targetGuildId) return null;
     return panelAccessUser(store.getGuild(targetGuildId), sessionUserId);
+  }
+
+  function oauthRedirectUri(request) {
+    const base = publicUrl || `${request.protocol}://${request.get("host")}`;
+    return new URL("/auth/discord/callback", base).toString();
+  }
+
+  function discordOAuthUrl(request) {
+    if (!clientId || !discordClientSecret) return "";
+    const state = crypto.randomBytes(OAUTH_STATE_BYTES).toString("base64url");
+    oauthStates.set(state, {
+      createdAt: Date.now(),
+      ip: request.ip
+    });
+    const url = new URL("https://discord.com/oauth2/authorize");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", oauthRedirectUri(request));
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", "identify");
+    url.searchParams.set("state", state);
+    url.searchParams.set("prompt", "none");
+    return url.toString();
+  }
+
+  function loginErrorMessage(code = "") {
+    const messages = {
+      denied: "That Discord account does not have panel access.",
+      oauth: "Discord sign-in failed. Try again in a moment.",
+      state: "That sign-in session expired. Please try again.",
+      lockout: "Emergency lockout is active. Only root users can sign in.",
+      "access-expired": "Your panel access is expired or revoked.",
+      "session-revoked": "Your session was signed out by root."
+    };
+    return messages[String(code || "")] || "";
+  }
+
+  function findPanelAccessForDiscordUser(userId = "") {
+    for (const [storedGuildId, config] of Object.entries(store.data?.guilds || {})) {
+      const entry = config.panelAccess?.users?.[userId];
+      const user = panelAccessUser(config, userId);
+      if (user) return { guildId: storedGuildId, user, entry };
+    }
+    return null;
+  }
+
+  function fallbackOwnerRoot(userId = "") {
+    const ownedGuild = client.guilds.cache.find((guild) => guild.ownerId === userId);
+    if (!ownedGuild) return null;
+    const config = store.getGuild(ownedGuild.id);
+    const activeRoot = Object.entries(config.panelAccess?.users || {})
+      .some(([, entry]) => !entry.revokedAt && normalizePanelAccessLevel(entry.level) === "root");
+    if (activeRoot) return null;
+    return {
+      guildId: ownedGuild.id,
+      user: {
+        userId,
+        username: "Server Owner Recovery",
+        level: "root",
+        grantedAt: new Date().toISOString(),
+        grantedBy: "owner-fallback"
+      },
+      entry: null,
+      ownerFallback: true
+    };
+  }
+
+  async function auditPanelLogin(guildId, label, details, actor = "Panel Auth", extra = {}) {
+    if (!guildId) return;
+    await addAuditLog(store, guildId, {
+      type: "panel-auth",
+      label,
+      details,
+      actor,
+      ...extra
+    }).catch(() => {});
+  }
+
+  async function finishPanelLogin(request, response, access, discordUser = {}) {
+    const config = store.getGuild(access.guildId);
+    if (config.panelAccess?.emergencyLockout && !panelAccessAtLeast(access.user.level, "root")) {
+      await auditPanelLogin(access.guildId, "Panel OAuth blocked by lockout", `${discordUser.username || access.user.username || access.user.userId} tried to sign in during emergency lockout.`, "Panel Auth", { targetId: access.user.userId });
+      response.redirect("/login?error=lockout");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const memberUsername = discordUser.username || access.user.username || access.user.userId;
+    const entry = config.panelAccess?.users?.[access.user.userId] || {};
+    await store.updateGuild(access.guildId, {
+      panelAccess: {
+        ...config.panelAccess,
+        users: {
+          ...config.panelAccess.users,
+          [access.user.userId]: {
+            ...entry,
+            username: memberUsername,
+            level: access.user.level,
+            grantedAt: entry.grantedAt || access.user.grantedAt || now,
+            grantedBy: entry.grantedBy || access.user.grantedBy || "oauth",
+            lastLoginAt: now,
+            lastLoginIp: request.ip
+          }
+        }
+      }
+    });
+
+    request.session.regenerate((error) => {
+      if (error) {
+        response.redirect("/login?error=oauth");
+        return;
+      }
+      request.session.authenticated = true;
+      request.session.panelUserId = access.user.userId;
+      request.session.panelGuildId = access.guildId;
+      request.session.panelUsername = memberUsername;
+      request.session.panelLegacyRoot = false;
+      request.session.createdAt = now;
+      request.session.lastSeenAt = now;
+      activePanelSessions.set(request.sessionID, {
+        id: request.sessionID,
+        userId: access.user.userId,
+        username: memberUsername,
+        guildId: access.guildId,
+        createdAt: now,
+        lastSeenAt: now,
+        ip: request.ip,
+        userAgent: String(request.get("user-agent") || "").slice(0, 180)
+      });
+      auditPanelLogin(access.guildId, "Panel OAuth login", `${memberUsername} signed in with Discord OAuth.`, panelAccessLabel(access.user.level), { targetId: access.user.userId }).catch(() => {});
+      response.redirect("/");
+    });
   }
 
   function requirePanelLevel(requiredLevel) {
@@ -4094,43 +4468,215 @@ export function createPanel({
       return;
     }
 
-    response.send(loginPage());
+    response.send(loginPage(loginErrorMessage(request.query.error), discordOAuthUrl(request)));
   });
 
   app.post("/login", (request, response) => {
-    const username = String(request.body.username || "").trim();
-    const password = String(request.body.password || "");
-    const throttle = readLoginThrottle(request, username);
+    response.redirect("/auth/discord");
+  });
+
+  app.get("/recovery", (request, response) => {
+    response.send(recoveryPage());
+  });
+
+  app.post("/recovery", async (request, response) => {
+    const discordId = String(request.body?.discordId || "").replace(/\D/g, "");
+    const code = String(request.body?.code || "").trim();
+    const throttle = readLoginThrottle(request, `recovery:${discordId}`);
     if (throttle.limited) {
-      response.status(429).send(loginPage("Too many sign-in attempts. Please wait 15 minutes and try again."));
+      response.status(429).send(recoveryPage("Too many recovery attempts. Please wait 15 minutes and try again."));
+      return;
+    }
+    if (!/^\d{16,22}$/.test(discordId) || !code) {
+      recordFailedLogin(request, `recovery:${discordId}`);
+      response.status(400).send(recoveryPage("Enter a valid Discord ID and recovery code."));
       return;
     }
 
-    const panelUser = authenticatePanelUser(username, password);
-    if (panelUser) {
-      clearFailedLogins(request, username);
-      request.session.authenticated = true;
-      request.session.panelUserId = panelUser.userId;
-      request.session.panelGuildId = panelUser.guildId;
-      request.session.panelLegacyRoot = false;
-      response.redirect("/");
+    for (const [storedGuildId, config] of Object.entries(store.data?.guilds || {})) {
+      const codes = config.panelAccess?.recoveryCodes || [];
+      const index = codes.findIndex((entry) => verifyPanelPassword(code, entry.hash || entry));
+      if (index === -1) continue;
+      const nextCodes = [...codes];
+      nextCodes.splice(index, 1);
+      await store.updateGuild(storedGuildId, {
+        panelAccess: {
+          ...config.panelAccess,
+          recoveryCodes: nextCodes,
+          users: {
+            ...(config.panelAccess?.users || {}),
+            [discordId]: {
+              ...(config.panelAccess?.users?.[discordId] || {}),
+              username: config.panelAccess?.users?.[discordId]?.username || discordId,
+              level: "root",
+              grantedAt: new Date().toISOString(),
+              grantedBy: "recovery-code",
+              recoveryGrantedAt: new Date().toISOString()
+            }
+          }
+        }
+      });
+      await auditPanelLogin(storedGuildId, "Root recovery code redeemed", `${discordId} redeemed a backup root recovery code.`, "Panel Recovery", { targetId: discordId });
+      clearFailedLogins(request, `recovery:${discordId}`);
+      response.send(recoveryPage("", "Recovery code accepted. You can now sign in with Discord OAuth using that Discord account."));
       return;
     }
 
-    if (allowLegacyPanelPasswordLogin && !username && panelPassword && safeEquals(password, panelPassword)) {
-      clearFailedLogins(request, username);
-      request.session.authenticated = true;
-      request.session.panelUserId = "";
-      request.session.panelLegacyRoot = true;
-      response.redirect("/");
+    recordFailedLogin(request, `recovery:${discordId}`);
+    await auditPanelLogin(currentPanelGuildId(), "Root recovery code failed", `${discordId} attempted recovery with an invalid code.`, "Panel Recovery", { targetId: discordId });
+    response.status(401).send(recoveryPage("That recovery code was invalid or already used."));
+  });
+
+  app.get("/auth/discord", (request, response) => {
+    const throttle = readLoginThrottle(request, "discord-oauth");
+    if (throttle.limited) {
+      response.status(429).send(loginPage("Too many sign-in attempts. Please wait 15 minutes and try again.", ""));
+      return;
+    }
+    const url = discordOAuthUrl(request);
+    if (!url) {
+      recordFailedLogin(request, "discord-oauth");
+      response.status(503).send(loginPage("Discord OAuth is not configured. Set DISCORD_CLIENT_SECRET and restart the panel.", ""));
+      return;
+    }
+    response.redirect(url);
+  });
+
+  app.get("/auth/discord/callback", async (request, response) => {
+    const state = String(request.query.state || "");
+    const code = String(request.query.code || "");
+    const storedState = oauthStates.get(state);
+    oauthStates.delete(state);
+    if (!storedState || Date.now() - storedState.createdAt > 10 * 60 * 1000 || !code) {
+      recordFailedLogin(request, "discord-oauth");
+      response.redirect("/login?error=state");
       return;
     }
 
-    recordFailedLogin(request, username);
-    response.status(401).send(loginPage("That username or password did not match."));
+    try {
+      const tokenBody = new URLSearchParams({
+        client_id: clientId,
+        client_secret: discordClientSecret,
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: oauthRedirectUri(request)
+      });
+      const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: tokenBody
+      });
+      if (!tokenResponse.ok) throw new Error(`Token exchange failed: ${tokenResponse.status}`);
+      const token = await tokenResponse.json();
+      const userResponse = await fetch("https://discord.com/api/users/@me", {
+        headers: { Authorization: `Bearer ${token.access_token}` }
+      });
+      if (!userResponse.ok) throw new Error(`User fetch failed: ${userResponse.status}`);
+      const discordUser = await userResponse.json();
+      const discordUserId = String(discordUser.id || "");
+      const access = findPanelAccessForDiscordUser(discordUserId) || fallbackOwnerRoot(discordUserId);
+      if (!access) {
+        const auditGuildId = currentPanelGuildId();
+        await auditPanelLogin(auditGuildId, "Panel OAuth denied", `${discordUser.username || discordUserId} tried to sign in without panel access.`, "Panel Auth", { targetId: discordUserId });
+        recordFailedLogin(request, "discord-oauth");
+        response.redirect("/login?error=denied");
+        return;
+      }
+
+      clearFailedLogins(request, "discord-oauth");
+      await finishPanelLogin(request, response, access, discordUser);
+    } catch (error) {
+      console.error("Discord OAuth login failed:", error);
+      recordFailedLogin(request, "discord-oauth");
+      await auditPanelLogin(currentPanelGuildId(), "Panel OAuth failed", `OAuth callback failed from ${request.ip}.`, "Panel Auth");
+      response.redirect("/login?error=oauth");
+    }
+  });
+
+  app.post("/account/password", requireAuth, async (request, response, next) => {
+    try {
+      const panelUser = currentPanelUser(request, request.session.panelGuildId);
+      if (!panelUser) {
+        response.redirect("/login?error=access-expired");
+        return;
+      }
+      const password = String(request.body?.password || "");
+      const confirm = String(request.body?.confirmPassword || "");
+      if (password.length < 12 || password !== confirm) {
+        response.redirect("/account?account=password-invalid");
+        return;
+      }
+      const config = store.getGuild(request.session.panelGuildId);
+      const entry = config.panelAccess?.users?.[panelUser.userId] || {};
+      await store.updateGuild(request.session.panelGuildId, {
+        panelAccess: {
+          ...config.panelAccess,
+          users: {
+            ...config.panelAccess.users,
+            [panelUser.userId]: {
+              ...entry,
+              passwordHash: hashPanelPassword(password),
+              passwordChangedAt: new Date().toISOString(),
+              passwordResetRequired: false
+            }
+          }
+        }
+      });
+      await auditPanelLogin(request.session.panelGuildId, "Panel recovery password changed", `${panelUserLabel(panelUser)} changed their recovery password.`, panelUserLabel(panelUser), { targetId: panelUser.userId });
+      response.redirect("/account?account=password-updated");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/account/sessions/:sessionId/revoke", requireAuth, async (request, response) => {
+    const sessionId = String(request.params.sessionId || "");
+    if (sessionId && sessionId !== request.sessionID) {
+      sessionStore.destroy(sessionId, () => {});
+      activePanelSessions.delete(sessionId);
+    }
+    response.redirect("/account?account=session-revoked");
+  });
+
+  app.post("/admin/sessions/logout-all", requireAuth, requirePanelLevel("root"), async (request, response) => {
+    const targetGuildId = request.session.panelGuildId || currentPanelGuildId();
+    const config = store.getGuild(targetGuildId);
+    const now = new Date().toISOString();
+    await store.updateGuild(targetGuildId, {
+      panelAccess: {
+        ...config.panelAccess,
+        sessionsRevokedBefore: now
+      }
+    });
+    for (const sessionId of [...activePanelSessions.keys()]) {
+      if (sessionId !== request.sessionID) sessionStore.destroy(sessionId, () => {});
+      if (sessionId !== request.sessionID) activePanelSessions.delete(sessionId);
+    }
+    await auditPanelLogin(targetGuildId, "All panel sessions revoked", `${panelUserLabel(currentPanelUser(request, targetGuildId))} signed out all other panel sessions.`, panelUserLabel(currentPanelUser(request, targetGuildId)));
+    response.redirect("/account?account=all-sessions-revoked");
+  });
+
+  app.get("/account", requireAuth, (request, response) => {
+    const targetGuildId = request.session.panelGuildId || currentPanelGuildId();
+    const panelUser = currentPanelUser(request, targetGuildId);
+    if (!panelUser) {
+      response.redirect("/login?error=access-expired");
+      return;
+    }
+    const sessions = [...activePanelSessions.values()]
+      .filter((entry) => entry.userId === panelUser.userId)
+      .sort((a, b) => String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)));
+    response.send(accountPage({
+      panelUser,
+      sessions,
+      currentSessionId: request.sessionID,
+      flash: accountFlash(request.query.account),
+      isRoot: panelAccessAtLeast(panelUser.level, "root")
+    }));
   });
 
   app.get("/logout", (request, response) => {
+    activePanelSessions.delete(request.sessionID);
     request.session.destroy(() => response.redirect("/login"));
   });
 
@@ -4175,7 +4721,9 @@ export function createPanel({
       const guild = serializeGuild(discordGuild);
       const config = store.getGuild(guild.id);
       const panelUser = currentPanelUser(request, guild.id);
-      const activeSection = allowedPanelSection(String(request.query.section || ""), panelUser?.level || "root");
+      const viewAs = normalizePanelAccessLevel(request.query.viewAs);
+      const effectiveLevel = viewAs && panelAccessAtLeast(panelUser?.level || "root", viewAs) ? viewAs : panelUser?.level || "root";
+      const activeSection = allowedPanelSection(String(request.query.section || ""), effectiveLevel);
       const moderationMembers =
         activeSection === "moderation"
           ? await moderationMemberPage(discordGuild, config, {
@@ -4202,7 +4750,7 @@ export function createPanel({
         moderationMembers,
         economyMembers,
         warningMemberLabels: labels,
-        panelUser
+        panelUser: viewAs ? { ...panelUser, level: effectiveLevel, username: `${panelUser?.username || "User"} viewing as ${panelAccessLabel(effectiveLevel)}` } : panelUser
       }));
     } catch (error) {
       next(error);
@@ -4822,6 +5370,67 @@ export function createPanel({
     }
   });
 
+  app.get("/admin/export/audit", requireAuth, requirePanelLevel("round_table"), (_request, response) => {
+    const payload = Object.fromEntries(
+      Object.entries(store.data?.guilds || {}).map(([guildEntryId, config]) => [
+        guildEntryId,
+        {
+          auditLog: config.community?.auditLog || [],
+          exportedAt: new Date().toISOString()
+        }
+      ])
+    );
+    downloadJson(response, "chipkittle-audit-export.json", payload);
+  });
+
+  app.post("/guilds/:guildId/panel-access/:userId/expiration", requireAuth, async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const panelUser = currentPanelUser(request, discordGuild.id);
+      const targetUserId = String(request.params.userId || "");
+      const config = store.getGuild(discordGuild.id);
+      const target = config.panelAccess?.users?.[targetUserId];
+      if (!target) {
+        response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+        return;
+      }
+      if (!panelAccessCanManage(panelUser?.level || "", target.level, target.level)) {
+        panelAccessDenied(response);
+        return;
+      }
+      const raw = String(request.body?.expiresAt || "").trim();
+      const rawTime = raw ? Date.parse(raw) : NaN;
+      const expiresAt = raw && Number.isFinite(rawTime) ? new Date(rawTime).toISOString() : "";
+      await store.updateGuild(discordGuild.id, {
+        panelAccess: {
+          ...config.panelAccess,
+          users: {
+            ...config.panelAccess.users,
+            [targetUserId]: {
+              ...target,
+              expiresAt,
+              updatedAt: new Date().toISOString(),
+              updatedBy: panelUser?.userId || "panel"
+            }
+          }
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel-access",
+        label: "Panel access expiration changed",
+        details: `${panelUserLabel(panelUser)} set ${target.username || targetUserId} expiration to ${expiresAt || "never"}.`,
+        actor: panelUserLabel(panelUser)
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/guilds/:guildId/panel-access/:userId/reset-password", requireAuth, async (request, response, next) => {
     try {
       const discordGuild = client.guilds.cache.get(request.params.guildId);
@@ -4848,11 +5457,12 @@ export function createPanel({
       }
       const password = randomPanelPassword();
       await member.send([
-        "**Chipkittle Panel Password Reset**",
-        `Username: \`${target.username || member.user.username}\``,
-        `Password: \`${password}\``,
+        "**Chipkittle Panel Recovery Password Reset**",
+        "Panel sign-in is Discord OAuth only. This password is stored as a recovery/admin credential and does not replace Discord login.",
+        `Discord account: \`${member.user.tag}\``,
+        `Temporary recovery password: \`${password}\``,
         `Access level: **${panelAccessLabel(target.level)}**`,
-        "This password is only shown once."
+        "This value is only shown once. Change it from My Account after signing in."
       ].join("\n"));
       await store.updateGuild(discordGuild.id, {
         panelAccess: {
@@ -4903,6 +5513,112 @@ export function createPanel({
         type: "panel-access",
         label: "Grant access levels changed",
         details: `Grant command access set to: ${grantAccessLevels.map(panelAccessLabel).join(", ")}.`,
+        actor: panelUserLabel(currentPanelUser(request, discordGuild.id))
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/panel-access/emergency-lockout", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const config = store.getGuild(discordGuild.id);
+      const emergencyLockout = request.body?.emergencyLockout === "on";
+      await store.updateGuild(discordGuild.id, {
+        panelAccess: {
+          ...config.panelAccess,
+          emergencyLockout
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel-access",
+        label: "Emergency lockout changed",
+        details: `Emergency lockout ${emergencyLockout ? "enabled" : "disabled"}.`,
+        actor: panelUserLabel(currentPanelUser(request, discordGuild.id))
+      }).catch(() => {});
+      response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/panel-access/recovery-codes", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const config = store.getGuild(discordGuild.id);
+      const codes = Array.from({ length: 8 }, () => randomRecoveryCode());
+      await store.updateGuild(discordGuild.id, {
+        panelAccess: {
+          ...config.panelAccess,
+          recoveryCodes: codes.map((code) => ({
+            hash: hashPanelPassword(code),
+            createdAt: new Date().toISOString(),
+            createdBy: currentPanelUser(request, discordGuild.id)?.userId || "panel"
+          }))
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel-access",
+        label: "Recovery codes generated",
+        details: `${codes.length} backup root recovery codes were generated. Old unused codes were replaced.`,
+        actor: panelUserLabel(currentPanelUser(request, discordGuild.id))
+      }).catch(() => {});
+      response.send(layout({
+        title: "Recovery codes",
+        user: true,
+        body: `
+          <section class="panel-section">
+            <div class="section-heading">
+              <h2>Backup Root Recovery Codes</h2>
+              <p>These codes are shown once. Store them somewhere private.</p>
+            </div>
+            <pre>${escapeHtml(codes.join("\n"))}</pre>
+            <a class="primary-link" href="/guilds/${discordGuild.id}?section=access">Return to access panel</a>
+          </section>
+        `
+      }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/panel-access/templates", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const discordGuild = client.guilds.cache.get(request.params.guildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const config = store.getGuild(discordGuild.id);
+      const roleTemplates = Object.fromEntries(
+        Object.entries(PANEL_ROLE_TEMPLATE_LEVELS).map(([templateId, fallbackLevel]) => [
+          templateId,
+          {
+            level: normalizePanelAccessLevel(request.body?.[`template_${templateId}`]) || fallbackLevel,
+            days: Math.min(Math.max(Math.floor(Number(request.body?.[`templateDays_${templateId}`]) || 0), 0), 365)
+          }
+        ])
+      );
+      await store.updateGuild(discordGuild.id, {
+        panelAccess: {
+          ...config.panelAccess,
+          roleTemplates
+        }
+      });
+      await addAuditLog(store, discordGuild.id, {
+        type: "panel-access",
+        label: "Panel role templates changed",
+        details: "Root updated panel role templates.",
         actor: panelUserLabel(currentPanelUser(request, discordGuild.id))
       }).catch(() => {});
       response.redirect(`/guilds/${discordGuild.id}?section=access&saved=1`);

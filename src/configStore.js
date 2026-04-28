@@ -33,7 +33,11 @@ const DEFAULT_CONFIG = {
   },
   panelAccess: {
     users: {},
-    grantAccessLevels: ["root"]
+    grantAccessLevels: ["root"],
+    emergencyLockout: false,
+    roleTemplates: {},
+    recoveryCodes: [],
+    sessionsRevokedBefore: ""
   },
   economy: {
     balances: {},
@@ -195,7 +199,15 @@ function mergeConfig(config = {}) {
       },
       grantAccessLevels: Array.isArray(config.panelAccess?.grantAccessLevels)
         ? config.panelAccess.grantAccessLevels
-        : clone(DEFAULT_CONFIG.panelAccess.grantAccessLevels)
+        : clone(DEFAULT_CONFIG.panelAccess.grantAccessLevels),
+      roleTemplates: {
+        ...(config.panelAccess?.roleTemplates || {})
+      },
+      recoveryCodes: Array.isArray(config.panelAccess?.recoveryCodes)
+        ? config.panelAccess.recoveryCodes
+        : [],
+      emergencyLockout: Boolean(config.panelAccess?.emergencyLockout),
+      sessionsRevokedBefore: String(config.panelAccess?.sessionsRevokedBefore || "")
     },
     economy: {
       ...clone(DEFAULT_CONFIG.economy),
@@ -345,7 +357,20 @@ export class ConfigStore {
         },
         grantAccessLevels: Array.isArray(partialConfig.panelAccess?.grantAccessLevels)
           ? partialConfig.panelAccess.grantAccessLevels
-          : this.getGuild(guildId).panelAccess.grantAccessLevels
+          : this.getGuild(guildId).panelAccess.grantAccessLevels,
+        roleTemplates: {
+          ...this.getGuild(guildId).panelAccess.roleTemplates,
+          ...(partialConfig.panelAccess?.roleTemplates || {})
+        },
+        recoveryCodes: Array.isArray(partialConfig.panelAccess?.recoveryCodes)
+          ? partialConfig.panelAccess.recoveryCodes
+          : this.getGuild(guildId).panelAccess.recoveryCodes,
+        emergencyLockout: hasOwn(partialConfig.panelAccess || {}, "emergencyLockout")
+          ? Boolean(partialConfig.panelAccess?.emergencyLockout)
+          : Boolean(this.getGuild(guildId).panelAccess.emergencyLockout),
+        sessionsRevokedBefore: hasOwn(partialConfig.panelAccess || {}, "sessionsRevokedBefore")
+          ? String(partialConfig.panelAccess?.sessionsRevokedBefore || "")
+          : String(this.getGuild(guildId).panelAccess.sessionsRevokedBefore || "")
       },
       economy: {
         ...this.getGuild(guildId).economy,

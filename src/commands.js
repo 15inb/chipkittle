@@ -2584,7 +2584,7 @@ define({
   aliases: ["panelaccess", "grantpanel", "grantacces"],
   category: "Config",
   description: "Grant a Discord user access to the web panel.",
-  usage: "grantaccess @user round table|keeper|artifact contributor|root",
+  usage: "grantaccess @user round table|keeper|artifact contributor|root [duration]",
   async run(ctx) {
     const existingUsers = panelAccessUsers(ctx.config);
     const hasAnyPanelUsers = Object.values(existingUsers).some((entry) => !entry?.revokedAt);
@@ -2597,11 +2597,21 @@ define({
     }
 
     const member = ctx.message.mentions.members.first();
-    const level = normalizePanelAccessLevel(ctx.args.slice(1).join(" "));
+    const accessArgs = ctx.args.slice(1);
+    const possibleDuration = accessArgs.at(-1);
+    const durationMs = parseDuration(possibleDuration || "");
+    if (durationMs) accessArgs.pop();
+    const template = ctx.config.panelAccess?.roleTemplates?.[String(accessArgs.join("_")).toLowerCase()];
+    const level = normalizePanelAccessLevel(template?.level || accessArgs.join(" "));
     if (!member || !level) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
       return;
     }
+    const expiresAt = durationMs
+      ? new Date(Date.now() + durationMs).toISOString()
+      : template?.days
+        ? new Date(Date.now() + Number(template.days) * 24 * 60 * 60 * 1000).toISOString()
+        : "";
     const grantorLevel = hasGrantCommandOverride
       ? "root"
       : normalizePanelAccessLevel(existingUsers[ctx.message.author.id]?.level || (hasAnyPanelUsers ? "" : "root"));
@@ -2623,18 +2633,20 @@ define({
           "**Chipkittle Panel Access Updated**",
           `Username: \`${member.user.username}\``,
           `Access level: **${panelAccessLabel(level)}**`,
+          `Expires: **${expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:R>` : "never"}**`,
           `Panel: ${ctx.publicUrl}`,
           "",
-          "Your password did not change."
+          "Sign in with Discord OAuth. Your recovery password did not change."
         ]
       : [
           "**Chipkittle Panel Access Granted**",
-          `Username: \`${member.user.username}\``,
-          `Password: \`${password}\``,
+          `Discord account: \`${member.user.tag}\``,
+          `Temporary recovery password: \`${password}\``,
           `Access level: **${panelAccessLabel(level)}**`,
+          `Expires: **${expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:R>` : "never"}**`,
           `Panel: ${ctx.publicUrl}`,
           "",
-          "This password is only shown once. Ask root for a reset if you lose it."
+          "Sign in with Discord OAuth. Password login is disabled; this recovery password is only shown once."
         ];
     await member.send(dmLines.join("\n")).catch(() => {
       dmSent = false;
@@ -2657,6 +2669,7 @@ define({
             passwordHash: existingActiveUser ? existingEntry.passwordHash : hashPanelPassword(password),
             grantedBy: ctx.message.author.id,
             grantedAt: new Date().toISOString(),
+            expiresAt,
             revokedAt: ""
           }
         }
@@ -2666,11 +2679,11 @@ define({
     await addAuditLog(ctx.store, ctx.message.guild.id, {
       type: "panel-access",
       label: existingActiveUser ? "Panel access changed" : "Panel access granted",
-      details: `${ctx.message.author.tag} ${existingActiveUser ? "changed" : "granted"} ${member.user.tag} to ${panelAccessLabel(level)}.`,
+      details: `${ctx.message.author.tag} ${existingActiveUser ? "changed" : "granted"} ${member.user.tag} to ${panelAccessLabel(level)}${expiresAt ? ` until ${expiresAt}` : ""}.`,
       actor: ctx.message.author.tag
     }).catch(() => {});
 
-    await ctx.message.reply(`${existingActiveUser ? "Changed" : "Granted"} ${member.user.tag} to ${panelAccessLabel(level)} and sent them a DM.`);
+    await ctx.message.reply(`${existingActiveUser ? "Changed" : "Granted"} ${member.user.tag} to ${panelAccessLabel(level)}${expiresAt ? ` until <t:${Math.floor(Date.parse(expiresAt) / 1000)}:R>` : ""} and sent them a DM.`);
   }
 });
 
