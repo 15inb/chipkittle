@@ -1245,6 +1245,29 @@ function memberDirectoryText(members = []) {
     .join("\n");
 }
 
+function parseAiChannelPersonalities(value = "") {
+  return Object.fromEntries(
+    String(value || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [channelId = "", ...parts] = line.split("|");
+        return [
+          channelId.replace(/\D/g, "").slice(0, 24),
+          parts.join("|").trim().slice(0, 600)
+        ];
+      })
+      .filter(([channelId, text]) => channelId && text)
+  );
+}
+
+function aiChannelPersonalitiesText(personalities = {}) {
+  return Object.entries(personalities || {})
+    .map(([channelId, text]) => `${channelId} | ${String(text || "").replace(/\s+/g, " ").trim()}`)
+    .join("\n");
+}
+
 function memberDirectoryRows(members = []) {
   return members
     .map(
@@ -1997,6 +2020,7 @@ function parseConfigForm(body, section = "general") {
   const currentSection = normalizeSettingsSection(section);
   const aiChannelIds = arrayFromFormValue(body.aiChannelIds);
   const aiBlacklistedChannelIds = arrayFromFormValue(body.aiBlacklistedChannelIds);
+  const aiAllowedRoleIds = arrayFromFormValue(body.aiAllowedRoleIds);
   const reviewerRoleIds = arrayFromFormValue(body.applicationReviewerRoleIds);
   const blockedRoleIds = arrayFromFormValue(body.applicationBlockedRoleIds);
   const commandOverrides = Object.fromEntries(
@@ -2076,6 +2100,16 @@ function parseConfigForm(body, section = "general") {
           model: String(body.aiModel || "").trim().slice(0, 80),
           apiCooldownSeconds: Math.min(Math.max(Number(body.aiApiCooldownSeconds) || 0, 0), 3600),
           imageCooldownSeconds: Math.min(Math.max(Number(body.aiImageCooldownSeconds) || 0, 0), 7200),
+          allowedRoleIds: aiAllowedRoleIds.map(String),
+          channelPersonalities: parseAiChannelPersonalities(body.aiChannelPersonalities),
+          chaosLevel: Math.min(Math.max(Math.floor(Number(body.aiChaosLevel) || 3), 1), 10),
+          loreStrictness: ["loose", "balanced", "strict"].includes(String(body.aiLoreStrictness || "").toLowerCase())
+            ? String(body.aiLoreStrictness).toLowerCase()
+            : "balanced",
+          responseLength: ["short", "normal", "long"].includes(String(body.aiResponseLength || "").toLowerCase())
+            ? String(body.aiResponseLength).toLowerCase()
+            : "normal",
+          monthlyBudget: Math.min(Math.max(Math.floor(Number(body.aiMonthlyBudget) || 0), 0), 50000000),
           replyToMentions: body.aiReplyToMentions === "on",
           personality: String(body.aiPersonality || "").trim().slice(0, 1200)
         }
@@ -3010,10 +3044,51 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
                 Image cooldown seconds
                 <input type="number" name="aiImageCooldownSeconds" min="0" max="7200" value="${escapeHtml(config.ai.imageCooldownSeconds)}">
               </label>
+              <label>
+                Chaos level
+                <input type="number" name="aiChaosLevel" min="1" max="10" value="${escapeHtml(config.ai.chaosLevel || 3)}">
+              </label>
+              <label>
+                Lore strictness
+                <select name="aiLoreStrictness">
+                  <option value="loose" ${config.ai.loreStrictness === "loose" ? "selected" : ""}>Loose</option>
+                  <option value="balanced" ${!config.ai.loreStrictness || config.ai.loreStrictness === "balanced" ? "selected" : ""}>Balanced</option>
+                  <option value="strict" ${config.ai.loreStrictness === "strict" ? "selected" : ""}>Strict</option>
+                </select>
+              </label>
+              <label>
+                Response length
+                <select name="aiResponseLength">
+                  <option value="short" ${config.ai.responseLength === "short" ? "selected" : ""}>Short</option>
+                  <option value="normal" ${!config.ai.responseLength || config.ai.responseLength === "normal" ? "selected" : ""}>Normal</option>
+                  <option value="long" ${config.ai.responseLength === "long" ? "selected" : ""}>Long</option>
+                </select>
+              </label>
+              <label>
+                Monthly token budget
+                <input type="number" name="aiMonthlyBudget" min="0" max="50000000" value="${escapeHtml(config.ai.monthlyBudget || 0)}">
+              </label>
+            </div>
+            <div class="stat-grid compact-stat-grid">
+              <div><span>This month</span><strong>${escapeHtml(config.ai.usage?.month || "none")}</strong></div>
+              <div><span>Requests</span><strong>${escapeHtml(config.ai.usage?.requests || 0)}</strong></div>
+              <div><span>Est. tokens</span><strong>${escapeHtml((config.ai.usage?.estimatedTokens || 0).toLocaleString())}</strong></div>
             </div>
             <label>
               Extra personality
               <textarea name="aiPersonality" rows="5">${escapeHtml(config.ai.personality)}</textarea>
+            </label>
+            <div>
+              <p class="field-label">AI allowed roles</p>
+              <p class="field-help">Leave empty to allow everyone. This applies to AI commands and passive AI replies.</p>
+              <div class="checkbox-grid">
+                ${roleCheckboxes(guild.roles, config.ai.allowedRoleIds || [], "aiAllowedRoleIds")}
+              </div>
+            </div>
+            <label>
+              Channel personalities
+              <textarea name="aiChannelPersonalities" rows="5">${escapeHtml(aiChannelPersonalitiesText(config.ai.channelPersonalities || {}))}</textarea>
+              <span class="field-help">One per line: <code>channelId | extra personality rules</code>. These are layered on top of the global personality.</span>
             </label>
             <div>
               <p class="field-label">AI chat channels</p>
@@ -4941,6 +5016,13 @@ export function createPanel({
         return;
       }
       const nextConfig = parseConfigForm(request.body, section);
+      const existingConfig = store.getGuild(discordGuild.id);
+      if (section === "ai" && nextConfig.ai) {
+        nextConfig.ai = {
+          ...nextConfig.ai,
+          usage: existingConfig.ai?.usage || { month: "", requests: 0, estimatedTokens: 0 }
+        };
+      }
       if (section === "permissions" && !panelAccessAtLeast(panelUser?.level || "root", "root")) {
         nextConfig.commandRoles = {
           ...nextConfig.commandRoles,

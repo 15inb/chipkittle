@@ -10,7 +10,7 @@ import { checkAiRateLimit } from "./aiRateLimit.js";
 import { handleApplicationDm } from "./applicationTickets.js";
 import { commandList, createCommandHandler } from "./commands.js";
 import { addAuditLog, incrementMetric } from "./communityFeatures.js";
-import { NO_MENTIONS } from "./discordSafety.js";
+import { NO_MENTIONS, neutralizeMentions } from "./discordSafety.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
 import { handleSlashCommand, registerSlashCommands } from "./slashCommands.js";
 import { TtsVoiceService } from "./ttsVoice.js";
@@ -75,6 +75,55 @@ function shouldAiReply(message, config, clientUserId) {
 
 function cleanAiPrompt(message, clientUserId) {
   return message.content.replaceAll(`<@${clientUserId}>`, "").replaceAll(`<@!${clientUserId}>`, "").trim();
+}
+
+function aiAllowedForMember(config, member) {
+  const allowedRoleIds = config.ai?.allowedRoleIds || [];
+  if (!allowedRoleIds.length) return true;
+  return allowedRoleIds.some((roleId) => member?.roles?.cache?.has(roleId));
+}
+
+function aiMonthKey(date = new Date()) {
+  return date.toISOString().slice(0, 7);
+}
+
+function aiUsageState(config) {
+  const usage = config.ai?.usage || {};
+  const month = aiMonthKey();
+  return usage.month === month
+    ? {
+        month,
+        requests: Math.max(Math.floor(Number(usage.requests) || 0), 0),
+        estimatedTokens: Math.max(Math.floor(Number(usage.estimatedTokens) || 0), 0)
+      }
+    : { month, requests: 0, estimatedTokens: 0 };
+}
+
+function aiBudgetStatus(config) {
+  const budget = Math.max(Math.floor(Number(config.ai?.monthlyBudget) || 0), 0);
+  const usage = aiUsageState(config);
+  return {
+    budget,
+    usage,
+    exceeded: budget > 0 && usage.estimatedTokens >= budget
+  };
+}
+
+async function recordAiUsage(store, guildId, usage = {}) {
+  if (!guildId) return;
+  const latestConfig = store.getGuild(guildId);
+  const current = aiUsageState(latestConfig);
+  const estimatedTokens = Math.max(Math.floor(Number(usage.totalTokens || usage.estimatedTokens) || 0), 1);
+  await store.updateGuild(guildId, {
+    ai: {
+      ...latestConfig.ai,
+      usage: {
+        month: current.month,
+        requests: current.requests + 1,
+        estimatedTokens: current.estimatedTokens + estimatedTokens
+      }
+    }
+  });
 }
 
 export function createBot({ store, publicUrl, clientId, guildId, token, ai, defaultAiModel }) {
@@ -194,6 +243,25 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
     if (shouldAiReply(message, config, client.user.id)) {
       const prompt = cleanAiPrompt(message, client.user.id);
       if (prompt) {
+        if (!ai.enabled) return;
+        if (!aiAllowedForMember(config, message.member)) {
+          if (message.mentions.users.has(client.user.id)) {
+            await message.reply({
+              content: "Chipkittle AI is currently limited to configured AI roles.",
+              allowedMentions: NO_MENTIONS
+            }).catch(() => {});
+          }
+          return;
+        }
+        if (aiBudgetStatus(config).exceeded) {
+          if (message.mentions.users.has(client.user.id)) {
+            await message.reply({
+              content: "Chipkittle AI has reached the monthly usage budget.",
+              allowedMentions: NO_MENTIONS
+            }).catch(() => {});
+          }
+          return;
+        }
         const rateLimit = checkAiRateLimit({
           guildId: message.guild.id,
           userId: message.author.id,
@@ -210,10 +278,12 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
         }
 
         await message.channel.sendTyping().catch(() => {});
-        const reply = await ai.reply(message, config, prompt).catch((error) => {
+        const aiResult = await ai.reply(message, config, prompt).catch((error) => {
           console.error("AI reply failed:", error);
-          return "The artifact fizzled. Check the AI key/model settings and try again.";
+          return { text: "The artifact fizzled. Check the AI key/model settings and try again.", usage: { estimatedTokens: 1 } };
         });
+        const reply = neutralizeMentions(typeof aiResult === "string" ? aiResult : aiResult.text);
+        await recordAiUsage(store, message.guild.id, typeof aiResult === "string" ? { estimatedTokens: 1 } : aiResult.usage).catch(() => {});
         await incrementMetric(store, message.guild.id, "aiReplies", 1).catch(() => {});
         await message.reply({ content: reply, allowedMentions: NO_MENTIONS }).catch(() => {});
         return;

@@ -17,6 +17,44 @@ function trimDiscordMessage(text, maxLength = 1800) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }
 
+function aiMaxTokens(config = {}) {
+  const length = String(config.ai?.responseLength || "normal").toLowerCase();
+  if (length === "short") return 180;
+  if (length === "long") return 750;
+  return 450;
+}
+
+function channelPersonality(config = {}, channelId = "") {
+  return String(config.ai?.channelPersonalities?.[channelId] || "").trim();
+}
+
+function aiPromptOptions(config = {}, channelId = "") {
+  const extra = [
+    config.ai?.personality,
+    channelPersonality(config, channelId) ? `Channel-specific behavior: ${channelPersonality(config, channelId)}` : ""
+  ].filter(Boolean).join("\n");
+  return {
+    personality: extra,
+    mode: config.ai?.mode,
+    chaosLevel: config.ai?.chaosLevel,
+    loreStrictness: config.ai?.loreStrictness,
+    responseLength: config.ai?.responseLength
+  };
+}
+
+function estimateUsage(response, text = "") {
+  const usage = response?.usage || {};
+  const inputTokens = Math.max(Math.floor(Number(usage.input_tokens || usage.inputTokens) || 0), 0);
+  const outputTokens = Math.max(Math.floor(Number(usage.output_tokens || usage.outputTokens) || 0), 0);
+  const totalTokens = Math.max(Math.floor(Number(usage.total_tokens || usage.totalTokens) || 0), 0);
+  const fallback = Math.max(Math.ceil(String(text || "").length / 4), 1);
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: totalTokens || inputTokens + outputTokens || fallback
+  };
+}
+
 export class AiService {
   constructor({ apiKey, defaultModel }) {
     this.defaultModel = defaultModel || "gpt-5.2";
@@ -42,12 +80,17 @@ export class AiService {
     this.history.set(key, existing.slice(-MAX_CONTEXT_MESSAGES));
   }
 
+  clearHistory(message) {
+    this.history.delete(this.keyFor(message));
+  }
+
   async reply(message, config, promptText) {
     if (!this.client) {
       return "AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.";
     }
 
     const model = config.ai.model || this.defaultModel;
+    const promptOptions = aiPromptOptions(config, message.channel.id);
     const input = [
       ...(this.history.get(this.keyFor(message)) || []).map((item) => ({
         role: item.role,
@@ -61,15 +104,15 @@ export class AiService {
 
     const response = await this.client.responses.create({
       model,
-      instructions: chipkittlePrompt(config.ai.personality, config.ai.mode),
+      instructions: chipkittlePrompt(promptOptions.personality, promptOptions.mode, promptOptions),
       input,
-      max_output_tokens: 450
+      max_output_tokens: aiMaxTokens(config)
     });
 
     const output = neutralizeMentions(trimDiscordMessage(response.output_text));
     this.remember(message, "user", promptText);
     this.remember(message, "assistant", output);
-    return output;
+    return { text: output, usage: estimateUsage(response, output) };
   }
 
   async chipkittleName(message, config, inspiration = "") {
@@ -78,6 +121,7 @@ export class AiService {
     }
 
     const model = config.ai.model || this.defaultModel;
+    const promptOptions = aiPromptOptions(config, message.channel.id);
     const seed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const prompt = [
       "Generate one brand-new ceremonial Chipkittle name.",
@@ -90,7 +134,7 @@ export class AiService {
 
     const response = await this.client.responses.create({
       model,
-      instructions: chipkittlePrompt(config.ai.personality, config.ai.mode),
+      instructions: chipkittlePrompt(promptOptions.personality, promptOptions.mode, promptOptions),
       input: [{ role: "user", content: prompt }],
       max_output_tokens: 80
     });
@@ -99,6 +143,33 @@ export class AiService {
       .split("\n")[0]
       .replace(/^[\s"'`]+|[\s"'`]+$/g, "");
     return name || "Mucklehorn Crumbwrit";
+  }
+
+  async loreAnswer(message, config, question = "") {
+    if (!this.client) {
+      return { text: "AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.", usage: { totalTokens: 0 } };
+    }
+    const model = config.ai.model || this.defaultModel;
+    const promptOptions = {
+      ...aiPromptOptions(config, message.channel.id),
+      loreStrictness: "strict",
+      responseLength: config.ai.responseLength || "normal"
+    };
+    const response = await this.client.responses.create({
+      model,
+      instructions: chipkittlePrompt(promptOptions.personality, promptOptions.mode, promptOptions),
+      input: [{
+        role: "user",
+        content: [
+          "Answer this as a strict Chipkittle lore archivist.",
+          "Use only provided canon. If canon does not answer, say the artifact record is unclear.",
+          `Question: ${question}`
+        ].join("\n")
+      }],
+      max_output_tokens: aiMaxTokens(config)
+    });
+    const output = neutralizeMentions(trimDiscordMessage(response.output_text));
+    return { text: output, usage: estimateUsage(response, output) };
   }
 
   async chipifyImage({ imageBuffer, mimeType, filename, userId }) {

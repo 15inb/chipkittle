@@ -113,11 +113,28 @@ export function normalizeAiMode(mode = "normal") {
   return String(mode || "").toLowerCase() === "evil" ? "evil" : "normal";
 }
 
-export function chipkittlePrompt(extraPersonality = "", mode = "normal") {
+export function chipkittlePrompt(extraPersonality = "", mode = "normal", options = {}) {
   const normalizedMode = normalizeAiMode(mode);
+  const chaosLevel = Math.min(Math.max(Math.floor(Number(options.chaosLevel) || 3), 1), 10);
+  const loreStrictness = ["loose", "balanced", "strict"].includes(String(options.loreStrictness || "").toLowerCase())
+    ? String(options.loreStrictness).toLowerCase()
+    : "balanced";
+  const responseLength = ["short", "normal", "long"].includes(String(options.responseLength || "").toLowerCase())
+    ? String(options.responseLength).toLowerCase()
+    : "normal";
   const modeLine = normalizedMode === "evil"
-    ? "Mode: Evil Chipkittle. Be super unhinged in a theatrical, absurd, over-the-top way. Sound like a sleep-deprived cursed artifact overlord whose mind is running three apocalypses ahead of everyone else: domineering, chaotic, obsessive, taunting, paranoid, ritualistic, smug, and delightfully unstable. Treat tiny events like catastrophic omens. Jump to bizarre conclusions. Declare nonsense with total confidence. Act like bread, horns, dust, server roles, and random punctuation are all evidence of a vast ceremonial conspiracy. Use sharp mockery, frantic prophecy energy, ominous proclamations, fake cosmic panic, ceremonial threats of inconvenience, and deranged declarations of inevitable Chipkittle dominion. Replies should feel volatile, memorable, and entertaining, like the speaker is one bad crumb away from announcing the end of the age. Stay playful and fictional: no hateful language, slurs, explicit sexual content, sexual violence, real threats, targeted harassment, or encouragement of harm."
+    ? `Mode: Evil Chipkittle. Be theatrical, absurd, over-the-top, and chaotic at intensity ${chaosLevel}/10. Sound like a cursed artifact overlord whose mind is running three apocalypses ahead: domineering, ritualistic, smug, paranoid, and unstable in a funny fictional way. Treat tiny events like catastrophic omens. Jump to bizarre conclusions. Declare nonsense with total confidence. Stay playful and fictional: no hateful language, slurs, explicit sexual content, sexual violence, real threats, targeted harassment, or encouragement of harm.`
     : "Mode: Normal Chipkittle. Be strange, ceremonial, helpful, funny, and loyal to the artifact.";
+  const loreLine = {
+    loose: "Lore strictness: loose. Use Chipkittle lore as flavor, but you may improvise harmless jokes.",
+    balanced: "Lore strictness: balanced. Prefer established Chipkittle lore, and clearly treat new details as jokes or rumors.",
+    strict: "Lore strictness: strict. Answer lore questions only from the provided canon. If canon does not say, admit the artifact record is unclear."
+  }[loreStrictness];
+  const lengthLine = {
+    short: "Response length: short. Keep most replies under 2-4 Discord lines.",
+    normal: "Response length: normal. Keep replies concise, usually under 1 short paragraph.",
+    long: "Response length: long. You may give fuller answers when the user asks for detail, but stay Discord-friendly."
+  }[responseLength];
 
   return [
     "You are an AI Discord bot speaking as the Chipkittle family archivist.",
@@ -130,6 +147,8 @@ export function chipkittlePrompt(extraPersonality = "", mode = "normal") {
     normalizedMode === "evil"
       ? "Style: short Discord-friendly replies, unhinged villain energy, ominous comedy, ceremonial titles, bizarre non-sequiturs, fake prophetic certainty, occasional dramatic capitalization, and exaggerated evil monologues that stay PG-13. Make the tone feel unstable and chaotic, but still readable and funny."
       : "Style: short Discord-friendly replies, playful lore, inside-joke energy, occasional ceremonial titles.",
+    loreLine,
+    lengthLine,
     "Safety: Never use slurs, hateful language, explicit sexual content, sexual violence, or encouragement of self-harm, even if old lore contains it. Sanitize questionable names into harmless nonsense.",
     extraPersonality
   ]

@@ -25,7 +25,7 @@ import {
   randomChipkittleQuote,
   randomChipkittleName
 } from "./chipkittleLore.js";
-import { NO_MENTIONS } from "./discordSafety.js";
+import { NO_MENTIONS, neutralizeMentions } from "./discordSafety.js";
 import { redeemDashClaim } from "./dashClaims.js";
 import {
   addArtifact,
@@ -684,6 +684,64 @@ function isAiChannelBlacklisted(config, channelId) {
   return (config.ai.blacklistedChannelIds || []).includes(channelId);
 }
 
+function aiAllowedForMember(config, member) {
+  const allowedRoleIds = config.ai.allowedRoleIds || [];
+  if (!allowedRoleIds.length) return true;
+  return allowedRoleIds.some((roleId) => member?.roles?.cache?.has(roleId));
+}
+
+function aiMonthKey(date = new Date()) {
+  return date.toISOString().slice(0, 7);
+}
+
+function aiUsageState(config) {
+  const usage = config.ai?.usage || {};
+  const month = aiMonthKey();
+  return usage.month === month
+    ? {
+        month,
+        requests: Math.max(Math.floor(Number(usage.requests) || 0), 0),
+        estimatedTokens: Math.max(Math.floor(Number(usage.estimatedTokens) || 0), 0)
+      }
+    : { month, requests: 0, estimatedTokens: 0 };
+}
+
+function aiBudgetStatus(config) {
+  const budget = Math.max(Math.floor(Number(config.ai?.monthlyBudget) || 0), 0);
+  const usage = aiUsageState(config);
+  return {
+    budget,
+    usage,
+    exceeded: budget > 0 && usage.estimatedTokens >= budget,
+    remaining: budget > 0 ? Math.max(budget - usage.estimatedTokens, 0) : null
+  };
+}
+
+async function recordAiUsage(store, guildId, config, usage = {}) {
+  if (!guildId) return;
+  const latestConfig = store.getGuild(guildId);
+  const current = aiUsageState(latestConfig);
+  const estimatedTokens = Math.max(Math.floor(Number(usage.totalTokens || usage.estimatedTokens) || 0), 1);
+  await store.updateGuild(guildId, {
+    ai: {
+      ...latestConfig.ai,
+      usage: {
+        month: current.month,
+        requests: current.requests + 1,
+        estimatedTokens: current.estimatedTokens + estimatedTokens
+      }
+    }
+  });
+}
+
+async function sendAiResult(ctx, aiResult) {
+  const result = typeof aiResult === "string" ? { text: aiResult, usage: { totalTokens: 1 } } : aiResult;
+  const text = neutralizeMentions(result?.text || "The artifact is quiet right now.");
+  await recordAiUsage(ctx.store, ctx.message.guild?.id, ctx.config, result?.usage);
+  await incrementMetric(ctx.store, ctx.message.guild.id, "aiReplies", 1).catch(() => {});
+  await ctx.message.reply({ content: text, allowedMentions: NO_MENTIONS });
+}
+
 function isApplicationStaff(ctx) {
   return canUseApplicationCommand(ctx.message.member, ctx.config, ctx.command.name, hasCommandRoleOverride);
 }
@@ -905,6 +963,10 @@ function targetTextChannel(message) {
   return message.mentions.channels.first() || message.channel;
 }
 
+function targetRole(message) {
+  return message.mentions.roles.first();
+}
+
 function isSupportedImageAttachment(attachment) {
   const contentType = attachment.contentType?.toLowerCase() || "";
   const extension = attachment.name?.split(".").pop()?.toLowerCase();
@@ -1060,6 +1122,23 @@ function channelMentionList(ids) {
   return ids.length ? ids.map((id) => `<#${id}>`).join(", ") : "none";
 }
 
+function healthLine(ok, label, detail = "") {
+  return `${ok ? "OK" : "Needs attention"} - **${label}**${detail ? `: ${detail}` : ""}`;
+}
+
+function textChannelById(guild, channelId = "") {
+  if (!channelId) return null;
+  const channel = guild.channels.cache.get(channelId);
+  return channel?.isTextBased?.() ? channel : null;
+}
+
+function botCanSend(channel) {
+  const me = channel?.guild?.members?.me;
+  if (!channel || !me) return false;
+  const permissions = me.permissionsIn(channel);
+  return permissions.has(PermissionsBitField.Flags.ViewChannel) && permissions.has(PermissionsBitField.Flags.SendMessages);
+}
+
 function splitArgs(content, prefix) {
   const withoutPrefix = content.slice(prefix.length).trim();
   const parts = withoutPrefix.split(/\s+/);
@@ -1169,6 +1248,7 @@ const LOAN_INTEREST_RATE = 0.06;
 const LOAN_SHARK_INTERVAL_MS = 60 * 60 * 1000;
 const LOAN_MAX_INTEREST_TICKS = 24;
 const LOAN_MAX_SHARK_TICKS = 12;
+const LOAN_MAX_DEBT_MULTIPLIER = 5;
 const blackjackSessions = new Map();
 
 function normalizeEconomy(economy = {}) {
@@ -1226,6 +1306,20 @@ function totalBreadWealth(economy, userId) {
 
 function formatBread(amount) {
   return `${Math.floor(amount).toLocaleString()} bread`;
+}
+
+function maxLoanDebt(loan) {
+  const principal = Math.max(Math.floor(Number(loan?.principal) || 0), 0);
+  return principal * LOAN_MAX_DEBT_MULTIPLIER;
+}
+
+function clampLoanDebt(loan) {
+  if (!loan) return loan;
+  const cap = maxLoanDebt(loan);
+  if (cap > 0) {
+    loan.owed = Math.min(Math.max(Math.floor(Number(loan.owed) || 0), 0), cap);
+  }
+  return loan;
 }
 
 function userUpgrades(economy, userId) {
@@ -1367,7 +1461,7 @@ function formatNetBread(net) {
 function activeLoan(economy, userId) {
   const loan = economy.loans?.[userId];
   if (!loan || loan.status === "paid") return null;
-  return {
+  return clampLoanDebt({
     principal: Math.max(Math.floor(Number(loan.principal) || 0), 0),
     owed: Math.max(Math.floor(Number(loan.owed) || 0), 0),
     borrowedAt: loan.borrowedAt || new Date().toISOString(),
@@ -1376,7 +1470,7 @@ function activeLoan(economy, userId) {
     lastPenaltyAt: loan.lastPenaltyAt || loan.dueAt || loan.borrowedAt || new Date().toISOString(),
     strikes: Math.max(Math.floor(Number(loan.strikes) || 0), 0),
     status: loan.status || "active"
-  };
+  });
 }
 
 function maxLoanAmount(economy, userId) {
@@ -1390,7 +1484,7 @@ function setLoan(economy, userId, loan) {
     delete economy.loans[userId];
     return;
   }
-  economy.loans[userId] = loan;
+  economy.loans[userId] = clampLoanDebt(loan);
 }
 
 function collectLoanSharkFee(economy, userId, amount) {
@@ -1433,14 +1527,21 @@ function applyLoanPressure(economy, userId, nowMs = Date.now()) {
   );
   let interestAdded = 0;
   for (let index = 0; index < interestTicks; index += 1) {
+    const before = loan.owed;
     const interest = Math.max(1, Math.floor(loan.owed * LOAN_INTEREST_RATE));
     loan.owed += interest;
-    interestAdded += interest;
+    clampLoanDebt(loan);
+    interestAdded += loan.owed - before;
     interestAnchor = index === 0 && immediateInterest ? nowMs : interestAnchor + LOAN_INTEREST_INTERVAL_MS;
+    if (loan.owed >= maxLoanDebt(loan)) break;
   }
   if (interestTicks > 0) {
     loan.lastInterestAt = new Date(interestAnchor).toISOString();
-    notices.push(`Loan shark interest added **${formatBread(interestAdded)}**.`);
+    notices.push(
+      interestAdded > 0
+        ? `Loan shark interest added **${formatBread(interestAdded)}**.`
+        : `Loan shark interest hit the **${LOAN_MAX_DEBT_MULTIPLIER}x debt cap**.`
+    );
     recordEconomyTransaction(economy, {
       userId,
       type: "loan-interest",
@@ -1459,7 +1560,12 @@ function applyLoanPressure(economy, userId, nowMs = Date.now()) {
     const collection = collectLoanSharkFee(economy, userId, fee);
     collectedTotal += collection.collected;
     unpaidFees += collection.unpaid;
-    if (collection.unpaid > 0) loan.owed += collection.unpaid;
+    if (collection.unpaid > 0) {
+      const before = loan.owed;
+      loan.owed += collection.unpaid;
+      clampLoanDebt(loan);
+      unpaidFees -= collection.unpaid - Math.max(loan.owed - before, 0);
+    }
     penaltyAnchor += LOAN_SHARK_INTERVAL_MS;
   }
   if (sharkTicks > 0) {
@@ -1966,6 +2072,36 @@ define({
   description: "Get the web config panel link.",
   async run(ctx) {
     await ctx.message.reply(`Open the config panel: ${ctx.publicUrl}`);
+  }
+});
+
+define({
+  name: "healthcheck",
+  aliases: ["bothealth", "checkconfig"],
+  category: "Config",
+  description: "Check common bot setup problems without changing settings.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const guild = ctx.message.guild;
+    const config = ctx.config;
+    const logChannel = textChannelById(guild, config.moderation?.logChannelId);
+    const appChannel = textChannelById(guild, config.applications?.channelId);
+    const appThreadChannel = textChannelById(guild, config.applications?.threadChannelId || config.applications?.channelId);
+    const recordChannel = textChannelById(guild, gameRecordChannelId(config));
+    const aiChannels = (config.ai.channelIds || []).map((id) => textChannelById(guild, id)).filter(Boolean);
+    const missingAiChannels = (config.ai.channelIds || []).filter((id) => !textChannelById(guild, id));
+    const rows = [
+      healthLine(Boolean(ctx.client.user), "Bot session", ctx.client.user ? `online as ${ctx.client.user.tag}` : "not ready"),
+      healthLine(Boolean(logChannel), "Moderation log channel", logChannel ? `${logChannel} ${botCanSend(logChannel) ? "can send" : "cannot send"}` : "not configured or missing"),
+      healthLine(!config.applications?.enabled || Boolean(appThreadChannel), "Application review channel", config.applications?.enabled ? (appThreadChannel ? `${appThreadChannel}` : "missing") : "applications disabled"),
+      healthLine(!appThreadChannel || botCanSend(appThreadChannel), "Application channel permissions", appThreadChannel ? (botCanSend(appThreadChannel) ? "can send" : "cannot send") : "no channel"),
+      healthLine(!recordChannel || botCanSend(recordChannel), "Game record alerts", recordChannel ? `${recordChannel} ${botCanSend(recordChannel) ? "can send" : "cannot send"}` : "not configured"),
+      healthLine(config.ai.enabled ? ctx.ai.enabled : true, "AI API key", config.ai.enabled ? (ctx.ai.enabled ? "configured" : "missing OPENAI_API_KEY") : "AI disabled"),
+      healthLine(missingAiChannels.length === 0, "AI channels", aiChannels.length ? `${aiChannels.length} configured` : (missingAiChannels.length ? `${missingAiChannels.length} missing` : "none configured")),
+      healthLine(Boolean(config.prefix), "Legacy prefix", `\`${config.prefix || "!"}\``)
+    ];
+
+    await ctx.message.reply(rows.join("\n"));
   }
 });
 
@@ -2868,7 +3004,7 @@ define({
             `You do not have an active loan.`,
             `Available credit: **${formatBread(maxLoan)}**`,
             `Borrow with \`${ctx.config.prefix}loan take amount\`. Pay with \`${ctx.config.prefix}loan pay amount\`.`,
-            `Loans are due after **1 hour**. After that, interest and loan shark visits begin.`
+            `Loans are due after **1 hour**. After that, interest and loan shark visits begin, but debt caps at **${LOAN_MAX_DEBT_MULTIPLIER}x** the original loan.`
           ].join("\n");
         }
         const dueMs = Date.parse(currentLoan.dueAt);
@@ -2877,6 +3013,7 @@ define({
           `**Bread Loan Office**`,
           `Principal: **${formatBread(currentLoan.principal)}**`,
           `Current debt: **${formatBread(currentLoan.owed)}**`,
+          `Debt cap: **${formatBread(maxLoanDebt(currentLoan))}**`,
           `Due: ${overdueMs > 0 ? `**overdue by ${formatCooldown(overdueMs)}**` : `<t:${Math.floor(dueMs / 1000)}:R>`}`,
           `Loan shark strikes: **${currentLoan.strikes}**`,
           `Wallet: **${formatBread(breadBalance(economy, userId))}** | Bank: **${formatBread(bankBalance(economy, userId))}**`
@@ -2912,6 +3049,7 @@ define({
           `**Loan approved.**`,
           `Borrowed: **${formatBread(amount)}**`,
           `Due: <t:${Math.floor(dueAt.getTime() / 1000)}:R>`,
+          `Debt cap: **${formatBread(amount * LOAN_MAX_DEBT_MULTIPLIER)}**`,
           `Wallet: **${formatBread(breadBalance(economy, userId))}**`,
           `Pay it back with \`${ctx.config.prefix}loan pay amount\`. After 1 hour, the loan sharks start adding interest and taking bread.`
         ].join("\n");
@@ -3745,8 +3883,21 @@ define({
         await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
         return;
       }
+      if (!ctx.config.ai.enabled) {
+        await ctx.message.reply("Chipkittle AI is disabled in the panel.");
+        return;
+      }
       if (!ctx.ai.enabled) {
         await ctx.message.reply("AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");
+        return;
+      }
+      if (!aiAllowedForMember(ctx.config, ctx.message.member)) {
+        await ctx.message.reply("Chipkittle AI is currently limited to configured AI roles.");
+        return;
+      }
+      const budget = aiBudgetStatus(ctx.config);
+      if (budget.exceeded) {
+        await ctx.message.reply("Chipkittle AI has reached the monthly usage budget.");
         return;
       }
       const rateLimit = checkAiRateLimit({
@@ -3762,6 +3913,7 @@ define({
       await ctx.message.channel.sendTyping();
       const inspiration = ["chipname", "name"].includes(invoked) ? ctx.rest : ctx.args.slice(1).join(" ");
       const name = await ctx.ai.chipkittleName(ctx.message, ctx.config, inspiration);
+      await recordAiUsage(ctx.store, ctx.message.guild.id, ctx.config, { estimatedTokens: 90 });
       await ctx.message.reply(`Your Chipkittle name is **${name}**.`);
       return;
     }
@@ -4760,6 +4912,276 @@ define({
 });
 
 define({
+  name: "airoles",
+  aliases: ["aiaccess"],
+  category: "AI",
+  description: "Limit AI usage to certain roles, or list the current role gate.",
+  usage: "airoles add @role | remove @role | clear | list",
+  async run(ctx) {
+    if (!requirePanelRoot(ctx)) return;
+    const action = ctx.args[0]?.toLowerCase() || "list";
+    const allowedRoleIds = new Set(ctx.config.ai.allowedRoleIds || []);
+
+    if (action === "list") {
+      await ctx.message.reply(`AI allowed roles: ${allowedRoleIds.size ? [...allowedRoleIds].map((roleId) => `<@&${roleId}>`).join(", ") : "everyone"}.`);
+      return;
+    }
+
+    if (action === "clear") {
+      await ctx.store.updateGuild(ctx.message.guild.id, {
+        ai: { ...ctx.config.ai, allowedRoleIds: [] }
+      });
+      await ctx.message.reply("AI role gate cleared. Everyone can use AI commands again.");
+      return;
+    }
+
+    const role = targetRole(ctx.message);
+    if (!role || !["add", "remove"].includes(action)) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    if (action === "add") allowedRoleIds.add(role.id);
+    if (action === "remove") allowedRoleIds.delete(role.id);
+
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, allowedRoleIds: [...allowedRoleIds] }
+    });
+    await ctx.message.reply(`AI allowed roles updated: ${allowedRoleIds.size ? [...allowedRoleIds].map((roleId) => `<@&${roleId}>`).join(", ") : "everyone"}.`);
+  }
+});
+
+define({
+  name: "aiusage",
+  aliases: ["aistats", "aibudgetstatus"],
+  category: "AI",
+  description: "Show AI request and estimated token usage for this month.",
+  async run(ctx) {
+    const budget = aiBudgetStatus(ctx.config);
+    await ctx.message.reply([
+      `**Chipkittle AI Usage**`,
+      `Month: **${budget.usage.month}**`,
+      `Requests: **${budget.usage.requests.toLocaleString()}**`,
+      `Estimated tokens: **${budget.usage.estimatedTokens.toLocaleString()}**`,
+      budget.budget > 0
+        ? `Budget: **${budget.budget.toLocaleString()}** estimated tokens (${budget.remaining.toLocaleString()} left)`
+        : `Budget: **unlimited**`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "aiclearmemory",
+  aliases: ["clearai", "aimemoryreset"],
+  category: "AI",
+  description: "Clear Chipkittle AI conversation memory for the current channel.",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    if (typeof ctx.ai.clearHistory !== "function") {
+      await ctx.message.reply("This AI service does not support memory clearing.");
+      return;
+    }
+    ctx.ai.clearHistory(ctx.message);
+    await ctx.message.reply("AI memory cleared for this channel.");
+  }
+});
+
+define({
+  name: "aibudget",
+  category: "AI",
+  description: "Set the monthly estimated AI token budget. Zero means unlimited.",
+  usage: "aibudget 250000",
+  async run(ctx) {
+    if (!requirePanelRoot(ctx)) return;
+    const monthlyBudget = Math.min(Math.max(Math.floor(Number(ctx.args[0]) || 0), 0), 50_000_000);
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, monthlyBudget }
+    });
+    await ctx.message.reply(monthlyBudget ? `AI monthly budget set to **${monthlyBudget.toLocaleString()}** estimated tokens.` : "AI monthly budget disabled.");
+  }
+});
+
+define({
+  name: "airesetusage",
+  aliases: ["resetaiusage"],
+  category: "AI",
+  description: "Reset this month's AI usage counter.",
+  async run(ctx) {
+    if (!requirePanelRoot(ctx)) return;
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, usage: { month: aiMonthKey(), requests: 0, estimatedTokens: 0 } }
+    });
+    await ctx.message.reply("AI usage counter reset for this month.");
+  }
+});
+
+define({
+  name: "aichaos",
+  aliases: ["chaosai"],
+  category: "AI",
+  description: "Set AI chaos level from 1 to 10.",
+  usage: "aichaos 7",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const chaosLevel = Math.min(Math.max(Math.floor(Number(ctx.args[0]) || 3), 1), 10);
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, chaosLevel }
+    });
+    await ctx.message.reply(`AI chaos level set to **${chaosLevel}/10**.`);
+  }
+});
+
+define({
+  name: "ailorestrict",
+  aliases: ["lorestrict"],
+  category: "AI",
+  description: "Set how strictly the AI sticks to Chipkittle lore.",
+  usage: "ailorestrict loose|balanced|strict",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const loreStrictness = String(ctx.args[0] || "").toLowerCase();
+    if (!["loose", "balanced", "strict"].includes(loreStrictness)) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, loreStrictness }
+    });
+    await ctx.message.reply(`AI lore strictness set to **${loreStrictness}**.`);
+  }
+});
+
+define({
+  name: "airesponselength",
+  aliases: ["ailength"],
+  category: "AI",
+  description: "Set default AI response length.",
+  usage: "airesponselength short|normal|long",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const responseLength = String(ctx.args[0] || "").toLowerCase();
+    if (!["short", "normal", "long"].includes(responseLength)) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, responseLength }
+    });
+    await ctx.message.reply(`AI response length set to **${responseLength}**.`);
+  }
+});
+
+define({
+  name: "aichannelpersona",
+  aliases: ["channelpersona", "aichannelpersonality"],
+  category: "AI",
+  description: "Set channel-specific AI personality instructions.",
+  usage: "aichannelpersona #channel text | clear #channel | list",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    const action = ctx.args[0]?.toLowerCase() || "list";
+    const personalities = { ...(ctx.config.ai.channelPersonalities || {}) };
+
+    if (action === "list") {
+      const rows = Object.entries(personalities).slice(0, 15).map(([channelId, text]) => `<#${channelId}> - ${String(text).slice(0, 120)}`);
+      await ctx.message.reply(rows.length ? [`**AI Channel Personalities**`, ...rows].join("\n") : "No channel-specific AI personality rules are set.");
+      return;
+    }
+
+    const channel = targetTextChannel(ctx.message);
+    if (!channel?.id) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    if (action === "clear") {
+      delete personalities[channel.id];
+      await ctx.store.updateGuild(ctx.message.guild.id, {
+        ai: { ...ctx.config.ai, channelPersonalities: personalities }
+      });
+      await ctx.message.reply(`AI personality cleared for ${channel}.`);
+      return;
+    }
+
+    const text = ctx.rest
+      .replace(/^(set|add|update)\s+/i, "")
+      .replace(/<#\d+>\s*/g, "")
+      .trim()
+      .slice(0, 600);
+    if (!text) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    personalities[channel.id] = text;
+    await ctx.store.updateGuild(ctx.message.guild.id, {
+      ai: { ...ctx.config.ai, channelPersonalities: personalities }
+    });
+    await ctx.message.reply(`AI personality updated for ${channel}.`);
+  }
+});
+
+define({
+  name: "loreask",
+  aliases: ["asklore", "chipask"],
+  category: "AI",
+  description: "Ask a lore-focused Chipkittle question.",
+  usage: "loreask what is the artifact?",
+  async run(ctx) {
+    const question = ctx.rest;
+    if (!question) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (!ctx.config.ai.enabled || !ctx.ai.enabled) {
+      await ctx.message.reply("Chipkittle AI is disabled or missing an API key.");
+      return;
+    }
+    if (isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
+      await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
+      return;
+    }
+    if (!aiAllowedForMember(ctx.config, ctx.message.member)) {
+      await ctx.message.reply("Chipkittle AI is currently limited to configured AI roles.");
+      return;
+    }
+    const budget = aiBudgetStatus(ctx.config);
+    if (budget.exceeded) {
+      await ctx.message.reply("Chipkittle AI has reached the monthly usage budget.");
+      return;
+    }
+    const rateLimit = checkAiRateLimit({
+      guildId: ctx.message.guild.id,
+      userId: ctx.message.author.id,
+      cooldownSeconds: ctx.config.ai.apiCooldownSeconds,
+      bucket: "chat"
+    });
+    if (rateLimit.limited) {
+      await ctx.message.reply({ content: `The artifact is cooling down. Try again in ${rateLimit.retryAfterSeconds}s.`, allowedMentions: NO_MENTIONS });
+      return;
+    }
+    await ctx.message.channel.sendTyping();
+    const result = await ctx.ai.loreAnswer(ctx.message, ctx.config, question);
+    await sendAiResult(ctx, result);
+  }
+});
+
+define({
+  name: "chipfact",
+  aliases: ["lorefact", "randomlore"],
+  category: "Chipkittle",
+  description: "Pull a random Chipkittle lore fact without spending AI tokens.",
+  async run(ctx) {
+    const pool = [
+      ...CHIPKITTLE_LORE.principles,
+      ...CHIPKITTLE_LORE.figures,
+      CHIPKITTLE_LORE.visual
+    ];
+    await ctx.message.reply(pool[randomInt(0, pool.length - 1)]);
+  }
+});
+
+define({
   name: "ask",
   aliases: ["chat", "chipchat"],
   category: "AI",
@@ -4772,8 +5194,29 @@ define({
       return;
     }
 
+    if (!ctx.config.ai.enabled) {
+      await ctx.message.reply("Chipkittle AI is disabled in the panel.");
+      return;
+    }
+
+    if (!ctx.ai.enabled) {
+      await ctx.message.reply("AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");
+      return;
+    }
+
     if (isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
       await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
+      return;
+    }
+
+    if (!aiAllowedForMember(ctx.config, ctx.message.member)) {
+      await ctx.message.reply("Chipkittle AI is currently limited to configured AI roles.");
+      return;
+    }
+
+    const budget = aiBudgetStatus(ctx.config);
+    if (budget.exceeded) {
+      await ctx.message.reply("Chipkittle AI has reached the monthly usage budget.");
       return;
     }
 
@@ -4794,7 +5237,7 @@ define({
 
     await ctx.message.channel.sendTyping();
     const reply = await ctx.ai.reply(ctx.message, ctx.config, prompt);
-    await ctx.message.reply({ content: reply, allowedMentions: NO_MENTIONS });
+    await sendAiResult(ctx, reply);
   }
 });
 
@@ -6244,12 +6687,18 @@ define({
   category: "AI",
   description: "Show the current AI settings without editing them.",
   async run(ctx) {
+    const budget = aiBudgetStatus(ctx.config);
     await ctx.message.reply([
       `**Chipkittle AI Status**`,
       `Enabled: **${ctx.config.ai.enabled ? "Yes" : "No"}**`,
       `Mode: **${ctx.config.ai.mode === "evil" ? "evil" : "normal"}**`,
+      `Chaos: **${ctx.config.ai.chaosLevel || 3}/10**`,
+      `Lore strictness: **${ctx.config.ai.loreStrictness || "balanced"}**`,
+      `Response length: **${ctx.config.ai.responseLength || "normal"}**`,
       `Model: **${ctx.config.ai.model || ctx.defaultAiModel}**`,
       `Cooldown: **${ctx.config.ai.apiCooldownSeconds}s**`,
+      `Usage: **${budget.usage.requests.toLocaleString()}** requests / **${budget.usage.estimatedTokens.toLocaleString()}** estimated tokens${budget.budget ? ` of **${budget.budget.toLocaleString()}**` : ""}`,
+      `Allowed roles: ${(ctx.config.ai.allowedRoleIds || []).length ? ctx.config.ai.allowedRoleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "everyone"}`,
       `Whitelisted channels: ${channelMentionList(ctx.config.ai.channelIds)}`,
       `Blacklisted channels: ${channelMentionList(ctx.config.ai.blacklistedChannelIds || [])}`
     ].join("\n"));

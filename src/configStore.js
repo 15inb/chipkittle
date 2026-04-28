@@ -84,11 +84,22 @@ const DEFAULT_CONFIG = {
     enabled: false,
     channelIds: [],
     blacklistedChannelIds: [],
+    allowedRoleIds: [],
+    channelPersonalities: {},
     mode: "normal",
+    chaosLevel: 3,
+    loreStrictness: "balanced",
+    responseLength: "normal",
     model: "",
     apiCooldownSeconds: 30,
     imageCooldownSeconds: 120,
     replyToMentions: true,
+    monthlyBudget: 0,
+    usage: {
+      month: "",
+      requests: 0,
+      estimatedTokens: 0
+    },
     personality: "You are the Chipkittle family archivist: strange, ceremonial, funny, loyal to the artifact, and always dressed in the same white furry horned Chipkittle suit. Keep replies playful and PG-13. Do not use slurs, sexual violence, or hateful language from old records."
   },
   applications: {
@@ -208,7 +219,17 @@ function mergeConfig(config = {}) {
     },
     ai: {
       ...clone(DEFAULT_CONFIG.ai),
-      ...(config.ai || {})
+      ...(config.ai || {}),
+      channelIds: Array.isArray(config.ai?.channelIds) ? config.ai.channelIds : [],
+      blacklistedChannelIds: Array.isArray(config.ai?.blacklistedChannelIds) ? config.ai.blacklistedChannelIds : [],
+      allowedRoleIds: Array.isArray(config.ai?.allowedRoleIds) ? config.ai.allowedRoleIds : [],
+      channelPersonalities: {
+        ...(config.ai?.channelPersonalities || {})
+      },
+      usage: {
+        ...clone(DEFAULT_CONFIG.ai.usage),
+        ...(config.ai?.usage || {})
+      }
     },
     applications: {
       ...clone(DEFAULT_CONFIG.applications),
