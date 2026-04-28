@@ -1386,6 +1386,7 @@ function sanitizePanelAccessForExport(panelAccess = {}) {
       {
         ...entry,
         passwordHash: undefined,
+        lastLoginIp: undefined,
         hasPassword: Boolean(entry?.passwordHash),
         passwordResetRequired: true
       }
@@ -2493,7 +2494,6 @@ function recoveryPage(error = "", success = "") {
 
 function accountPage({ panelUser, sessions = [], currentSessionId = "", flash = "", isRoot = false }) {
   const expiry = formatAccessExpiry(panelUser.expiresAt || "");
-  const currentSession = sessions.find((sessionEntry) => sessionEntry.id === currentSessionId);
   return layout({
     title: "My account",
     user: true,
@@ -2510,7 +2510,6 @@ function accountPage({ panelUser, sessions = [], currentSessionId = "", flash = 
           <article class="stat-card"><strong>${escapeHtml(panelAccessLabel(panelUser.level))}</strong><span>Access level</span></article>
           <article class="stat-card"><strong>${escapeHtml(panelUser.lastLoginAt || "Unknown")}</strong><span>Last login</span></article>
           <article class="stat-card"><strong>${escapeHtml(expiry.label)}</strong><span>Access expires</span></article>
-          <article class="stat-card"><strong>${escapeHtml(currentSession?.ip || panelUser.lastLoginIp || "Unknown")}</strong><span>Current IP</span></article>
           <article class="stat-card"><strong>${sessions.length}</strong><span>Tracked sessions</span></article>
         </div>
       </section>
@@ -2542,7 +2541,7 @@ function accountPage({ panelUser, sessions = [], currentSessionId = "", flash = 
             <article class="access-user-row">
               <div>
                 <strong>${sessionEntry.id === currentSessionId ? "Current session" : "Panel session"}</strong>
-                <small>${escapeHtml(sessionEntry.ip || "unknown IP")} &middot; ${escapeHtml(sessionEntry.userAgent || "unknown browser")}</small>
+                <small>${escapeHtml(sessionEntry.userAgent || "unknown browser")}</small>
                 <small>Created ${escapeHtml(sessionEntry.createdAt || "unknown")} &middot; Last seen ${escapeHtml(sessionEntry.lastSeenAt || "unknown")}</small>
               </div>
               ${sessionEntry.id !== currentSessionId
@@ -3816,7 +3815,6 @@ export function createPanel({
         guildId: request.session.panelGuildId || currentPanelGuildId(),
         createdAt: request.session.createdAt || new Date().toISOString(),
         lastSeenAt: new Date().toISOString(),
-        ip: request.ip,
         userAgent: String(request.get("user-agent") || "").slice(0, 180)
       });
       request.session.lastSeenAt = new Date().toISOString();
@@ -3880,8 +3878,7 @@ export function createPanel({
     if (!clientId || !discordClientSecret) return "";
     const state = crypto.randomBytes(OAUTH_STATE_BYTES).toString("base64url");
     oauthStates.set(state, {
-      createdAt: Date.now(),
-      ip: request.ip
+      createdAt: Date.now()
     });
     const url = new URL("https://discord.com/oauth2/authorize");
     url.searchParams.set("client_id", clientId);
@@ -3969,8 +3966,7 @@ export function createPanel({
             level: access.user.level,
             grantedAt: entry.grantedAt || access.user.grantedAt || now,
             grantedBy: entry.grantedBy || access.user.grantedBy || "oauth",
-            lastLoginAt: now,
-            lastLoginIp: request.ip
+            lastLoginAt: now
           }
         }
       }
@@ -3995,7 +3991,6 @@ export function createPanel({
         guildId: access.guildId,
         createdAt: now,
         lastSeenAt: now,
-        ip: request.ip,
         userAgent: String(request.get("user-agent") || "").slice(0, 180)
       });
       auditPanelLogin(access.guildId, "Panel OAuth login", `${memberUsername} signed in with Discord OAuth.`, panelAccessLabel(access.user.level), { targetId: access.user.userId }).catch(() => {});
@@ -4659,7 +4654,7 @@ export function createPanel({
     } catch (error) {
       console.error("Discord OAuth login failed:", error);
       recordFailedLogin(request, "discord-oauth");
-      await auditPanelLogin(currentPanelGuildId(), "Panel OAuth failed", `OAuth callback failed from ${request.ip}.`, "Panel Auth");
+      await auditPanelLogin(currentPanelGuildId(), "Panel OAuth failed", "OAuth callback failed.", "Panel Auth");
       response.redirect(`/login?error=${error.oauthRedirectProblem ? "oauth-redirect" : "oauth"}`);
     }
   });
