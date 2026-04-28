@@ -2207,7 +2207,13 @@ function layout({ title, body, user, flash = "" }) {
         }
       };
       const theme = readSetting("chipkittlePanelTheme", "green");
-      const mode = readSetting("chipkittlePanelMode", "light");
+      const storedMode = readSetting("chipkittlePanelMode", "");
+      let mode = storedMode || "dark";
+      try {
+        if (localStorage.getItem("chipkittlePanelModeVersion") !== "2" && storedMode === "light") {
+          mode = "dark";
+        }
+      } catch {}
       document.documentElement.dataset.panelTheme = theme;
       document.documentElement.dataset.panelMode = mode;
     })();
@@ -2276,11 +2282,12 @@ function layout({ title, body, user, flash = "" }) {
         document.documentElement.dataset.panelMode = next;
         try {
           localStorage.setItem("chipkittlePanelMode", next);
+          localStorage.setItem("chipkittlePanelModeVersion", "2");
         } catch {}
         button.textContent = next === "dark" ? "Light mode" : "Dark mode";
         button.setAttribute("aria-pressed", next === "dark" ? "true" : "false");
       };
-      setMode(document.documentElement.dataset.panelMode || "light");
+      setMode(document.documentElement.dataset.panelMode || "dark");
       button.addEventListener("click", () => {
         setMode(document.documentElement.dataset.panelMode === "dark" ? "light" : "dark");
       });
