@@ -2200,7 +2200,9 @@ function layout({ title, body, user, flash = "" }) {
   <script>
     (() => {
       const theme = localStorage.getItem("chipkittlePanelTheme") || "green";
+      const mode = localStorage.getItem("chipkittlePanelMode") || "light";
       document.documentElement.dataset.panelTheme = theme;
+      document.documentElement.dataset.panelMode = mode;
     })();
   </script>
   <link rel="icon" type="image/png" href="/notativelogotransparent.png">
@@ -2233,6 +2235,7 @@ function layout({ title, body, user, flash = "" }) {
             <option value="gold">Gold</option>
           </select>
         </label>
+        <button type="button" class="mode-toggle" data-mode-toggle aria-label="Toggle panel light or dark mode">Dark mode</button>
         <a href="/">Panel</a>
         <a href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
         ${user ? '<a href="/commits">Commits</a>' : ""}
@@ -2254,6 +2257,20 @@ function layout({ title, body, user, flash = "" }) {
         const next = picker.value || "green";
         document.documentElement.dataset.panelTheme = next;
         localStorage.setItem("chipkittlePanelTheme", next);
+      });
+    })();
+    (() => {
+      const button = document.querySelector("[data-mode-toggle]");
+      if (!button) return;
+      const setMode = (mode) => {
+        const next = mode === "dark" ? "dark" : "light";
+        document.documentElement.dataset.panelMode = next;
+        localStorage.setItem("chipkittlePanelMode", next);
+        button.textContent = next === "dark" ? "Light mode" : "Dark mode";
+      };
+      setMode(document.documentElement.dataset.panelMode || "light");
+      button.addEventListener("click", () => {
+        setMode(document.documentElement.dataset.panelMode === "dark" ? "light" : "dark");
       });
     })();
     (() => {
