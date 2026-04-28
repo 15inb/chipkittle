@@ -2718,45 +2718,45 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
     })).filter((group) => group.sections.length);
     const totalVisibleSections = visibleGroups.reduce((sum, group) => sum + group.sections.length, 0);
     return `
-      <section class="panel-launchpad" aria-label="Panel launcher">
-        <div class="launchpad-top">
-          <div class="launchpad-identity">
-            <span class="guild-icon large">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
+      <section class="mission-control" aria-label="Panel launcher">
+        <div class="mission-hero">
+          <div class="mission-identity">
+            <span class="mission-emblem">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
             <div>
-              <p class="eyebrow">CK control console</p>
+              <p class="eyebrow">Chipkittle Mission Control</p>
               <h1>${escapeHtml(guild.name)}</h1>
-              <p>A modular command surface for the bot, Discord staff tools, public site, games, bread economy, and runtime controls.</p>
+              <p>One place for staff tools, applications, AI, games, site content, bread economy, command access, and runtime control.</p>
             </div>
           </div>
-          <div class="launchpad-command">
+          <div class="mission-search-card">
             <label class="nav-search-label">
-              Command search
-              <input data-nav-filter type="search" autocomplete="off" placeholder="Filter ${escapeHtml(String(totalVisibleSections))} modules">
+              Search panel modules
+              <input data-nav-filter type="search" autocomplete="off" placeholder="Type to filter ${escapeHtml(String(totalVisibleSections))} areas">
             </label>
-            <div class="launchpad-user-pill">${escapeHtml(panelUserLabel(panelUser))}</div>
+            <span>${escapeHtml(panelUserLabel(panelUser))}</span>
           </div>
         </div>
-        <div class="launchpad-statbar">
-          <span><strong>${escapeHtml(guild.memberCount ?? 0)}</strong> Members</span>
-          <span><strong>${escapeHtml(community.commandsRun)}</strong> Commands</span>
-          <span><strong>${escapeHtml(community.aiReplies)}</strong> AI replies</span>
-          <span><strong>${escapeHtml((config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").length)}</strong> Punishments</span>
-          <span><strong>${escapeHtml(community.applicationsOpened)}</strong> Apps</span>
-          <span><strong>${escapeHtml(config.prefix)}</strong> Prefix</span>
+        <div class="mission-readouts">
+          <article><span>Members</span><strong>${escapeHtml(guild.memberCount ?? 0)}</strong></article>
+          <article><span>Commands</span><strong>${escapeHtml(community.commandsRun)}</strong></article>
+          <article><span>AI replies</span><strong>${escapeHtml(community.aiReplies)}</strong></article>
+          <article><span>Punishments</span><strong>${escapeHtml((config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").length)}</strong></article>
+          <article><span>Applications</span><strong>${escapeHtml(community.applicationsOpened)}</strong></article>
+          <article><span>Prefix</span><strong>${escapeHtml(config.prefix)}</strong></article>
         </div>
-        <nav class="launchpad-grid" aria-label="Panel sections">
+        <nav class="mission-modules" aria-label="Panel sections">
           ${visibleGroups.map((group) => `
-            <section class="launchpad-group" data-nav-group>
-              <div class="launchpad-group-head">
-                <span>${escapeHtml(group.label)}</span>
-                <small>${escapeHtml(group.description || "")}</small>
+            <section class="mission-module-shelf" data-nav-group>
+              <div class="mission-shelf-title">
+                <strong>${escapeHtml(group.label)}</strong>
+                <span>${escapeHtml(group.description || "")}</span>
               </div>
-              <div class="launchpad-links">
+              <div class="mission-module-list">
               ${group.sections.map((sectionId) => {
                 const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
                 if (!section) return "";
                 return `
-                  <a class="launchpad-link ${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}" data-nav-link data-nav-text="${escapeHtml(`${section.label} ${section.description} ${group.label}`)}">
+                  <a class="mission-module ${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}" data-nav-link data-nav-text="${escapeHtml(`${section.label} ${section.description} ${group.label}`)}">
                     <b>${escapeHtml(SETTINGS_NAV_MARKS[section.id] || section.label.slice(0, 2).toUpperCase())}</b>
                     <span>
                       <strong>${escapeHtml(section.label)}</strong>
@@ -2769,11 +2769,6 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
             </section>
           `).join("")}
         </nav>
-        <div class="launchpad-current">
-          <span>Loaded module</span>
-          <strong>${escapeHtml(currentMeta.label)}</strong>
-          <small>${escapeHtml(currentMeta.description)}</small>
-        </div>
       </section>
     `;
   }
@@ -3319,49 +3314,46 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
     user: true,
     flash,
     body: `
-      <section class="panel-deck">
+      <section class="mission-panel">
         ${settingsNav(guild, config, currentSection, currentMeta, panelUser)}
-        <div class="workspace-stage">
-          <section class="workspace-command-bar">
-            <div class="workspace-title-block">
+        <div class="mission-workbench">
+          <aside class="mission-context-card">
+            <span class="mission-context-kicker">${NON_FORM_SECTIONS.has(currentSection) ? "Live workspace" : "Config workspace"}</span>
+            <h2>${escapeHtml(currentMeta.label)}</h2>
+            <p>${escapeHtml(currentMeta.description)}</p>
+            <dl>
+              <div>
+                <dt>Mode</dt>
+                <dd>${escapeHtml(sectionStatusLabel(currentSection))}</dd>
+              </div>
+              <div>
+                <dt>Access</dt>
+                <dd>${escapeHtml(panelUserLabel(panelUser))}</dd>
+              </div>
+              <div>
+                <dt>Prefix</dt>
+                <dd>${escapeHtml(config.prefix)}</dd>
+              </div>
+            </dl>
+            <div class="mission-context-actions">
+              ${mobileSectionSelect(guild, currentSection, panelUser)}
+              <a class="secondary-button" href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
+              <a class="secondary-button" href="/commits">Commits</a>
+            </div>
+          </aside>
+          <section class="mission-work-surface">
+            <div class="mission-work-surface-head">
+              <div>
+                <p class="eyebrow">Open workspace</p>
+                <h1>${escapeHtml(currentMeta.label)}</h1>
+              </div>
               <div class="workspace-breadcrumb">
                 <a href="/guilds/${guild.id}?section=dashboard">${escapeHtml(guild.name)}</a>
                 <span>/</span>
                 <strong>${escapeHtml(currentMeta.label)}</strong>
               </div>
-              <h1>${escapeHtml(currentMeta.label)}</h1>
-              <p>${escapeHtml(currentMeta.description)}</p>
             </div>
-            <div class="workspace-actions">
-              ${mobileSectionSelect(guild, currentSection, panelUser)}
-              <a class="secondary-button" href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
-              <a class="secondary-button" href="/commits">Commits</a>
-            </div>
-          </section>
-          <section class="workspace-context-strip">
-            <div>
-              <span>${NON_FORM_SECTIONS.has(currentSection) ? "Operational view" : "Configuration editor"}</span>
-              <strong>${escapeHtml(sectionStatusLabel(currentSection))}</strong>
-            </div>
-            <div>
-              <span>Access</span>
-              <strong>${escapeHtml(panelUserLabel(panelUser))}</strong>
-            </div>
-            <div>
-              <span>Prefix</span>
-              <strong>${escapeHtml(config.prefix)}</strong>
-            </div>
-          </section>
-          <div class="workspace-topline">
-            ${guildSummaryStrip(guild, config)}
-            <section class="workspace-quicklinks">
-              <a href="/guilds/${guild.id}?section=dashboard">Overview</a>
-              <a href="/guilds/${guild.id}?section=ai">AI</a>
-              <a href="/guilds/${guild.id}?section=moderation">Moderation</a>
-              <a href="/guilds/${guild.id}?section=server">Runtime</a>
-            </section>
-          </div>
-          <div class="settings-main workspace-main">
+            <div class="settings-main workspace-main">
             ${sectionWorkspace({
               guild,
               config,
@@ -3376,8 +3368,9 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               warningMemberLabels,
               panelUser
             })}
+            </div>
+          </section>
           </div>
-        </div>
       </section>${panelClientScript}
     `
   });
