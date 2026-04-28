@@ -2955,3 +2955,492 @@ textarea {
     width: 100%;
   }
 }
+
+/* Hard visual reset: CK control console. This intentionally abandons the old rounded-card dashboard look. */
+.panel-ui {
+  --bg: #020403;
+  --surface: #07100d;
+  --surface-2: #0b1713;
+  --surface-3: #10231d;
+  --text: #ecfff6;
+  --muted: #8fb5a5;
+  --subtle: #567468;
+  --line: rgba(126, 255, 177, 0.22);
+  --line-soft: rgba(126, 255, 177, 0.1);
+  --danger: #ff6d6d;
+  --warning: #ffd166;
+  --radius: 3px;
+  background:
+    linear-gradient(rgba(126, 255, 177, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 255, 177, 0.03) 1px, transparent 1px),
+    radial-gradient(circle at 80% -10%, rgba(var(--accent-rgb), 0.14), transparent 34%),
+    #020403;
+  background-size: 34px 34px, 34px 34px, auto, auto;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.panel-ui::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 4px);
+  mix-blend-mode: screen;
+  opacity: 0.35;
+}
+
+.panel-ui .topbar {
+  min-height: 52px;
+  padding: 8px 14px;
+  border-bottom: 2px solid var(--accent);
+  background: #030705;
+  box-shadow: 0 0 28px rgba(var(--accent-rgb), 0.16);
+}
+
+.panel-ui .brand {
+  min-height: 36px;
+}
+
+.panel-ui .brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 2px;
+  background: #07120e;
+  border: 1px solid var(--accent);
+  box-shadow: none;
+}
+
+.panel-ui .brand strong,
+.panel-ui .topbar-nav a,
+.panel-ui .theme-picker,
+.workspace-breadcrumb,
+.eyebrow,
+.section-heading h2,
+button,
+.primary-link,
+.secondary-button {
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.panel-ui .brand small,
+.panel-ui .topbar-status,
+.panel-ui .topbar-nav a,
+.panel-ui .theme-picker {
+  font-size: 11px;
+}
+
+.panel-ui .topbar-status,
+.panel-ui .topbar-nav a,
+.panel-ui .theme-picker {
+  border-radius: 2px;
+  border-color: var(--line);
+  background: #06110d;
+}
+
+.panel-ui .topbar-nav a:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.panel-content {
+  padding: 16px;
+}
+
+.panel-deck {
+  gap: 12px;
+}
+
+.panel-launchpad {
+  border: 2px solid var(--accent);
+  border-radius: 0;
+  padding: 0;
+  background: #040806;
+  box-shadow:
+    8px 8px 0 rgba(var(--accent-rgb), 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.panel-launchpad::before {
+  content: "CHIPKITTLE OPERATIONS / MODULE SELECT";
+  display: block;
+  border-bottom: 1px solid var(--line);
+  padding: 9px 12px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.launchpad-top {
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.launchpad-identity,
+.launchpad-command {
+  padding: 18px;
+}
+
+.launchpad-identity {
+  align-items: start;
+  border-right: 1px solid var(--line);
+}
+
+.launchpad-identity .guild-icon.large {
+  width: 76px;
+  height: 76px;
+  border-radius: 0;
+  border: 1px solid var(--accent);
+  background: #09110e;
+}
+
+.launchpad-identity h1 {
+  font-size: clamp(38px, 6vw, 78px);
+  line-height: 0.88;
+  color: var(--text);
+  text-shadow: 0 0 18px rgba(var(--accent-rgb), 0.22);
+}
+
+.launchpad-identity p:not(.eyebrow) {
+  max-width: 920px;
+  font-size: 14px;
+}
+
+.launchpad-command {
+  align-content: start;
+  border: 0;
+  border-radius: 0;
+  background: #050b08;
+}
+
+.nav-search-label input,
+input,
+select,
+textarea {
+  border-radius: 0;
+  border: 1px solid var(--line);
+  background: #030705;
+  color: var(--text);
+  caret-color: var(--accent);
+}
+
+.nav-search-label input:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.18);
+}
+
+.launchpad-user-pill {
+  border-radius: 0;
+  background: transparent;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.launchpad-statbar {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.launchpad-statbar span {
+  min-height: 74px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: #050a07;
+}
+
+.launchpad-statbar span:last-child {
+  border-right: 0;
+}
+
+.launchpad-statbar strong {
+  color: var(--accent);
+  font-size: 26px;
+}
+
+.launchpad-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+}
+
+.launchpad-group {
+  gap: 0;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 0;
+  background: #040806;
+}
+
+.launchpad-group:nth-child(4n) {
+  border-right: 0;
+}
+
+.launchpad-group-head {
+  min-height: 64px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(var(--accent-rgb), 0.07);
+}
+
+.launchpad-group-head span {
+  color: var(--accent);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.launchpad-links {
+  gap: 0;
+}
+
+.launchpad-link {
+  min-height: 82px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: transparent;
+  padding: 12px;
+}
+
+.launchpad-link:last-child {
+  border-bottom: 0;
+}
+
+.launchpad-link b {
+  width: 44px;
+  height: 44px;
+  border-radius: 0;
+  border: 1px solid var(--line);
+  background: #020403;
+}
+
+.launchpad-link em {
+  position: static;
+  align-self: center;
+  border-radius: 0;
+  background: transparent;
+  font-size: 9px;
+}
+
+.launchpad-link:hover,
+.launchpad-link.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.launchpad-link:hover *,
+.launchpad-link.active * {
+  color: var(--accent-ink);
+}
+
+.launchpad-link.active b,
+.launchpad-link:hover b {
+  border-color: var(--accent-ink);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.launchpad-current {
+  grid-template-columns: auto auto minmax(0, 1fr);
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: #06110d;
+}
+
+.workspace-command-bar,
+.workspace-context-strip,
+.panel-section,
+.stat-card,
+.audit-row,
+.list-row,
+.audit-log-row,
+.member-action-row,
+.suggestion-row,
+.access-user-row,
+.access-tier-card,
+.permission-category,
+.permission-row,
+.command-group,
+.sub-panel,
+.member-editor-row,
+.member-mini-card,
+.case-row,
+.warning-row {
+  border-radius: 0;
+  border-color: var(--line);
+  background: #050a07;
+  box-shadow: none;
+}
+
+.workspace-command-bar {
+  border-width: 2px;
+  border-left: 10px solid var(--accent);
+  background:
+    linear-gradient(90deg, rgba(var(--accent-rgb), 0.1), transparent 40%),
+    #040806;
+}
+
+.workspace-title-block h1 {
+  color: var(--accent);
+  text-shadow: 0 0 14px rgba(var(--accent-rgb), 0.18);
+}
+
+.workspace-context-strip {
+  border-width: 1px;
+}
+
+.workspace-context-strip div {
+  background: #030705;
+}
+
+.panel-section {
+  border-left: 6px solid var(--accent);
+  padding: 0;
+}
+
+.panel-section > * {
+  margin-left: 18px;
+  margin-right: 18px;
+}
+
+.panel-section > .section-heading {
+  margin: 0;
+}
+
+.section-heading {
+  padding: 13px 18px;
+  background: #07120e;
+  border-bottom: 1px solid var(--line);
+}
+
+.section-heading h2 {
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.section-heading p {
+  font-size: 12px;
+}
+
+.panel-section > :last-child {
+  margin-bottom: 18px;
+}
+
+.section-heading + * {
+  margin-top: 18px;
+}
+
+button,
+.primary-link,
+.secondary-button,
+.compact-button {
+  min-height: 38px;
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+button:hover,
+.primary-link:hover,
+.secondary-button:hover,
+.compact-button:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.danger-button {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
+}
+
+.danger-button:hover {
+  background: var(--danger);
+  color: #140000;
+}
+
+.checkbox-grid {
+  border-radius: 0;
+  background: #030705;
+}
+
+.toggle input {
+  accent-color: var(--accent);
+}
+
+.form-actions {
+  position: sticky;
+  bottom: 10px;
+  justify-content: flex-start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: rgba(2, 4, 3, 0.88);
+  backdrop-filter: blur(8px);
+}
+
+.form-actions button {
+  min-width: 220px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.dashboard-grid {
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+}
+
+.stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.stat-card strong {
+  color: var(--accent);
+}
+
+@media (max-width: 1240px) {
+  .launchpad-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .launchpad-group:nth-child(2n) {
+    border-right: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .launchpad-top,
+  .launchpad-statbar,
+  .launchpad-grid,
+  .launchpad-current,
+  .workspace-command-bar,
+  .workspace-context-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .launchpad-identity,
+  .launchpad-command,
+  .launchpad-statbar span,
+  .launchpad-group {
+    border-right: 0;
+  }
+
+  .launchpad-link {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .launchpad-link em {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

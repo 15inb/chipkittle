@@ -2723,15 +2723,15 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
           <div class="launchpad-identity">
             <span class="guild-icon large">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
             <div>
-              <p class="eyebrow">Panel deck</p>
+              <p class="eyebrow">CK control console</p>
               <h1>${escapeHtml(guild.name)}</h1>
-              <p>Jump between bot operations, Discord staff tools, public site controls, games, bread, and runtime work without digging through one giant settings wall.</p>
+              <p>A modular command surface for the bot, Discord staff tools, public site, games, bread economy, and runtime controls.</p>
             </div>
           </div>
           <div class="launchpad-command">
             <label class="nav-search-label">
-              Find a panel area
-              <input data-nav-filter type="search" autocomplete="off" placeholder="Search ${escapeHtml(String(totalVisibleSections))} sections">
+              Command search
+              <input data-nav-filter type="search" autocomplete="off" placeholder="Filter ${escapeHtml(String(totalVisibleSections))} modules">
             </label>
             <div class="launchpad-user-pill">${escapeHtml(panelUserLabel(panelUser))}</div>
           </div>
@@ -2770,7 +2770,7 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
           `).join("")}
         </nav>
         <div class="launchpad-current">
-          <span>Current</span>
+          <span>Loaded module</span>
           <strong>${escapeHtml(currentMeta.label)}</strong>
           <small>${escapeHtml(currentMeta.description)}</small>
         </div>
