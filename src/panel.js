@@ -2199,8 +2199,15 @@ function layout({ title, body, user, flash = "" }) {
   <title>${escapeHtml(title)}</title>
   <script>
     (() => {
-      const theme = localStorage.getItem("chipkittlePanelTheme") || "green";
-      const mode = localStorage.getItem("chipkittlePanelMode") || "light";
+      const readSetting = (key, fallback) => {
+        try {
+          return localStorage.getItem(key) || fallback;
+        } catch {
+          return fallback;
+        }
+      };
+      const theme = readSetting("chipkittlePanelTheme", "green");
+      const mode = readSetting("chipkittlePanelMode", "light");
       document.documentElement.dataset.panelTheme = theme;
       document.documentElement.dataset.panelMode = mode;
     })();
@@ -2256,7 +2263,9 @@ function layout({ title, body, user, flash = "" }) {
       picker.addEventListener("change", () => {
         const next = picker.value || "green";
         document.documentElement.dataset.panelTheme = next;
-        localStorage.setItem("chipkittlePanelTheme", next);
+        try {
+          localStorage.setItem("chipkittlePanelTheme", next);
+        } catch {}
       });
     })();
     (() => {
@@ -2265,8 +2274,11 @@ function layout({ title, body, user, flash = "" }) {
       const setMode = (mode) => {
         const next = mode === "dark" ? "dark" : "light";
         document.documentElement.dataset.panelMode = next;
-        localStorage.setItem("chipkittlePanelMode", next);
+        try {
+          localStorage.setItem("chipkittlePanelMode", next);
+        } catch {}
         button.textContent = next === "dark" ? "Light mode" : "Dark mode";
+        button.setAttribute("aria-pressed", next === "dark" ? "true" : "false");
       };
       setMode(document.documentElement.dataset.panelMode || "light");
       button.addEventListener("click", () => {

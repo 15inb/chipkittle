@@ -2113,6 +2113,7 @@ textarea {
 
   .topbar-nav a,
   .theme-picker,
+  .mode-toggle,
   .topbar-status {
     width: 100%;
     justify-content: center;
@@ -4040,6 +4041,10 @@ html[data-panel-mode="dark"] .panel-ui {
 }
 
 html[data-panel-mode="dark"] .panel-ui .topbar,
+html[data-panel-mode="dark"] .login-panel,
+html[data-panel-mode="dark"] .flash,
+html[data-panel-mode="dark"] .empty,
+html[data-panel-mode="dark"] .form-error,
 html[data-panel-mode="dark"] .mission-identity,
 html[data-panel-mode="dark"] .mission-search-card,
 html[data-panel-mode="dark"] .mission-context-card,
@@ -4061,6 +4066,8 @@ html[data-panel-mode="dark"] .command-group,
 html[data-panel-mode="dark"] .sub-panel,
 html[data-panel-mode="dark"] .member-editor-row,
 html[data-panel-mode="dark"] .member-mini-card,
+html[data-panel-mode="dark"] .member-action-details,
+html[data-panel-mode="dark"] .punishment-modal-card,
 html[data-panel-mode="dark"] .case-row,
 html[data-panel-mode="dark"] .warning-row {
   border-color: rgba(207, 255, 226, 0.12);
@@ -4110,6 +4117,14 @@ html[data-panel-mode="dark"] .mission-context-kicker {
 html[data-panel-mode="dark"] .form-actions {
   background: rgba(13, 21, 18, 0.76);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+}
+
+html[data-panel-mode="dark"] .form-error {
+  color: #ffaaaa;
+}
+
+html[data-panel-mode="dark"] .punishment-modal-backdrop {
+  background: rgba(0, 0, 0, 0.72);
 }
 
 @media (max-width: 1180px) {
