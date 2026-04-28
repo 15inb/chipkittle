@@ -87,10 +87,31 @@ const SETTINGS_SECTIONS = [
 ];
 
 const SETTINGS_NAV_GROUPS = [
-  { label: "Overview", sections: ["dashboard", "audit", "public", "commands", "server"] },
-  { label: "Configuration", sections: ["general", "ai", "economy", "games", "permissions", "access", "backups"] },
-  { label: "Community", sections: ["members", "applications", "suggestions", "community", "moderation"] }
+  { label: "Daily Ops", description: "What staff touches most", sections: ["dashboard", "audit", "moderation", "applications", "suggestions"] },
+  { label: "Bot Setup", description: "Bot behavior and command access", sections: ["general", "ai", "commands", "permissions"] },
+  { label: "Site & Games", description: "Public pages, members, and game controls", sections: ["public", "members", "community", "games"] },
+  { label: "Root Tools", description: "Economy, access, backups, and runtime", sections: ["economy", "access", "backups", "server"] }
 ];
+
+const SETTINGS_NAV_MARKS = {
+  dashboard: "OV",
+  audit: "AU",
+  moderation: "MO",
+  applications: "AP",
+  suggestions: "SU",
+  general: "GE",
+  ai: "AI",
+  commands: "CM",
+  permissions: "PE",
+  public: "PU",
+  members: "ME",
+  community: "CK",
+  games: "GA",
+  economy: "BR",
+  access: "AC",
+  backups: "BA",
+  server: "RT"
+};
 
 const NON_FORM_SECTIONS = new Set(["dashboard", "audit", "public", "commands", "server", "backups", "suggestions"]);
 
@@ -2193,12 +2214,12 @@ function layout({ title, body, user, flash = "" }) {
           <span class="brand-mark"><img src="/chipkittle-logo.svg" alt="Chipkittle logo"></span>
           <span>
             <strong>Chipkittle Panel</strong>
-            <small>Server operations</small>
+            <small>Private control room</small>
           </span>
         </a>
         <div class="topbar-status">
           <span class="status-dot"></span>
-          <span>Live control room</span>
+          <span>Live</span>
         </div>
       </div>
       <nav class="topbar-nav">
@@ -2218,7 +2239,7 @@ function layout({ title, body, user, flash = "" }) {
         ${user ? '<a href="/logout">Sign out</a>' : '<a href="/login">Sign in</a>'}
       </nav>
     </header>
-    <main class="content content-wide">
+    <main class="content content-wide panel-content">
       ${flash ? `<div class="flash">${escapeHtml(flash)}</div>` : ""}
       ${body}
     </main>
@@ -2233,6 +2254,22 @@ function layout({ title, body, user, flash = "" }) {
         const next = picker.value || "green";
         document.documentElement.dataset.panelTheme = next;
         localStorage.setItem("chipkittlePanelTheme", next);
+      });
+    })();
+    (() => {
+      const filter = document.querySelector("[data-nav-filter]");
+      const links = [...document.querySelectorAll("[data-nav-link]")];
+      if (!filter || !links.length) return;
+      const groups = [...document.querySelectorAll("[data-nav-group]")];
+      filter.addEventListener("input", () => {
+        const query = filter.value.trim().toLowerCase();
+        links.forEach((link) => {
+          const haystack = String(link.dataset.navText || link.textContent || "").toLowerCase();
+          link.hidden = Boolean(query) && !haystack.includes(query);
+        });
+        groups.forEach((group) => {
+          group.hidden = !group.querySelector("[data-nav-link]:not([hidden])");
+        });
       });
     })();
   </script>
@@ -2677,55 +2714,78 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
     sections: group.sections.filter((sectionId) => {
       const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
       return section && canAccessPanelSection(accessLevel, section.id);
-    })
-  })).filter((group) => group.sections.length);
-  return `
-    <aside class="settings-rail" aria-label="Settings categories">
-      <section class="settings-rail-card settings-rail-card--guild">
-        <div class="settings-rail-guild">
-          <span class="guild-icon">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
-          <div>
-            <p class="eyebrow">Server focus</p>
-            <strong>${escapeHtml(guild.name)}</strong>
-            <small>Prefix ${escapeHtml(config.prefix)} &middot; ${guild.memberCount ?? 0} members</small>
-          </div>
+      })
+    })).filter((group) => group.sections.length);
+    const totalVisibleSections = visibleGroups.reduce((sum, group) => sum + group.sections.length, 0);
+    return `
+      <aside class="settings-rail" aria-label="Settings categories">
+        <section class="settings-rail-card settings-rail-card--guild panel-profile-card">
+          <div class="settings-rail-guild">
+            <span class="guild-icon">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
+            <div>
+              <p class="eyebrow">Workspace</p>
+              <strong>${escapeHtml(guild.name)}</strong>
+              <small>Prefix ${escapeHtml(config.prefix)} &middot; ${guild.memberCount ?? 0} members</small>
+            </div>
         </div>
         <div class="rail-mini-stats">
           <span><strong>${escapeHtml(community.commandsRun)}</strong> Commands</span>
           <span><strong>${escapeHtml(community.aiReplies)}</strong> AI replies</span>
           <span><strong>${escapeHtml((config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").length)}</strong> Punishments</span>
-          <span><strong>${escapeHtml(community.applicationsOpened)}</strong> Apps</span>
-        </div>
-      </section>
-      <section class="settings-rail-card settings-rail-card--focus">
-        <p class="settings-nav-label">Current workspace</p>
-          <div class="rail-focus">
-          <strong>${escapeHtml(currentMeta.label)}</strong>
-          <p>${escapeHtml(currentMeta.description)}</p>
-          <span>${sectionStatusLabel(activeSection)}</span>
-          <span>${escapeHtml(panelUserLabel(panelUser))}</span>
-        </div>
-      </section>
-      <nav class="settings-nav settings-nav-rail" aria-label="Settings categories">
-      ${visibleGroups.map((group) => `
-        <section class="settings-nav-group settings-nav-panel">
-          <p class="settings-nav-label">${escapeHtml(group.label)}</p>
-          <div class="settings-nav-links">
-          ${group.sections.map((sectionId) => {
-            const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
-            if (!section) return "";
-            return `
-              <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}">
-                <span>${escapeHtml(section.label)}</span>
-                <small>${escapeHtml(section.description)}</small>
-                <em>${sectionStatusLabel(section.id)}</em>
-              </a>`;
-          }).join("")}
+            <span><strong>${escapeHtml(community.applicationsOpened)}</strong> Apps</span>
           </div>
         </section>
-      `).join("")}
-      </nav>
-    </aside>
+        <section class="settings-rail-card nav-search-card">
+          <label class="nav-search-label">
+            Find setting
+            <input data-nav-filter type="search" autocomplete="off" placeholder="Search ${escapeHtml(String(totalVisibleSections))} sections">
+          </label>
+          <div class="rail-focus">
+            <span>${escapeHtml(panelUserLabel(panelUser))}</span>
+          </div>
+        </section>
+        <nav class="settings-nav settings-nav-rail" aria-label="Settings categories">
+        ${visibleGroups.map((group) => `
+          <section class="settings-nav-group settings-nav-panel" data-nav-group>
+            <div class="settings-nav-group-head">
+              <p class="settings-nav-label">${escapeHtml(group.label)}</p>
+              <small>${escapeHtml(group.description || "")}</small>
+            </div>
+            <div class="settings-nav-links">
+            ${group.sections.map((sectionId) => {
+              const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
+              if (!section) return "";
+              return `
+                <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}" data-nav-link data-nav-text="${escapeHtml(`${section.label} ${section.description} ${group.label}`)}">
+                  <b>${escapeHtml(SETTINGS_NAV_MARKS[section.id] || section.label.slice(0, 2).toUpperCase())}</b>
+                  <span>
+                    <strong>${escapeHtml(section.label)}</strong>
+                    <small>${escapeHtml(section.description)}</small>
+                  </span>
+                  <em>${sectionStatusLabel(section.id)}</em>
+                </a>`;
+            }).join("")}
+            </div>
+          </section>
+        `).join("")}
+        </nav>
+      </aside>
+    `;
+  }
+
+function mobileSectionSelect(guild, activeSection, panelUser = null) {
+  const accessLevel = panelUser?.level || "root";
+  const options = SETTINGS_SECTIONS
+    .filter((section) => canAccessPanelSection(accessLevel, section.id))
+    .map((section) => `<option value="/guilds/${guild.id}?section=${section.id}" ${section.id === activeSection ? "selected" : ""}>${escapeHtml(section.label)}</option>`)
+    .join("");
+  return `
+    <label class="mobile-section-switcher">
+      Section
+      <select onchange="if (this.value) window.location.href = this.value">
+        ${options}
+      </select>
+    </label>
   `;
 }
 
@@ -3254,33 +3314,37 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
     user: true,
     flash,
     body: `
-      <section class="page-heading guild-heading panel-hero">
-        <div class="guild-title">
-          <span class="guild-icon large">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
-          <div>
-            <p class="eyebrow">Control room</p>
-            <h1>${escapeHtml(guild.name)}</h1>
-            <p class="muted">An opinionated operations deck for the bot, site, games, and Discord runtime.</p>
-          </div>
-        </div>
-        <div class="hero-actions">
-          <a class="primary-link secondary-link" href="https://chipkittle.com" target="_blank" rel="noreferrer">Open website</a>
-          <a class="primary-link secondary-link" href="/commits">View commits</a>
-        </div>
-      </section>
       <section class="control-layout">
         ${settingsNav(guild, config, currentSection, currentMeta, panelUser)}
         <div class="workspace-stage">
-          <section class="section-spotlight">
-            <div class="section-spotlight-copy">
-              <p class="eyebrow">Current workspace</p>
-              <h2>${escapeHtml(currentMeta.label)}</h2>
-              <p class="muted">${escapeHtml(currentMeta.description)}</p>
+          <section class="workspace-command-bar">
+            <div class="workspace-title-block">
+              <div class="workspace-breadcrumb">
+                <a href="/guilds/${guild.id}?section=dashboard">${escapeHtml(guild.name)}</a>
+                <span>/</span>
+                <strong>${escapeHtml(currentMeta.label)}</strong>
+              </div>
+              <h1>${escapeHtml(currentMeta.label)}</h1>
+              <p>${escapeHtml(currentMeta.description)}</p>
             </div>
-            <div class="section-spotlight-meta">
+            <div class="workspace-actions">
+              ${mobileSectionSelect(guild, currentSection, panelUser)}
+              <a class="secondary-button" href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
+              <a class="secondary-button" href="/commits">Commits</a>
+            </div>
+          </section>
+          <section class="workspace-context-strip">
+            <div>
               <span>${NON_FORM_SECTIONS.has(currentSection) ? "Operational view" : "Configuration editor"}</span>
-              <span>${escapeHtml(guild.name)}</span>
-              <span>Prefix ${escapeHtml(config.prefix)}</span>
+              <strong>${escapeHtml(sectionStatusLabel(currentSection))}</strong>
+            </div>
+            <div>
+              <span>Access</span>
+              <strong>${escapeHtml(panelUserLabel(panelUser))}</strong>
+            </div>
+            <div>
+              <span>Prefix</span>
+              <strong>${escapeHtml(config.prefix)}</strong>
             </div>
           </section>
           <div class="workspace-topline">
