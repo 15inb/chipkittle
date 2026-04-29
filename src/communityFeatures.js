@@ -28,13 +28,26 @@ export const DEFAULT_ARTIFACTS = [
 
 export const SHOP_ITEMS = [
   { id: "chalk-horns", name: "Chalk Horns", cost: 120, description: "Adds a soft ceremonial flair to your profile.", type: "cosmetic" },
+  { id: "green-spark-aura", name: "Green Spark Aura", cost: 180, description: "A little glow around your profile. It insists it is tasteful.", type: "cosmetic" },
   { id: "bread-seal", name: "Bread Seal", cost: 160, description: "A stamped seal proving you once survived the bakery rites.", type: "badge" },
+  { id: "crumb-crown", name: "Crumb Crown", cost: 240, description: "A crown made from bread mistakes and misplaced confidence.", type: "cosmetic" },
   { id: "white-fur-maintenance-kit", name: "White Fur Maintenance Kit", cost: 220, description: "Important if you enjoy dignity and lint control.", type: "utility" },
   { id: "ominous-candle-pack", name: "Ominous Candle Pack", cost: 260, description: "Four candles. All of them judgmental.", type: "utility" },
+  { id: "artifact-glimmer", name: "Artifact Glimmer", cost: 300, description: "Tiny profile shimmer from standing too close to forbidden decor.", type: "cosmetic" },
   { id: "round-table-pass", name: "Round Table Pass", cost: 340, description: "Not legally binding, but spiritually impressive.", type: "title", title: "Round Table Aspirant" },
+  { id: "horn-shadow-trim", name: "Horn Shadow Trim", cost: 360, description: "Adds a serious little edge. Possibly too serious.", type: "cosmetic" },
+  { id: "loaf-lord-title", name: "Loaf Lord Title", cost: 390, description: "For members who have begun speaking in bakery law.", type: "title", title: "Loaf Lord" },
   { id: "artifact-dust", name: "Artifact Dust", cost: 420, description: "Probably harmless. Definitely important.", type: "collectible" },
+  { id: "ck-nameplate", name: "#CK Nameplate", cost: 460, description: "A green profile plate for those who have accepted the tag into their bones.", type: "cosmetic" },
+  { id: "midnight-fur-wash", name: "Midnight Fur Wash", cost: 520, description: "Dark-mode energy for the creature-adjacent soul.", type: "cosmetic" },
   { id: "ceremony-snack-bundle", name: "Ceremony Snack Bundle", cost: 540, description: "Snacks for rituals that run a little long.", type: "consumable" },
-  { id: "doom-bell", name: "Doom Bell", cost: 760, description: "Rings once. Everyone gets nervous.", type: "collectible" }
+  { id: "ancient-artifact-badge", name: "Ancient Artifact Badge", cost: 620, description: "A badge that says you know what matters and refuse to elaborate.", type: "badge" },
+  { id: "keeper-of-crumbs", name: "Keeper of Crumbs", cost: 690, description: "A title with responsibility, crumbs, and suspicious paperwork.", type: "title", title: "Keeper of Crumbs" },
+  { id: "doom-bell", name: "Doom Bell", cost: 760, description: "Rings once. Everyone gets nervous.", type: "collectible" },
+  { id: "forbidden-green-flame", name: "Forbidden Green Flame", cost: 840, description: "Profile fire. It is green. It is probably fine.", type: "cosmetic" },
+  { id: "bread-cathedral-frame", name: "Bread Cathedral Frame", cost: 980, description: "A dramatic border for profiles that have seen too much yeast.", type: "cosmetic" },
+  { id: "artifact-oracle-title", name: "Artifact Oracle Title", cost: 1200, description: "For whoever keeps predicting things after they happen.", type: "title", title: "Artifact Oracle" },
+  { id: "founding-menace-badge", name: "Founding Menace Badge", cost: 1500, description: "A public warning label with excellent posture.", type: "badge" }
 ];
 
 export const COMMUNITY_DEFAULTS = {

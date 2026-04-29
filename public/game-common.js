@@ -78,6 +78,25 @@ export function createGameServices(gameId, options) {
   const leaderboardKey = `chipkittle-${gameId}-leaderboard`;
   let claimRequested = false;
   let activeClaim = null;
+  let currentUser = window.ChipkittleSite?.currentUser || null;
+
+  async function loadCurrentUser() {
+    if (currentUser) return currentUser;
+    try {
+      const response = await fetch("/api/public/me", { cache: "no-store", credentials: "same-origin" });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload?.authenticated && payload.user) {
+        currentUser = payload.user;
+        return currentUser;
+      }
+    } catch {}
+    return null;
+  }
+
+  window.addEventListener("chipkittle:account", (event) => {
+    currentUser = event.detail || null;
+    if (activeClaim?.code) setClaimCard("", activeClaim.code, activeClaim.amount);
+  });
 
   function hydratePlayerName() {
     if (!playerName) return;
@@ -118,6 +137,9 @@ export function createGameServices(gameId, options) {
   function setClaimCard(message, code = "", amount = 0) {
     activeClaim = code ? { code, amount: Number(amount) || 0 } : null;
     const savedDiscordId = localStorage.getItem(DISCORD_ID_KEY) || "";
+    const accountLine = currentUser
+      ? `<small>Signed in as ${escapeHtml(currentUser.displayName || currentUser.username || "your account")}. This will claim straight to you.</small>`
+      : `<small>Log in first to claim this bread without copying your Discord ID.</small>`;
     claimCard.innerHTML = code
       ? `
           <span>Discord claim</span>
@@ -126,13 +148,15 @@ export function createGameServices(gameId, options) {
           <div class="claim-actions">
             <button type="button" data-copy-claim>Copy Command</button>
           </div>
+          ${accountLine}
           <form class="claim-direct-form" data-direct-claim>
-            <label>
+            <label ${currentUser ? "hidden" : ""}>
               Discord ID
               <input name="discordId" inputmode="numeric" maxlength="22" value="${escapeHtml(savedDiscordId)}" placeholder="Your Discord user ID">
             </label>
-            <button type="submit">Claim to Discord</button>
+            <button type="submit">${currentUser ? "Claim to my account" : "Claim to Discord"}</button>
           </form>
+          ${currentUser ? "" : `<a class="button secondary" href="/profile/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}">Log in to auto-claim</a>`}
           <small data-claim-status></small>
         `
       : `<span>Discord claim</span><small>${escapeHtml(message)}</small>`;
@@ -156,24 +180,26 @@ export function createGameServices(gameId, options) {
 
   async function redeemClaimDirect(form) {
     if (!activeClaim?.code) return;
+    const user = await loadCurrentUser();
     const discordId = String(new FormData(form).get("discordId") || "").replace(/\D/g, "");
-    if (!/^\d{16,22}$/.test(discordId)) {
+    if (!user && !/^\d{16,22}$/.test(discordId)) {
       setClaimStatus("Enter a valid Discord user ID.");
       form.querySelector("input[name='discordId']")?.focus();
       return;
     }
 
-    localStorage.setItem(DISCORD_ID_KEY, discordId);
+    if (!user) localStorage.setItem(DISCORD_ID_KEY, discordId);
     setClaimStatus("Claiming bread...");
     try {
-      const response = await fetch(claimRedeemUrl, {
+      const response = await fetch(user ? "/api/public/dash-claim/redeem" : claimRedeemUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: activeClaim.code, discordId })
+        credentials: user ? "same-origin" : "omit",
+        body: JSON.stringify(user ? { code: activeClaim.code } : { code: activeClaim.code, discordId })
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Claim failed.");
-      setClaimCard(`Claimed ${Number(payload.bread || 0).toLocaleString()} bread for ${payload.userTag || discordId}. Balance: ${Number(payload.balance || 0).toLocaleString()} bread.`);
+      setClaimCard(`Claimed ${Number(payload.bread || 0).toLocaleString()} bread for ${payload.userTag || user?.displayName || discordId}. Balance: ${Number(payload.balance || 0).toLocaleString()} bread.`);
       claimRequested = true;
     } catch (error) {
       setClaimStatus(error?.message || "Claim failed.");
@@ -269,6 +295,12 @@ export function createGameServices(gameId, options) {
       if (!response.ok) throw new Error(payload.error || "Claim request failed.");
       if (!payload.claimCode) throw new Error("Claim response was invalid.");
       setClaimCard("", payload.claimCode, payload.claimBread);
+      const user = await loadCurrentUser();
+      if (user) {
+        setClaimCard("", payload.claimCode, payload.claimBread);
+        const form = claimCard?.querySelector("[data-direct-claim]");
+        if (form) redeemClaimDirect(form);
+      }
     } catch (error) {
       claimRequested = false;
       setClaimCard(error?.message || "The claim code request failed. Try again after the panel updates.");
@@ -282,6 +314,9 @@ export function createGameServices(gameId, options) {
   }
 
   hydratePlayerName();
+  loadCurrentUser().then((user) => {
+    if (user && activeClaim?.code) setClaimCard("", activeClaim.code, activeClaim.amount);
+  });
   if (playerName) {
     playerName.addEventListener("change", () => {
       persistPlayerName();

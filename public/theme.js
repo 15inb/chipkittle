@@ -47,6 +47,16 @@
     return payload;
   }
 
+  function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, (match) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[match]));
+  }
+
   function debounce(fn, wait = 120) {
     let timeoutId = 0;
     return (...args) => {
@@ -83,10 +93,40 @@
         applyTheme(nextTheme);
       });
     });
+
+    const actions = document.querySelector(".nav-actions");
+    if (actions && !actions.querySelector("[data-public-account]")) {
+      const account = document.createElement("span");
+      account.className = "public-account";
+      account.dataset.publicAccount = "loading";
+      const next = encodeURIComponent(`${window.location.pathname}${window.location.search}`);
+      account.innerHTML = `<a class="nav-button account-login" href="/profile/login?next=${next}">Log in</a>`;
+      actions.prepend(account);
+
+      fetch("/api/public/me", { cache: "no-store", credentials: "same-origin" })
+        .then((response) => response.ok ? response.json() : { authenticated: false })
+        .then((payload) => {
+          if (!payload?.authenticated || !payload.user) return;
+          account.dataset.publicAccount = "ready";
+          account.innerHTML = `
+            <a class="account-chip" href="/profile/edit" title="Edit your Chipkittle profile">
+              ${payload.user.avatarUrl ? `<img src="${escapeHtml(payload.user.avatarUrl)}" alt="">` : ""}
+              <span>${escapeHtml(payload.user.displayName || payload.user.username || "Member")}</span>
+              <small>${Number(payload.user.walletBread || 0).toLocaleString()} bread</small>
+            </a>
+          `;
+          window.ChipkittleSite = Object.assign(window.ChipkittleSite || {}, {
+            currentUser: payload.user
+          });
+          window.dispatchEvent(new CustomEvent("chipkittle:account", { detail: payload.user }));
+        })
+        .catch(() => {});
+    }
   });
 
   window.ChipkittleSite = Object.assign(window.ChipkittleSite || {}, {
     debounce,
+    escapeHtml,
     readCachedJson,
     fetchCachedJson
   });

@@ -4392,6 +4392,13 @@ export function createPanel({
     return new URL("/auth/discord/profile/callback", base).toString();
   }
 
+  function safePublicReturnPath(value = "") {
+    const text = String(value || "").trim();
+    if (!text || !text.startsWith("/") || text.startsWith("//")) return "";
+    if (text.startsWith("/auth/") || text.startsWith("/api/")) return "";
+    return text.slice(0, 240);
+  }
+
   function discordProfileOAuthUrl(request) {
     if (!clientId || !discordClientSecret) return "";
     const state = crypto.randomBytes(OAUTH_STATE_BYTES).toString("base64url");
@@ -4876,6 +4883,11 @@ export function createPanel({
     response.sendStatus(204);
   });
 
+  app.options("/api/public/me", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
   app.options("/api/public/status", (_request, response) => {
     setPublicApiHeaders(response);
     response.sendStatus(204);
@@ -4951,6 +4963,34 @@ export function createPanel({
     response.json({
       member,
       updatedAt: new Date().toISOString()
+    });
+  });
+
+  app.get("/api/public/me", async (request, response) => {
+    setPublicApiHeaders(response);
+    const sessionUser = request.session.publicProfileUser;
+    if (!sessionUser?.userId) {
+      response.json({ authenticated: false });
+      return;
+    }
+    const verified = await verifyProfileEditorMember(sessionUser.userId);
+    if (!verified.ok) {
+      request.session.publicProfileUser = null;
+      response.json({ authenticated: false });
+      return;
+    }
+    const config = store.getGuild(verified.guildId);
+    const walletBread = Math.max(Math.floor(Number(config.economy?.balances?.[sessionUser.userId]) || 0), 0);
+    response.json({
+      authenticated: true,
+      user: {
+        id: sessionUser.userId,
+        username: verified.member.user.username,
+        tag: verified.member.user.tag,
+        displayName: verified.member.displayName,
+        avatarUrl: verified.member.user.displayAvatarURL({ extension: "png", size: 64 }),
+        walletBread
+      }
     });
   });
 
@@ -5155,7 +5195,8 @@ export function createPanel({
     setPublicApiHeaders(response);
     try {
       const targetGuildId = getPublicGuildId();
-      const discordId = String(request.body?.discordId || "").replace(/\D/g, "");
+      const sessionUserId = String(request.session.publicProfileUser?.userId || "").replace(/\D/g, "");
+      const discordId = String(request.body?.discordId || sessionUserId || "").replace(/\D/g, "");
       if (!targetGuildId) {
         response.status(503).json({ error: "The Discord server is not available yet." });
         return;
@@ -5280,8 +5321,10 @@ export function createPanel({
   });
 
   app.get("/profile/login", (request, response) => {
+    const nextPath = safePublicReturnPath(request.query.next);
+    if (nextPath) request.session.publicProfileReturnTo = nextPath;
     if (request.session.publicProfileUser) {
-      response.redirect("/profile/edit");
+      response.redirect(nextPath || request.session.publicProfileReturnTo || "/profile/edit");
       return;
     }
     response.send(profileLoginPage(loginErrorMessage(request.query.error), discordProfileOAuthUrl(request)));
@@ -5320,7 +5363,9 @@ export function createPanel({
         username: discordUser.username || discordUserId,
         displayName: verified.member.displayName
       };
-      response.redirect("/profile/edit");
+      const returnTo = safePublicReturnPath(request.session.publicProfileReturnTo) || "/profile/edit";
+      request.session.publicProfileReturnTo = "";
+      response.redirect(returnTo);
     } catch (error) {
       console.error("Discord profile OAuth failed:", error);
       response.redirect(`/profile/login?error=${error.oauthRedirectProblem ? "oauth-redirect" : "oauth"}`);
