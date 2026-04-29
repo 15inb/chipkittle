@@ -1,0 +1,555 @@
+.relic-page {
+  min-height: 100svh;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 72% 32%, rgba(86, 222, 87, 0.24), transparent 30%),
+    radial-gradient(circle at 20% 18%, rgba(255, 216, 123, 0.14), transparent 28%),
+    linear-gradient(135deg, rgba(244, 248, 241, 0.96), rgba(214, 224, 216, 0.82)),
+    url("/assets/ckwebsitebg3.png");
+  background-size: cover;
+  background-position: center;
+  padding: 22px clamp(14px, 2.4vw, 34px) 28px;
+}
+
+:root[data-theme="dark"] .relic-page {
+  background:
+    radial-gradient(circle at 72% 32%, rgba(86, 222, 87, 0.14), transparent 30%),
+    radial-gradient(circle at 20% 18%, rgba(255, 216, 123, 0.08), transparent 28%),
+    linear-gradient(135deg, rgba(4, 9, 7, 0.96), rgba(8, 21, 15, 0.9)),
+    url("/assets/ckwebsitebg3.png");
+  background-size: cover;
+  background-position: center;
+}
+
+.relic-topbar {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 24px 70px rgba(17, 30, 22, 0.13);
+  backdrop-filter: blur(20px);
+  padding: 9px 12px;
+}
+
+:root[data-theme="dark"] .relic-topbar {
+  border-color: rgba(216, 255, 217, 0.14);
+  background: rgba(6, 12, 9, 0.72);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+}
+
+.relic-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.relic-brand img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(26, 138, 56, 0.22);
+}
+
+.relic-topbar nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  color: var(--soft-ink);
+  font-weight: 800;
+}
+
+.relic-topbar nav a:hover {
+  color: var(--green-dark);
+}
+
+.relic-theme-toggle {
+  min-width: 92px;
+}
+
+.relic-shell {
+  display: grid;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(260px, 340px);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.relic-panel {
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.64);
+  box-shadow: 0 22px 80px rgba(14, 27, 19, 0.14);
+  backdrop-filter: blur(24px);
+  padding: 22px;
+}
+
+:root[data-theme="dark"] .relic-panel {
+  border-color: rgba(216, 255, 217, 0.14);
+  background: rgba(5, 12, 9, 0.76);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.32);
+}
+
+.relic-brief {
+  align-self: start;
+}
+
+.relic-kicker {
+  width: fit-content;
+  margin: 0 0 18px;
+  border: 1px solid rgba(26, 138, 56, 0.18);
+  border-radius: 999px;
+  background: rgba(82, 215, 101, 0.12);
+  color: var(--green-dark);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.relic-brief h1 {
+  margin: 0;
+  font-size: clamp(38px, 4vw, 58px);
+  line-height: 0.92;
+  letter-spacing: 0;
+}
+
+.relic-brief p:not(.relic-kicker) {
+  color: var(--soft-ink);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.relic-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.relic-controls span,
+.relic-loadout span,
+.relic-objectives li,
+.relic-claim,
+.relic-leaderboard li {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--soft-ink);
+}
+
+:root[data-theme="dark"] .relic-controls span,
+:root[data-theme="dark"] .relic-loadout span,
+:root[data-theme="dark"] .relic-objectives li,
+:root[data-theme="dark"] .relic-claim,
+:root[data-theme="dark"] .relic-leaderboard li {
+  background: rgba(10, 20, 15, 0.64);
+}
+
+.relic-controls span {
+  min-height: 46px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.relic-controls b {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.relic-name-field {
+  display: grid;
+  gap: 8px;
+  color: var(--soft-ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.relic-name-field input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--ink);
+  padding: 13px 14px;
+  font: inherit;
+}
+
+:root[data-theme="dark"] .relic-name-field input {
+  background: rgba(8, 16, 12, 0.72);
+}
+
+.relic-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.relic-actions button,
+.relic-upgrade-grid button {
+  min-height: 48px;
+  border: 1px solid rgba(26, 138, 56, 0.24);
+  border-radius: 999px;
+  background: var(--green);
+  color: white;
+  cursor: pointer;
+  font-weight: 950;
+  transition: transform 140ms ease, filter 140ms ease;
+}
+
+.relic-actions button:last-child {
+  background: rgba(255, 255, 255, 0.54);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .relic-actions button:last-child {
+  background: rgba(11, 20, 15, 0.76);
+}
+
+.relic-actions button:hover,
+.relic-upgrade-grid button:hover {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+}
+
+.relic-stage-wrap {
+  position: relative;
+  min-height: min(720px, calc(100svh - 126px));
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 32px;
+  background: #06110c;
+  box-shadow: 0 34px 100px rgba(6, 18, 10, 0.32);
+}
+
+.relic-stage-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: min(720px, calc(100svh - 126px));
+  image-rendering: auto;
+}
+
+.relic-hud {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  pointer-events: none;
+}
+
+.relic-hud div {
+  border: 1px solid rgba(198, 255, 199, 0.18);
+  border-radius: 18px;
+  background: rgba(4, 10, 7, 0.58);
+  color: #e9ffeb;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(14px);
+  padding: 10px 12px;
+}
+
+.relic-hud span {
+  display: block;
+  color: rgba(233, 255, 235, 0.68);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.relic-hud b {
+  font-size: 21px;
+}
+
+.relic-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at center, rgba(70, 213, 76, 0.12), rgba(3, 8, 6, 0.72));
+  color: #f3fff1;
+  text-align: center;
+  padding: 24px;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+.relic-overlay.is-hidden {
+  opacity: 0;
+}
+
+.relic-overlay div {
+  max-width: 620px;
+}
+
+.relic-overlay p {
+  margin: 0 0 10px;
+  color: #7ff483;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.relic-overlay h2 {
+  margin: 0;
+  font-size: clamp(42px, 7vw, 92px);
+  line-height: 0.9;
+}
+
+.relic-overlay span {
+  display: block;
+  max-width: 520px;
+  margin: 18px auto 0;
+  color: rgba(243, 255, 241, 0.76);
+  line-height: 1.5;
+}
+
+.relic-side {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  max-height: calc(100svh - 108px);
+  overflow: auto;
+}
+
+.relic-side section {
+  display: grid;
+  gap: 10px;
+}
+
+.relic-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.relic-section-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.relic-section-head span,
+.relic-section-head small {
+  color: var(--quiet);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.relic-loadout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.relic-loadout span {
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.relic-objectives,
+.relic-leaderboard {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.relic-objectives li,
+.relic-leaderboard li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.relic-leaderboard li strong {
+  color: var(--green-dark);
+  white-space: nowrap;
+}
+
+.relic-claim {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.relic-claim strong {
+  color: var(--green-dark);
+  font-size: 22px;
+}
+
+.relic-claim code {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.relic-claim button,
+.relic-claim .button {
+  width: fit-content;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(82, 215, 101, 0.14);
+  color: var(--ink);
+  padding: 0 14px;
+  font-weight: 900;
+}
+
+.relic-claim label {
+  display: grid;
+  gap: 6px;
+  color: var(--quiet);
+  font-weight: 900;
+}
+
+.relic-claim input {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--ink);
+  padding: 10px;
+}
+
+:root[data-theme="dark"] .relic-claim input {
+  background: rgba(8, 16, 12, 0.72);
+}
+
+.relic-upgrade-modal {
+  max-width: 820px;
+  width: min(calc(100vw - 28px), 820px);
+  border: 1px solid rgba(216, 255, 217, 0.18);
+  border-radius: 28px;
+  background: rgba(6, 13, 9, 0.94);
+  color: #f1fff0;
+  box-shadow: 0 34px 120px rgba(0, 0, 0, 0.46);
+  padding: 24px;
+}
+
+.relic-upgrade-modal::backdrop {
+  background: rgba(1, 6, 3, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.relic-upgrade-modal p {
+  margin: 0 0 8px;
+  color: #7ff483;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.relic-upgrade-modal h2 {
+  margin: 0 0 18px;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.relic-upgrade-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.relic-upgrade-grid button {
+  min-height: 170px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border-radius: 22px;
+  background: linear-gradient(160deg, rgba(82, 215, 101, 0.24), rgba(14, 26, 18, 0.92));
+  color: #f1fff0;
+  padding: 18px;
+  text-align: left;
+}
+
+.relic-upgrade-grid b {
+  font-size: 18px;
+}
+
+.relic-upgrade-grid small {
+  color: rgba(241, 255, 240, 0.7);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1180px) {
+  .relic-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .relic-side {
+    max-height: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .relic-brief {
+    display: grid;
+    grid-template-columns: 1.25fr 1fr;
+    gap: 18px;
+  }
+
+  .relic-brief h1,
+  .relic-brief p {
+    grid-column: 1;
+  }
+
+  .relic-controls,
+  .relic-name-field,
+  .relic-actions {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .relic-page {
+    padding-inline: 10px;
+  }
+
+  .relic-topbar,
+  .relic-brief,
+  .relic-side,
+  .relic-upgrade-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .relic-topbar nav {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .relic-controls,
+  .relic-name-field,
+  .relic-actions,
+  .relic-brief h1,
+  .relic-brief p {
+    grid-column: auto;
+  }
+
+  .relic-stage-wrap,
+  .relic-stage-wrap canvas {
+    min-height: 560px;
+  }
+
+  .relic-hud {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

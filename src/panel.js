@@ -1020,7 +1020,7 @@ function publicSiteWorkspace(config = {}, commandList = []) {
   const artifacts = config.community?.artifacts || [];
   const rituals = config.community?.rituals || {};
   const leaderboardEntries = publicLeaderboardFileEntries(readGameLeaderboard(), publicGameSettings(config));
-  const gameCounts = ["dash", "runner", "mines", "catch", "loaf", "blitz"].map((gameId) => ({
+  const gameCounts = ["relic", "dash", "runner", "mines", "catch", "loaf", "blitz"].map((gameId) => ({
     gameId,
     label: gameLabel(gameId),
     count: publicLeaderboardEntries(leaderboardEntries, gameId, publicGameSettings(config)).length
@@ -1803,7 +1803,7 @@ function sanitizeConfigForRestore(config = {}) {
 
 function cleanGameId(value = "") {
   const gameId = String(value || "dash").toLowerCase().replace(/[^a-z0-9-]/g, "");
-  return ["dash", "runner", "mines", "catch", "loaf", "blitz"].includes(gameId) ? gameId : "dash";
+  return ["dash", "runner", "mines", "catch", "loaf", "blitz", "relic"].includes(gameId) ? gameId : "dash";
 }
 
 function cleanLeaderboardName(value = "") {
@@ -2417,7 +2417,8 @@ function gameLabel(gameId = "") {
     mines: "Bread Mines",
     catch: "Bread Catch",
     loaf: "Loaf Hopper",
-    blitz: "Bread Blitz"
+    blitz: "Bread Blitz",
+    relic: "Relic Siege"
   };
   return labels[cleanGameId(gameId)] || "Chipkittle Dash";
 }
@@ -2440,7 +2441,7 @@ function deleteGameLeaderboardEntry(index, gameId = "dash", settings = DEFAULT_P
 
 function gameLeaderboardControls(guildId = "", settings = DEFAULT_PUBLIC_GAME_SETTINGS) {
   const fileEntries = publicLeaderboardFileEntries(readGameLeaderboard(), settings);
-  const gameIds = ["dash", "runner", "mines", "catch", "loaf", "blitz"];
+  const gameIds = ["relic", "dash", "runner", "mines", "catch", "loaf", "blitz"];
   return `
     <section class="panel-section leaderboard-admin">
       <div class="section-heading">

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Relic Siege</title>
+  <meta name="description" content="A standalone Chipkittle action-survival game with waves, relics, upgrades, bread, and bosses.">
+  <link rel="icon" type="image/png" href="/ckmascot.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+  <link rel="stylesheet" href="/relic.css">
+</head>
+<body>
+  <main class="relic-page">
+    <header class="relic-topbar" aria-label="Relic Siege navigation">
+      <a class="relic-brand" href="/game">
+        <img src="/ckmascot.png" alt="">
+        <span>Relic Siege</span>
+      </a>
+      <nav>
+        <a href="/game">Games</a>
+        <a href="/">Home</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <button class="theme-toggle relic-theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+    </header>
+
+    <section class="relic-shell">
+      <aside class="relic-panel relic-brief">
+        <p class="relic-kicker">Standalone ritual</p>
+        <h1>Chipkittle Relic Siege</h1>
+        <p>Hold the den against curse-things, collect bread, slot relic upgrades, and try not to become a cautionary loaf.</p>
+        <div class="relic-controls" aria-label="Game controls">
+          <span><b>WASD</b> Move</span>
+          <span><b>Mouse</b> Aim</span>
+          <span><b>Click</b> Fire</span>
+          <span><b>Space</b> Dash</span>
+          <span><b>Q</b> Relic burst</span>
+          <span><b>P</b> Pause</span>
+        </div>
+        <label class="relic-name-field">
+          Runner name
+          <input id="relicPlayerName" maxlength="24" autocomplete="nickname" placeholder="Anonymous Chipkittle">
+        </label>
+        <div class="relic-actions">
+          <button id="relicStart" type="button">Start Siege</button>
+          <button id="relicPractice" type="button">Practice</button>
+        </div>
+      </aside>
+
+      <section class="relic-stage-wrap" aria-label="Chipkittle Relic Siege game">
+        <canvas id="relicCanvas" width="1280" height="720"></canvas>
+        <div class="relic-hud" aria-live="polite">
+          <div><span>Wave</span><b id="hudWave">1</b></div>
+          <div><span>Health</span><b id="hudHealth">100</b></div>
+          <div><span>Bread</span><b id="hudBread">0</b></div>
+          <div><span>Score</span><b id="hudScore">0</b></div>
+          <div><span>Relic</span><b id="hudRelic">0%</b></div>
+        </div>
+        <div class="relic-overlay" id="relicOverlay">
+          <div>
+            <p>Chipkittle protocol online</p>
+            <h2>Survive the siege.</h2>
+            <span>Start a run, pick upgrades after waves, and cash out bread when the den finally catches fire.</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="relic-panel relic-side">
+        <section>
+          <div class="relic-section-head">
+            <h2>Loadout</h2>
+            <span id="relicDifficulty">Normal</span>
+          </div>
+          <div class="relic-loadout" id="relicLoadout">
+            <span>No relics equipped yet.</span>
+          </div>
+        </section>
+        <section>
+          <div class="relic-section-head">
+            <h2>Objectives</h2>
+            <span id="relicStatus">Idle</span>
+          </div>
+          <ul class="relic-objectives" id="relicObjectives">
+            <li>Start the siege.</li>
+            <li>Survive a full wave.</li>
+            <li>Choose a relic upgrade.</li>
+          </ul>
+        </section>
+        <section>
+          <div class="relic-section-head">
+            <h2>Leaderboard</h2>
+            <small id="relicLeaderboardStatus" hidden></small>
+          </div>
+          <ol class="relic-leaderboard" id="relicLeaderboard"></ol>
+        </section>
+        <section>
+          <div class="relic-section-head">
+            <h2>Claim</h2>
+          </div>
+          <div class="relic-claim" id="relicClaim">Finish a run to create a Discord bread claim.</div>
+        </section>
+      </aside>
+    </section>
+
+    <dialog class="relic-upgrade-modal" id="relicUpgradeModal">
+      <form method="dialog">
+        <p>Choose one relic</p>
+        <h2>The den grants a questionable blessing.</h2>
+        <div class="relic-upgrade-grid" id="relicUpgradeGrid"></div>
+      </form>
+    </dialog>
+  </main>
+
+  <script type="module" src="/relic.js"></script>
+</body>
+</html>

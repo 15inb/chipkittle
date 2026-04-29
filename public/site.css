@@ -1070,6 +1070,10 @@ a {
   --game-card-art: url("/assets/blitz-cover.svg");
 }
 
+.relic-card {
+  --game-card-art: radial-gradient(circle at 55% 42%, rgba(111, 255, 96, 0.7), transparent 24%), url("/assets/ckwebsitebg3.png");
+}
+
 .relax-card {
   --game-card-art: radial-gradient(circle at 72% 42%, rgba(255, 143, 42, 0.8), transparent 18%), url("/assets/chipkittle-hero.png");
 }

@@ -50,6 +50,10 @@
     {
       "source": "/blitz",
       "destination": "/blitz.html"
+    },
+    {
+      "source": "/relic",
+      "destination": "/relic.html"
     }
   ]
 }
