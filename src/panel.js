@@ -1654,7 +1654,8 @@ function publicProfileCosmetics(profile = {}) {
       id: item.id,
       name: item.name,
       type: item.type,
-      description: item.description
+      description: item.description,
+      className: `cosmetic-${String(item.id).replace(/[^a-z0-9-]/gi, "-").toLowerCase()}`
     }))
     .slice(0, 6);
 }

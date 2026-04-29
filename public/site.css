@@ -1940,10 +1940,19 @@ a {
 }
 
 .member-card {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(150px, 0.25fr) minmax(160px, 0.22fr) minmax(0, 1fr);
   gap: 18px;
+  overflow: hidden;
   padding: 24px;
+}
+
+.member-card > *,
+.member-profile-hero > *,
+.member-profile-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .member-card-link {
@@ -2011,11 +2020,19 @@ a {
 }
 
 .member-profile-hero {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
   gap: clamp(24px, 5vw, 72px);
   align-items: end;
   min-height: 48svh;
+}
+
+.member-profile-hero::before,
+.member-profile-card::before,
+.member-card::before,
+.member-card::after {
+  pointer-events: none;
 }
 
 .member-profile-hero h1 {
@@ -2067,10 +2084,189 @@ a {
 }
 
 .member-profile-card {
+  position: relative;
   display: grid;
   gap: 18px;
   justify-items: center;
+  overflow: hidden;
   padding: 26px;
+}
+
+.cosmetic-green-spark-aura,
+.cosmetic-artifact-glimmer {
+  box-shadow: 0 0 0 1px rgba(82, 215, 101, 0.24), 0 22px 70px rgba(82, 215, 101, 0.18);
+}
+
+.cosmetic-green-spark-aura::before,
+.cosmetic-artifact-glimmer::before {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(137, 242, 126, 0.32), transparent 8%),
+    radial-gradient(circle at 80% 30%, rgba(82, 215, 101, 0.24), transparent 7%),
+    radial-gradient(circle at 56% 78%, rgba(137, 242, 126, 0.2), transparent 9%);
+  opacity: 0.82;
+}
+
+.cosmetic-artifact-glimmer::before {
+  background:
+    radial-gradient(circle at 26% 24%, rgba(255, 245, 182, 0.3), transparent 7%),
+    radial-gradient(circle at 68% 24%, rgba(82, 215, 101, 0.24), transparent 9%),
+    linear-gradient(135deg, transparent 20%, rgba(255, 255, 255, 0.14), transparent 42%);
+}
+
+.cosmetic-crumb-crown strong::before,
+.member-profile-hero.cosmetic-crumb-crown h1::before {
+  content: "crowned ";
+  color: var(--green-dark);
+}
+
+.cosmetic-crown {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid rgba(244, 200, 95, 0.38);
+  border-radius: 999px;
+  background: rgba(244, 200, 95, 0.18);
+  color: #9a6a08;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.cosmetic-horn-shadow-trim,
+.cosmetic-bread-cathedral-frame {
+  border-color: rgba(26, 138, 56, 0.38);
+  box-shadow: inset 0 0 0 2px rgba(7, 18, 12, 0.12), 0 28px 80px rgba(7, 18, 12, 0.18);
+}
+
+.cosmetic-horn-shadow-trim::after,
+.cosmetic-bread-cathedral-frame::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(26, 138, 56, 0.22);
+  border-radius: inherit;
+}
+
+.cosmetic-ck-nameplate strong,
+.member-profile-hero.cosmetic-ck-nameplate h1 {
+  color: var(--green-dark);
+  text-shadow: 0 8px 30px rgba(26, 138, 56, 0.24);
+}
+
+.cosmetic-ck-nameplate span:first-of-type,
+.member-profile-hero.cosmetic-ck-nameplate .member-profile-meta span:first-child {
+  background: var(--green);
+  color: var(--white);
+  border-color: rgba(26, 138, 56, 0.35);
+}
+
+.cosmetic-chalk-horns {
+  border-color: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42), 0 24px 72px rgba(255, 255, 255, 0.18);
+}
+
+.cosmetic-chalk-horns strong::after,
+.member-profile-hero.cosmetic-chalk-horns h1::after {
+  content: "  horns polished";
+  color: var(--quiet);
+  font-size: 0.18em;
+  font-weight: 900;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.cosmetic-midnight-fur-wash {
+  background:
+    linear-gradient(135deg, rgba(5, 14, 11, 0.92), rgba(9, 24, 18, 0.78)),
+    var(--card-bg);
+  color: #edf8ee;
+}
+
+.cosmetic-midnight-fur-wash p,
+.cosmetic-midnight-fur-wash small,
+.cosmetic-midnight-fur-wash em,
+.cosmetic-midnight-fur-wash q {
+  color: rgba(237, 248, 238, 0.74);
+}
+
+.cosmetic-forbidden-green-flame {
+  box-shadow: 0 0 0 1px rgba(82, 215, 101, 0.3), 0 0 38px rgba(82, 215, 101, 0.2), 0 28px 90px rgba(13, 105, 44, 0.18);
+}
+
+.cosmetic-forbidden-green-flame::before {
+  content: "";
+  position: absolute;
+  inset: auto -20% -42% -20%;
+  height: 75%;
+  background:
+    radial-gradient(ellipse at 35% 100%, rgba(82, 215, 101, 0.34), transparent 58%),
+    radial-gradient(ellipse at 62% 100%, rgba(137, 242, 126, 0.26), transparent 54%);
+  filter: blur(2px);
+}
+
+.cosmetic-bread-cathedral-frame {
+  border-width: 2px;
+  background:
+    linear-gradient(135deg, rgba(255, 246, 214, 0.58), rgba(223, 243, 216, 0.62)),
+    var(--card-bg);
+}
+
+.cosmetic-bread-cathedral-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent, rgba(26, 138, 56, 0.08), transparent),
+    repeating-linear-gradient(90deg, transparent 0 42px, rgba(26, 138, 56, 0.08) 43px 44px);
+}
+
+.cosmetic-ancient-artifact-badge .member-badges span:first-child,
+.cosmetic-founding-menace-badge .member-badges span:first-child {
+  background: #111915;
+  color: #bdf8a4;
+  border-color: rgba(82, 215, 101, 0.36);
+}
+
+.cosmetic-founding-menace-badge {
+  outline: 2px solid rgba(239, 68, 68, 0.22);
+  outline-offset: -8px;
+}
+
+.cosmetic-loaf-lord-title strong::after,
+.member-profile-hero.cosmetic-loaf-lord-title h1::after,
+.cosmetic-keeper-of-crumbs strong::after,
+.member-profile-hero.cosmetic-keeper-of-crumbs h1::after,
+.cosmetic-artifact-oracle-title strong::after,
+.member-profile-hero.cosmetic-artifact-oracle-title h1::after {
+  display: inline-block;
+  margin-left: 10px;
+  border: 1px solid rgba(26, 138, 56, 0.24);
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green-dark);
+  padding: 0.15em 0.45em;
+  font-size: 0.18em;
+  font-weight: 950;
+  vertical-align: middle;
+}
+
+.cosmetic-loaf-lord-title strong::after,
+.member-profile-hero.cosmetic-loaf-lord-title h1::after {
+  content: "loaf lord";
+}
+
+.cosmetic-keeper-of-crumbs strong::after,
+.member-profile-hero.cosmetic-keeper-of-crumbs h1::after {
+  content: "keeper";
+}
+
+.cosmetic-artifact-oracle-title strong::after,
+.member-profile-hero.cosmetic-artifact-oracle-title h1::after {
+  content: "oracle";
 }
 
 .member-profile-card img {

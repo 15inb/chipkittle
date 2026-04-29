@@ -67,6 +67,14 @@
       }[match]));
     }
 
+    function cosmeticClasses(member) {
+      return (member.cosmetics || [])
+        .map((item) => String(item.className || item.id || "").replace(/[^a-z0-9-]/gi, "-").toLowerCase())
+        .filter(Boolean)
+        .map((name) => name.startsWith("cosmetic-") ? name : `cosmetic-${name}`)
+        .join(" ");
+    }
+
     async function loadMembers() {
       try {
         const payload = await fetchCachedJson(panelMembersUrl, {
@@ -91,7 +99,7 @@
         }
 
         grid.innerHTML = members.map((member) => `
-          <a class="member-card member-card-link" href="${text(member.profileUrl || `/member.html?id=${encodeURIComponent(member.id || "")}`)}">
+          <a class="member-card member-card-link ${cosmeticClasses(member)}" href="${text(member.profileUrl || `/member.html?id=${encodeURIComponent(member.id || "")}`)}">
             <strong>${text(member.name)}</strong>
             <span>${text(member.role || "Member")}</span>
             <div class="member-note">

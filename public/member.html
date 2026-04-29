@@ -52,6 +52,14 @@
       }[match]));
     }
 
+    function cosmeticClasses(member) {
+      return (member.cosmetics || [])
+        .map((item) => String(item.className || item.id || "").replace(/[^a-z0-9-]/gi, "-").toLowerCase())
+        .filter(Boolean)
+        .map((name) => name.startsWith("cosmetic-") ? name : `cosmetic-${name}`)
+        .join(" ");
+    }
+
     async function loadMember() {
       if (!memberId) return null;
       try {
@@ -73,8 +81,9 @@
       }
       document.title = `${member.name || "Chipkittle Member"} - Chipkittle`;
       const inventoryEntries = Object.entries(member.inventory || {}).filter(([, amount]) => Number(amount) > 0);
+      const classes = cosmeticClasses(member);
       root.innerHTML = `
-        <section class="member-profile-hero">
+        <section class="member-profile-hero ${classes}">
           <div>
             <a class="quiet-link" href="/members">Back to members</a>
             <h1>${text(member.name)}</h1>
@@ -85,7 +94,8 @@
               ${member.favoriteArtifact ? `<span>Artifact: ${text(member.favoriteArtifact)}</span>` : ""}
             </div>
           </div>
-          <div class="member-profile-card">
+          <div class="member-profile-card ${classes}">
+            ${(member.cosmetics || []).some((item) => item.id === "crumb-crown") ? '<div class="cosmetic-crown">crumb crown</div>' : ""}
             <img src="/ckmascot.png" alt="">
             ${member.quote ? `<q>${text(member.quote)}</q>` : "<q>The profile is quiet. Suspicious.</q>"}
           </div>
