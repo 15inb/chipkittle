@@ -13,6 +13,8 @@ const loadout = document.getElementById("relicLoadout");
 const objectives = document.getElementById("relicObjectives");
 const statusText = document.getElementById("relicStatus");
 const difficultyText = document.getElementById("relicDifficulty");
+const intel = document.getElementById("relicIntel");
+const intelLabel = document.getElementById("relicIntelLabel");
 const upgradeModal = document.getElementById("relicUpgradeModal");
 const upgradeGrid = document.getElementById("relicUpgradeGrid");
 
@@ -21,7 +23,9 @@ const hud = {
   health: document.getElementById("hudHealth"),
   bread: document.getElementById("hudBread"),
   score: document.getElementById("hudScore"),
-  relic: document.getElementById("hudRelic")
+  relic: document.getElementById("hudRelic"),
+  dash: document.getElementById("hudDash"),
+  combo: document.getElementById("hudCombo")
 };
 
 const services = createGameServices("relic", {
@@ -41,9 +45,41 @@ const pools = {
   particles: [],
   enemies: [],
   projectiles: [],
+  enemyShots: [],
   pickups: [],
   texts: [],
   hazards: []
+};
+
+const audio = {
+  context: null,
+  enabled: true,
+  ensure() {
+    if (!this.enabled) return null;
+    if (!this.context) {
+      this.context = new AudioContext();
+    }
+    if (this.context.state === "suspended") this.context.resume().catch(() => {});
+    return this.context;
+  },
+  tone(frequency = 220, duration = 0.06, type = "sine", gain = 0.035) {
+    const context = this.ensure();
+    if (!context) return;
+    const osc = context.createOscillator();
+    const amp = context.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, context.currentTime);
+    amp.gain.setValueAtTime(gain, context.currentTime);
+    amp.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+    osc.connect(amp).connect(context.destination);
+    osc.start();
+    osc.stop(context.currentTime + duration);
+  },
+  shoot() { this.tone(340 + Math.random() * 70, 0.045, "triangle", 0.018); },
+  hit() { this.tone(150, 0.075, "sawtooth", 0.025); },
+  pickup() { this.tone(620, 0.05, "sine", 0.022); },
+  relic() { this.tone(110, 0.32, "sawtooth", 0.045); this.tone(660, 0.24, "triangle", 0.026); },
+  wave() { this.tone(250, 0.12, "triangle", 0.024); setTimeout(() => this.tone(420, 0.16, "triangle", 0.024), 80); }
 };
 
 const state = {
@@ -55,6 +91,7 @@ const state = {
   waveTimer: 0,
   spawnTimer: 0,
   bossSpawned: false,
+  bossAttackTimer: 0,
   score: 0,
   bread: 0,
   combo: 1,
@@ -67,6 +104,8 @@ const state = {
   fireCooldown: 0,
   relicCooldown: 0,
   difficulty: 1,
+  biome: "Outer Den",
+  flash: 0,
   gameOverHandled: false
 };
 
@@ -90,7 +129,8 @@ const player = {
   magnet: 150,
   relic: 0,
   relicMax: 100,
-  crit: 0.08
+  crit: 0.08,
+  regen: 0
 };
 
 const upgrades = [
@@ -101,6 +141,30 @@ const upgrades = [
     apply() {
       player.damage += 8;
       player.crit += 0.05;
+    }
+  },
+  {
+    id: "regen",
+    name: "Warm Den Ember",
+    description: "Slowly regenerate health while you avoid damage.",
+    apply() {
+      player.regen += 1.6;
+    }
+  },
+  {
+    id: "pierce",
+    name: "Artifact Splintering",
+    description: "Normal shots pierce one extra enemy.",
+    apply() {
+      state.flags.add("piercing-shots");
+    }
+  },
+  {
+    id: "ward",
+    name: "Keeper Ward",
+    description: "Taking a hit triggers a short knockback pulse.",
+    apply() {
+      state.flags.add("hit-ward");
     }
   },
   {
@@ -169,6 +233,8 @@ const enemyTypes = {
   mite: { hp: 32, speed: 135, radius: 18, damage: 9, value: 22, color: "#9cf66f" },
   brute: { hp: 92, speed: 82, radius: 30, damage: 18, value: 56, color: "#f1c964" },
   wisp: { hp: 22, speed: 190, radius: 14, damage: 7, value: 30, color: "#79eaff" },
+  spitter: { hp: 48, speed: 112, radius: 20, damage: 10, value: 46, color: "#c68cff" },
+  guardian: { hp: 150, speed: 58, radius: 35, damage: 20, value: 82, color: "#85ffd2" },
   boss: { hp: 720, speed: 64, radius: 54, damage: 26, value: 480, color: "#ff7373" }
 };
 
@@ -182,6 +248,7 @@ function resetRun(practice = false) {
     waveTimer: 0,
     spawnTimer: 0,
     bossSpawned: false,
+    bossAttackTimer: 0,
     score: 0,
     bread: 0,
     combo: 1,
@@ -193,6 +260,8 @@ function resetRun(practice = false) {
     fireCooldown: 0,
     relicCooldown: 0,
     difficulty: practice ? 0.78 : 1,
+    biome: "Outer Den",
+    flash: 0,
     gameOverHandled: false
   });
   Object.assign(player, {
@@ -214,7 +283,8 @@ function resetRun(practice = false) {
     magnet: 150,
     relic: 0,
     relicMax: 100,
-    crit: 0.08
+    crit: 0.08,
+    regen: 0
   });
   for (const list of Object.values(pools)) list.length = 0;
   for (let i = 0; i < 30; i += 1) spawnPickup(rand(240, WORLD.width - 240), rand(220, WORLD.height - 220), "bread", 1);
@@ -222,6 +292,8 @@ function resetRun(practice = false) {
   services.resetClaimState("Finish this run to create a Discord bread claim.");
   updateSidebar();
   announce("Wave 1: keep the fur attached.", "#d7ff91");
+  audio.ensure();
+  audio.wave();
 }
 
 function resizeCanvas() {
@@ -275,7 +347,21 @@ function spawnEnemy(type = "mite") {
     color: spec.color,
     hitFlash: 0,
     attackCooldown: 0,
+    specialCooldown: rand(1.2, 3.4),
     phase: rand(0, Math.PI * 2)
+  });
+}
+
+function spawnEnemyShot(x, y, angle, speed = 360, damage = 10, color = "#c68cff", radius = 8) {
+  pools.enemyShots.push({
+    x,
+    y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    radius,
+    damage,
+    color,
+    life: 3.2
   });
 }
 
@@ -323,18 +409,21 @@ function fireProjectile() {
       damage: player.damage * (crit ? 2.15 : 1),
       life: 0.82,
       crit,
-      pierce: crit ? 1 : 0
+      pierce: (crit ? 1 : 0) + (state.flags.has("piercing-shots") ? 1 : 0)
     });
   }
   state.fireCooldown = Math.max(0.06, player.fireRate);
   camera.trauma = Math.max(camera.trauma, 0.06);
+  audio.shoot();
 }
 
 function relicBurst() {
   if (player.relic < player.relicMax || state.relicCooldown > 0 || state.mode !== "playing") return;
   player.relic = 0;
   state.relicCooldown = 1.2;
+  state.flash = 0.38;
   camera.trauma = Math.max(camera.trauma, 0.42);
+  audio.relic();
   const radius = 260 + (100 - player.relicMax) * 3;
   for (const enemy of pools.enemies) {
     const d = Math.sqrt(distanceSq(player, enemy));
@@ -425,8 +514,12 @@ function update(dt) {
   state.spawnTimer -= dt;
   state.fireCooldown -= dt;
   state.relicCooldown -= dt;
+  state.flash = Math.max(0, state.flash - dt);
   player.dashCooldown -= dt;
   player.invulnerable -= dt;
+  if (player.regen > 0 && player.invulnerable <= 0 && player.health > 0) {
+    player.health = Math.min(player.maxHealth, player.health + player.regen * dt);
+  }
   state.comboTimer -= dt;
   if (state.comboTimer <= 0) state.combo = 1;
 
@@ -434,6 +527,7 @@ function update(dt) {
   updateWave(dt);
   updateEnemies(dt);
   updateProjectiles(dt);
+  updateEnemyShots(dt);
   updatePickups(dt);
   updateHazards(dt);
   updateParticles(dt);
@@ -446,15 +540,34 @@ function update(dt) {
 function updatePlayer(dt) {
   let ax = 0;
   let ay = 0;
+  let padDash = false;
   if (keys.has("w") || keys.has("ArrowUp")) ay -= 1;
   if (keys.has("s") || keys.has("ArrowDown")) ay += 1;
   if (keys.has("a") || keys.has("ArrowLeft")) ax -= 1;
   if (keys.has("d") || keys.has("ArrowRight")) ax += 1;
+  const pad = navigator.getGamepads?.()[0];
+  if (pad) {
+    const gx = Math.abs(pad.axes[0] || 0) > 0.18 ? pad.axes[0] : 0;
+    const gy = Math.abs(pad.axes[1] || 0) > 0.18 ? pad.axes[1] : 0;
+    if (gx || gy) {
+      ax = gx;
+      ay = gy;
+    }
+    const aimX = Math.abs(pad.axes[2] || 0) > 0.18 ? pad.axes[2] : 0;
+    const aimY = Math.abs(pad.axes[3] || 0) > 0.18 ? pad.axes[3] : 0;
+    if (aimX || aimY) {
+      pointer.worldX = player.x + aimX * 240;
+      pointer.worldY = player.y + aimY * 240;
+      if (pad.buttons[7]?.pressed || pad.buttons[0]?.pressed) fireProjectile();
+    }
+    padDash = Boolean(pad.buttons[1]?.pressed);
+    if (pad.buttons[2]?.pressed) relicBurst();
+  }
   const length = Math.hypot(ax, ay) || 1;
   ax /= length;
   ay /= length;
 
-  if ((keys.has(" ") || keys.has("Shift")) && player.dashCooldown <= 0 && (ax || ay)) {
+  if ((keys.has(" ") || keys.has("Shift") || padDash) && player.dashCooldown <= 0 && (ax || ay)) {
     player.vx += ax * 880;
     player.vy += ay * 880;
     player.invulnerable = 0.24;
@@ -476,11 +589,14 @@ function updatePlayer(dt) {
 
 function updateWave(dt) {
   const waveLength = 22 + Math.min(28, state.wave * 3);
+  state.biome = state.wave > 8 ? "Broken Archive" : state.wave > 4 ? "Green Furnace" : "Outer Den";
   if (state.spawnTimer <= 0) {
     const roll = Math.random();
     let type = "mite";
     if (state.wave > 2 && roll > 0.72) type = "brute";
     if (state.wave > 1 && roll < 0.22) type = "wisp";
+    if (state.wave > 3 && roll > 0.42 && roll < 0.58) type = "spitter";
+    if (state.wave > 6 && roll > 0.86) type = "guardian";
     spawnEnemy(type);
     if (state.wave > 4 && Math.random() < 0.18) spawnEnemy("mite");
     state.spawnTimer = Math.max(0.22, 1.05 - state.wave * 0.055) / state.difficulty;
@@ -489,7 +605,9 @@ function updateWave(dt) {
   if (state.wave % 4 === 0 && !state.bossSpawned && state.waveTimer > 8) {
     spawnEnemy("boss");
     state.bossSpawned = true;
+    state.bossAttackTimer = 2;
     announce("Boss thing detected. Deeply rude.", "#ff9797");
+    audio.wave();
   }
   if (state.waveTimer > waveLength && pools.enemies.length < 5) {
     openUpgradeModal();
@@ -511,6 +629,25 @@ function updateEnemies(dt) {
     enemy.y += enemy.vy * dt;
     enemy.hitFlash -= dt;
     enemy.attackCooldown -= dt;
+    enemy.specialCooldown -= dt;
+
+    if (enemy.type === "spitter" && enemy.specialCooldown <= 0 && dist < 760) {
+      const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+      spawnEnemyShot(enemy.x, enemy.y, angle, 390 + state.wave * 8, enemy.damage, enemy.color, 8);
+      enemy.specialCooldown = rand(1.4, 2.5);
+      enemy.vx -= nx * 120;
+      enemy.vy -= ny * 120;
+    }
+
+    if (enemy.type === "guardian" && enemy.specialCooldown <= 0) {
+      shockwave(enemy.x, enemy.y, 118, 24);
+      enemy.specialCooldown = rand(4.2, 5.8);
+    }
+
+    if (enemy.type === "boss" && enemy.specialCooldown <= 0) {
+      bossPattern(enemy);
+      enemy.specialCooldown = Math.max(1.3, 3.4 - state.wave * 0.08);
+    }
 
     if (dist < enemy.radius + player.radius && enemy.attackCooldown <= 0 && player.invulnerable <= 0) {
       const damage = Math.max(2, enemy.damage - player.armor);
@@ -518,12 +655,33 @@ function updateEnemies(dt) {
       player.invulnerable = 0.3;
       enemy.attackCooldown = 0.62;
       camera.trauma = Math.max(camera.trauma, 0.32);
+      audio.hit();
+      if (state.flags.has("hit-ward")) shockwave(player.x, player.y, 130, 18 + state.wave * 2);
       floatingText(player.x, player.y - 34, `-${Math.round(damage)}`, "#ff9b9b");
       for (let p = 0; p < 16; p += 1) particle(player.x, player.y, rand(-260, 260), rand(-260, 260), rand(0.25, 0.55), "#ff7373", rand(2, 6));
     }
 
     if (enemy.hp <= 0) killEnemy(enemy, i);
   }
+}
+
+function bossPattern(enemy) {
+  const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+  const count = 10 + Math.min(10, state.wave);
+  for (let i = 0; i < count; i += 1) {
+    const angle = base + (i - count / 2) * 0.18;
+    spawnEnemyShot(enemy.x, enemy.y, angle, 285 + state.wave * 9, enemy.damage * 0.7, "#ff8f8f", 10);
+  }
+  if (Math.random() < 0.55) {
+    pools.hazards.push({
+      x: clamp(player.x + rand(-160, 160), 180, WORLD.width - 180),
+      y: clamp(player.y + rand(-160, 160), 180, WORLD.height - 180),
+      radius: rand(74, 112),
+      life: rand(4.2, 6.2),
+      pulse: rand(0, Math.PI * 2)
+    });
+  }
+  camera.trauma = Math.max(camera.trauma, 0.16);
 }
 
 function killEnemy(enemy, index) {
@@ -534,6 +692,10 @@ function killEnemy(enemy, index) {
   const scoreGain = Math.floor(enemy.value * state.combo);
   state.score += scoreGain;
   player.relic = clamp(player.relic + (enemy.type === "boss" ? 32 : 8), 0, player.relicMax);
+  if (state.kills === 25) unlockAchievement("First Furstorm", "25 curse-things removed.");
+  if (state.combo >= 3) unlockAchievement("Combo Creature", "Reached a 3x score chain.");
+  if (enemy.type === "boss") unlockAchievement("Boss Handler", "Defeated a boss wave.");
+  audio.pickup();
   floatingText(enemy.x, enemy.y - enemy.radius, `+${scoreGain}`, enemy.color);
   const breadDrops = enemy.type === "boss" ? 10 : enemy.type === "brute" ? 3 : 1;
   for (let i = 0; i < breadDrops; i += 1) spawnPickup(enemy.x + rand(-24, 24), enemy.y + rand(-24, 24), "bread", enemy.type === "boss" ? 5 : 1);
@@ -541,6 +703,17 @@ function killEnemy(enemy, index) {
   for (let i = 0; i < 20; i += 1) particle(enemy.x, enemy.y, rand(-220, 220), rand(-220, 220), rand(0.28, 0.8), enemy.color, rand(2, 6));
   if (state.flags.has("death-echo") && Math.random() < 0.22) {
     shockwave(enemy.x, enemy.y, 145, 48);
+  }
+}
+
+function unlockAchievement(name, description) {
+  if (state.achievements.has(name)) return;
+  state.achievements.add(name);
+  state.score += 250;
+  announce(`${name}: ${description}`, "#fff29b");
+  for (let i = 0; i < 34; i += 1) {
+    const angle = rand(0, Math.PI * 2);
+    particle(player.x, player.y, Math.cos(angle) * rand(130, 360), Math.sin(angle) * rand(130, 360), rand(0.4, 0.9), "#fff29b", rand(2, 5));
   }
 }
 
@@ -582,6 +755,28 @@ function updateProjectiles(dt) {
   }
 }
 
+function updateEnemyShots(dt) {
+  for (let i = pools.enemyShots.length - 1; i >= 0; i -= 1) {
+    const shot = pools.enemyShots[i];
+    shot.x += shot.vx * dt;
+    shot.y += shot.vy * dt;
+    shot.life -= dt;
+    let remove = shot.life <= 0 || shot.x < -100 || shot.y < -100 || shot.x > WORLD.width + 100 || shot.y > WORLD.height + 100;
+    if (!remove && distanceSq(shot, player) < (shot.radius + player.radius) ** 2) {
+      if (player.invulnerable <= 0) {
+        const damage = Math.max(2, shot.damage - player.armor * 0.6);
+        player.health -= damage;
+        player.invulnerable = 0.22;
+        camera.trauma = Math.max(camera.trauma, 0.24);
+        audio.hit();
+        floatingText(player.x, player.y - 36, `-${Math.round(damage)}`, "#ff9b9b");
+      }
+      remove = true;
+    }
+    if (remove) pools.enemyShots.splice(i, 1);
+  }
+}
+
 function updatePickups(dt) {
   for (let i = pools.pickups.length - 1; i >= 0; i -= 1) {
     const pickup = pools.pickups[i];
@@ -604,9 +799,11 @@ function updatePickups(dt) {
         state.bread += pickup.amount;
         state.score += pickup.amount * 4;
         if (state.flags.has("bakery-heal")) player.health = Math.min(player.maxHealth, player.health + 1.5 * pickup.amount);
+        if (state.bread >= 100) unlockAchievement("Bread Liable", "Collected 100 bread in one run.");
       } else {
         player.relic = clamp(player.relic + pickup.amount, 0, player.relicMax);
       }
+      audio.pickup();
       pools.pickups.splice(i, 1);
     } else if (pickup.life <= 0) {
       pools.pickups.splice(i, 1);
@@ -656,7 +853,10 @@ function updateHud() {
   hud.bread.textContent = state.bread;
   hud.score.textContent = state.score.toLocaleString();
   hud.relic.textContent = `${Math.floor((player.relic / player.relicMax) * 100)}%`;
+  hud.dash.textContent = player.dashCooldown <= 0 ? "Ready" : `${player.dashCooldown.toFixed(1)}s`;
+  hud.combo.textContent = `x${state.combo.toFixed(1)}`;
   difficultyText.textContent = state.practice ? "Practice" : `Threat ${state.difficulty.toFixed(1)}x`;
+  intelLabel.textContent = state.biome;
 }
 
 function updateSidebar() {
@@ -669,16 +869,25 @@ function updateSidebar() {
     `${pools.enemies.length} curse-things active.`,
     player.relic >= player.relicMax ? "Relic burst ready. Press Q." : "Charge relic burst with kills and shards."
   ].map((item) => `<li>${item}</li>`).join("");
+  const boss = pools.enemies.find((enemy) => enemy.type === "boss");
+  intel.innerHTML = [
+    `<span>Biome <b>${safeName(state.biome)}</b></span>`,
+    `<span>Kills <b>${state.kills}</b></span>`,
+    `<span>Boss <b>${boss ? `${Math.ceil(Math.max(0, boss.hp))} HP` : "Dormant"}</b></span>`,
+    `<span>Achievements <b>${state.achievements.size}</b></span>`
+  ].join("");
 }
 
 function endRun() {
   state.gameOverHandled = true;
   state.mode = "gameover";
   const bread = Math.floor(state.bread * (state.practice ? 0.4 : 1));
+  const minutes = Math.floor(state.time / 60);
+  const seconds = Math.floor(state.time % 60).toString().padStart(2, "0");
   overlay.classList.remove("is-hidden");
   overlay.querySelector("p").textContent = "Run complete";
   overlay.querySelector("h2").textContent = `${state.score.toLocaleString()} score`;
-  overlay.querySelector("span").textContent = `${bread.toLocaleString()} claimable bread. Start again whenever the den stops smoking.`;
+  overlay.querySelector("span").textContent = `${bread.toLocaleString()} claimable bread. Survived ${minutes}:${seconds}, reached wave ${state.wave}, removed ${state.kills} curse-things, unlocked ${state.achievements.size} achievements.`;
   services.submitScore({ score: state.score, bread });
   services.createClaimCode({ score: state.score, bread });
   statusText.textContent = "Run complete";
@@ -694,19 +903,26 @@ function render() {
   drawHazards();
   drawPickups();
   drawProjectiles();
+  drawEnemyShots();
   drawEnemies();
   drawPlayer();
   drawParticles();
   ctx.restore();
   drawMinimap();
+  drawFlash();
   if (state.mode === "paused") drawPauseTint();
 }
 
 function drawWorld() {
   const gradient = ctx.createLinearGradient(0, 0, WORLD.width, WORLD.height);
-  gradient.addColorStop(0, "#07120d");
-  gradient.addColorStop(0.45, "#102417");
-  gradient.addColorStop(1, "#050a07");
+  const biomeColors = {
+    "Outer Den": ["#07120d", "#102417", "#050a07"],
+    "Green Furnace": ["#07100d", "#173719", "#0c1006"],
+    "Broken Archive": ["#080b12", "#161733", "#07080d"]
+  }[state.biome] || ["#07120d", "#102417", "#050a07"];
+  gradient.addColorStop(0, biomeColors[0]);
+  gradient.addColorStop(0.45, biomeColors[1]);
+  gradient.addColorStop(1, biomeColors[2]);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, WORLD.width, WORLD.height);
 
@@ -835,6 +1051,22 @@ function drawProjectiles() {
   }
 }
 
+function drawEnemyShots() {
+  for (const shot of pools.enemyShots) {
+    ctx.save();
+    ctx.fillStyle = shot.color;
+    ctx.shadowColor = shot.color;
+    ctx.shadowBlur = 18;
+    ctx.beginPath();
+    ctx.arc(shot.x, shot.y, shot.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function drawPickups() {
   for (const pickup of pools.pickups) {
     const bob = Math.sin(pickup.phase) * 4;
@@ -922,6 +1154,15 @@ function drawMinimap() {
 function drawPauseTint() {
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+  ctx.restore();
+}
+
+function drawFlash() {
+  if (state.flash <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = clamp(state.flash * 1.8, 0, 0.5);
+  ctx.fillStyle = "#d7ff91";
   ctx.fillRect(0, 0, VIEW.width, VIEW.height);
   ctx.restore();
 }
