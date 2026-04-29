@@ -3613,7 +3613,152 @@ button,
 
 .mission-panel {
   display: grid;
-  gap: 22px;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.panel-sidebar {
+  position: sticky;
+  top: 86px;
+  display: grid;
+  gap: 14px;
+  max-height: calc(100svh - 104px);
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 24px 70px rgba(20, 34, 26, 0.1);
+  backdrop-filter: blur(18px);
+  padding: 16px;
+}
+
+.panel-sidebar-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.panel-sidebar-head h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.panel-sidebar-head small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.mission-emblem.compact {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  font-size: 20px;
+}
+
+.panel-quick-links,
+.panel-nav-links,
+.panel-sidebar-stats {
+  display: grid;
+  gap: 8px;
+}
+
+.panel-quick-links {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel-quick-links a,
+.panel-nav-links a {
+  border: 1px solid rgba(27, 53, 38, 0.1);
+  border-radius: 16px;
+  background: rgba(244, 247, 243, 0.82);
+  color: var(--text);
+  font-weight: 850;
+}
+
+.panel-quick-links a {
+  padding: 10px 12px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.panel-nav-group {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.panel-nav-group summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text);
+}
+
+.panel-nav-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel-nav-group summary strong {
+  font-size: 14px;
+}
+
+.panel-nav-group summary span,
+.panel-sidebar-stats span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.panel-nav-links {
+  margin-top: 10px;
+}
+
+.panel-nav-links a {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  font-size: 14px;
+}
+
+.panel-nav-links b {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.panel-quick-links a:hover,
+.panel-quick-links a.active,
+.panel-nav-links a:hover,
+.panel-nav-links a.active {
+  border-color: rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.panel-nav-links a.active b {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.panel-sidebar-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  text-align: center;
 }
 
 .mission-control {
@@ -3884,7 +4029,7 @@ textarea {
 
 .mission-workbench {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -4161,6 +4306,7 @@ html[data-panel-mode="dark"] .form-error,
 html[data-panel-mode="dark"] .mission-identity,
 html[data-panel-mode="dark"] .mission-search-card,
 html[data-panel-mode="dark"] .mission-context-card,
+html[data-panel-mode="dark"] .panel-sidebar,
 html[data-panel-mode="dark"] .mission-work-surface,
 html[data-panel-mode="dark"] .mission-readouts article,
 html[data-panel-mode="dark"] .mission-module-shelf,
@@ -4199,6 +4345,8 @@ html[data-panel-mode="dark"] .panel-ui .topbar-nav a,
 html[data-panel-mode="dark"] .panel-ui .theme-picker,
 html[data-panel-mode="dark"] .panel-ui .mode-toggle,
 html[data-panel-mode="dark"] .mission-module,
+html[data-panel-mode="dark"] .panel-quick-links a,
+html[data-panel-mode="dark"] .panel-nav-links a,
 html[data-panel-mode="dark"] .checkbox-grid,
 html[data-panel-mode="dark"] .list-row,
 html[data-panel-mode="dark"] .audit-row {
@@ -4272,9 +4420,15 @@ html[data-panel-mode="dark"] .punishment-modal-backdrop {
 
 @media (max-width: 1180px) {
   .mission-hero,
+  .mission-panel,
   .mission-workbench,
   .mission-module-shelf {
     grid-template-columns: 1fr;
+  }
+
+  .panel-sidebar {
+    position: static;
+    max-height: none;
   }
 
   .mission-context-card {

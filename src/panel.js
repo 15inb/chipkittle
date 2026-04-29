@@ -50,7 +50,7 @@ const ACTIVE_UPDATE_STATUSES = new Set(["running", "updating", "restarting"]);
 const MOD_MEMBER_PAGE_SIZE = 20;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
-const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 12;
+const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const OAUTH_STATE_BYTES = 18;
 const PANEL_ROLE_TEMPLATE_LEVELS = {
   moderator: "round_table",
@@ -125,6 +125,84 @@ const SETTINGS_NAV_MARKS = {
 };
 
 const NON_FORM_SECTIONS = new Set(["dashboard", "audit", "public", "commands", "server", "backups", "suggestions"]);
+
+class FileSessionStore extends session.Store {
+  constructor(filePath) {
+    super();
+    this.filePath = filePath;
+    this.sessions = new Map();
+    this.load();
+  }
+
+  load() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
+      this.sessions = new Map(Object.entries(parsed?.sessions || {}));
+      this.pruneExpired();
+    } catch {
+      this.sessions = new Map();
+    }
+  }
+
+  save() {
+    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+    const payload = {
+      savedAt: new Date().toISOString(),
+      sessions: Object.fromEntries(this.sessions)
+    };
+    fs.writeFileSync(`${this.filePath}.tmp`, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    fs.renameSync(`${this.filePath}.tmp`, this.filePath);
+  }
+
+  isExpired(sessionData = {}) {
+    const expiresAt = Date.parse(sessionData?.cookie?.expires || "");
+    return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+  }
+
+  pruneExpired() {
+    let changed = false;
+    for (const [sessionId, sessionData] of this.sessions.entries()) {
+      if (this.isExpired(sessionData)) {
+        this.sessions.delete(sessionId);
+        changed = true;
+      }
+    }
+    if (changed) this.save();
+  }
+
+  get(sessionId, callback) {
+    this.pruneExpired();
+    const sessionData = this.sessions.get(sessionId);
+    callback(null, sessionData || null);
+  }
+
+  set(sessionId, sessionData, callback = () => {}) {
+    this.sessions.set(sessionId, sessionData);
+    this.save();
+    callback(null);
+  }
+
+  destroy(sessionId, callback = () => {}) {
+    this.sessions.delete(sessionId);
+    this.save();
+    callback(null);
+  }
+
+  touch(sessionId, sessionData, callback = () => {}) {
+    const existing = this.sessions.get(sessionId) || {};
+    this.sessions.set(sessionId, {
+      ...existing,
+      cookie: sessionData.cookie
+    });
+    this.save();
+    callback(null);
+  }
+
+  all(callback) {
+    this.pruneExpired();
+    callback(null, [...this.sessions.values()]);
+  }
+}
 
 const DEFAULT_PUBLIC_GAME_SETTINGS = {
   blockedLeaderboardWords: [],
@@ -3241,61 +3319,58 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
       return section && canAccessPanelSection(accessLevel, section.id);
       })
     })).filter((group) => group.sections.length);
-    const totalVisibleSections = visibleGroups.reduce((sum, group) => sum + group.sections.length, 0);
-    return `
-      <section class="mission-control" aria-label="Panel launcher">
-        <div class="mission-hero">
-          <div class="mission-identity">
-            <span class="mission-emblem">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
-            <div>
-              <p class="eyebrow">Chipkittle Mission Control</p>
-              <h1>${escapeHtml(guild.name)}</h1>
-              <p>One place for staff tools, applications, AI, games, site content, bread economy, command access, and runtime control.</p>
-            </div>
-          </div>
-          <div class="mission-search-card">
-            <label class="nav-search-label">
-              Search panel modules
-              <input data-nav-filter type="search" autocomplete="off" placeholder="Type to filter ${escapeHtml(String(totalVisibleSections))} areas">
-            </label>
-            <span>${escapeHtml(panelUserLabel(panelUser))}</span>
-          </div>
+  const totalVisibleSections = visibleGroups.reduce((sum, group) => sum + group.sections.length, 0);
+  const quickLinks = ["dashboard", "moderation", "applications", "members", "ai", "economy", "server"]
+    .filter((sectionId) => canAccessPanelSection(accessLevel, sectionId))
+    .map((sectionId) => SETTINGS_SECTIONS.find((entry) => entry.id === sectionId))
+    .filter(Boolean);
+  return `
+    <aside class="panel-sidebar" aria-label="Panel navigation">
+      <div class="panel-sidebar-head">
+        <span class="mission-emblem compact">${guild.iconUrl ? `<img src="${guild.iconUrl}" alt="">` : escapeHtml(guild.name[0] || "?")}</span>
+        <div>
+          <p class="eyebrow">Panel</p>
+          <h1>${escapeHtml(guild.name)}</h1>
+          <small>${escapeHtml(panelUserLabel(panelUser))}</small>
         </div>
-        <div class="mission-readouts">
-          <article><span>Members</span><strong>${escapeHtml(guild.memberCount ?? 0)}</strong></article>
-          <article><span>Commands</span><strong>${escapeHtml(community.commandsRun)}</strong></article>
-          <article><span>AI replies</span><strong>${escapeHtml(community.aiReplies)}</strong></article>
-          <article><span>Punishments</span><strong>${escapeHtml((config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").length)}</strong></article>
-          <article><span>Applications</span><strong>${escapeHtml(community.applicationsOpened)}</strong></article>
-          <article><span>Prefix</span><strong>${escapeHtml(config.prefix)}</strong></article>
-        </div>
-        <nav class="mission-modules" aria-label="Panel sections">
-          ${visibleGroups.map((group) => `
-            <section class="mission-module-shelf" data-nav-group>
-              <div class="mission-shelf-title">
+      </div>
+      <label class="nav-search-label">
+        Find a setting
+        <input data-nav-filter type="search" autocomplete="off" placeholder="Search ${escapeHtml(String(totalVisibleSections))} areas">
+      </label>
+      <div class="panel-quick-links" aria-label="Common sections">
+        ${quickLinks.map((section) => `<a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}">${escapeHtml(section.label)}</a>`).join("")}
+      </div>
+      <nav class="panel-nav-accordion" aria-label="Panel sections">
+        ${visibleGroups.map((group) => {
+          const isOpen = group.sections.includes(activeSection);
+          return `
+            <details class="panel-nav-group" data-nav-group ${isOpen ? "open" : ""}>
+              <summary>
                 <strong>${escapeHtml(group.label)}</strong>
-                <span>${escapeHtml(group.description || "")}</span>
+                <span>${escapeHtml(group.sections.length)} areas</span>
+              </summary>
+              <div class="panel-nav-links">
+                ${group.sections.map((sectionId) => {
+                  const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
+                  if (!section) return "";
+                  return `
+                    <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}" data-nav-link data-nav-text="${escapeHtml(`${section.label} ${section.description} ${group.label}`)}">
+                      <b>${escapeHtml(SETTINGS_NAV_MARKS[section.id] || section.label.slice(0, 2).toUpperCase())}</b>
+                      <span>${escapeHtml(section.label)}</span>
+                    </a>`;
+                }).join("")}
               </div>
-              <div class="mission-module-list">
-              ${group.sections.map((sectionId) => {
-                const section = SETTINGS_SECTIONS.find((entry) => entry.id === sectionId);
-                if (!section) return "";
-                return `
-                  <a class="mission-module ${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}" data-nav-link data-nav-text="${escapeHtml(`${section.label} ${section.description} ${group.label}`)}">
-                    <b>${escapeHtml(SETTINGS_NAV_MARKS[section.id] || section.label.slice(0, 2).toUpperCase())}</b>
-                    <span>
-                      <strong>${escapeHtml(section.label)}</strong>
-                      <small>${escapeHtml(section.description)}</small>
-                    </span>
-                    <em>${sectionStatusLabel(section.id)}</em>
-                  </a>`;
-              }).join("")}
-              </div>
-            </section>
-          `).join("")}
-        </nav>
-      </section>
-    `;
+            </details>`;
+        }).join("")}
+      </nav>
+      <div class="panel-sidebar-stats">
+        <span>${escapeHtml(guild.memberCount ?? 0)} members</span>
+        <span>${escapeHtml(community.applicationsOpened)} apps</span>
+        <span>${escapeHtml(config.prefix)} prefix</span>
+      </div>
+    </aside>
+  `;
   }
 
 function mobileSectionSelect(guild, activeSection, panelUser = null) {
@@ -3885,40 +3960,22 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
       <section class="mission-panel">
         ${settingsNav(guild, config, currentSection, currentMeta, panelUser)}
         <div class="mission-workbench">
-          <aside class="mission-context-card">
-            <span class="mission-context-kicker">${NON_FORM_SECTIONS.has(currentSection) ? "Live workspace" : "Config workspace"}</span>
-            <h2>${escapeHtml(currentMeta.label)}</h2>
-            <p>${escapeHtml(currentMeta.description)}</p>
-            <dl>
-              <div>
-                <dt>Mode</dt>
-                <dd>${escapeHtml(sectionStatusLabel(currentSection))}</dd>
-              </div>
-              <div>
-                <dt>Access</dt>
-                <dd>${escapeHtml(panelUserLabel(panelUser))}</dd>
-              </div>
-              <div>
-                <dt>Prefix</dt>
-                <dd>${escapeHtml(config.prefix)}</dd>
-              </div>
-            </dl>
-            <div class="mission-context-actions">
-              ${mobileSectionSelect(guild, currentSection, panelUser)}
-              <a class="secondary-button" href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
-              <a class="secondary-button" href="/commits">Commits</a>
-            </div>
-          </aside>
           <section class="mission-work-surface">
             <div class="mission-work-surface-head">
               <div>
-                <p class="eyebrow">Open workspace</p>
+                <p class="eyebrow">${NON_FORM_SECTIONS.has(currentSection) ? "Live workspace" : "Config workspace"} · ${escapeHtml(sectionStatusLabel(currentSection))}</p>
                 <h1>${escapeHtml(currentMeta.label)}</h1>
+                <p>${escapeHtml(currentMeta.description)}</p>
               </div>
               <div class="workspace-breadcrumb">
                 <a href="/guilds/${guild.id}?section=dashboard">${escapeHtml(guild.name)}</a>
                 <span>/</span>
                 <strong>${escapeHtml(currentMeta.label)}</strong>
+              </div>
+              <div class="mission-context-actions compact-actions">
+                ${mobileSectionSelect(guild, currentSection, panelUser)}
+                <a class="secondary-button" href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
+                <a class="secondary-button" href="/commits">Commits</a>
               </div>
             </div>
             <div class="settings-main workspace-main">
@@ -3965,7 +4022,7 @@ export function createPanel({
   const activePanelSessions = new Map();
   const oauthStates = new Map();
   const profileOAuthStates = new Map();
-  const sessionStore = new session.MemoryStore();
+  const sessionStore = new FileSessionStore(path.join(process.cwd(), "data", "panel-sessions.json"));
   const publicSuggestionCooldowns = new Map();
   const publicSuggestionCaptchas = new Map();
 
