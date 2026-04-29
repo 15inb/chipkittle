@@ -91,7 +91,7 @@
         }
 
         grid.innerHTML = members.map((member) => `
-          <article class="member-card">
+          <a class="member-card member-card-link" href="${text(member.profileUrl || `/member.html?id=${encodeURIComponent(member.id || "")}`)}">
             <strong>${text(member.name)}</strong>
             <span>${text(member.role || "Member")}</span>
             <div class="member-note">
@@ -99,9 +99,10 @@
               <p>${text(member.bio || "No note yet.")}</p>
               ${member.favoriteArtifact ? `<em>Favorite artifact: ${text(member.favoriteArtifact)}</em>` : ""}
               ${member.quote ? `<q>${text(member.quote)}</q>` : ""}
+              ${(member.cosmetics || []).length ? `<div class="member-cosmetics">${member.cosmetics.map((item) => `<b>${text(item.name)}</b>`).join("")}</div>` : ""}
             </div>
             ${(member.badges || []).length ? `<div class="member-badges">${member.badges.map((badge) => `<span>${text(badge)}</span>`).join("")}</div>` : ""}
-          </article>
+          </a>
         `).join("");
       })
       .catch(() => {

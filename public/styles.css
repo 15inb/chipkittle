@@ -655,6 +655,57 @@ textarea:focus {
   gap: 18px;
 }
 
+.profile-shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.profile-shop-card {
+  display: grid;
+  align-content: space-between;
+  gap: 16px;
+  min-height: 210px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-2);
+  padding: 16px;
+}
+
+.profile-shop-card strong {
+  display: block;
+  font-size: 18px;
+}
+
+.profile-shop-card small,
+.profile-shop-card p {
+  color: var(--muted);
+}
+
+.profile-shop-card p {
+  margin: 10px 0 0;
+  line-height: 1.45;
+}
+
+.profile-owned-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin-top: 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .checkbox-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

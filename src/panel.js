@@ -16,6 +16,8 @@ import {
   derivedAchievements,
   parseArtifactDirectory,
   profileFor,
+  purchaseShopItem,
+  shopCatalog,
   topCommands,
   updateProfile,
 } from "./communityFeatures.js";
@@ -1643,6 +1645,20 @@ function publicProfileRoleLabel(config = {}, guild = null, userId = "", storedPr
   return "Member";
 }
 
+function publicProfileCosmetics(profile = {}) {
+  const catalog = new Map(shopCatalog().map((item) => [item.id, item]));
+  return (profile.equippedCosmetics || [])
+    .map((itemId) => catalog.get(itemId))
+    .filter(Boolean)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      type: item.type,
+      description: item.description
+    }))
+    .slice(0, 6);
+}
+
 function publicMembersFromConfig(config = {}, guild = null) {
   const profileMembers = Object.entries(config.community?.profiles || {})
     .map(([userId, storedProfile]) => {
@@ -1658,6 +1674,10 @@ function publicMembersFromConfig(config = {}, guild = null) {
         bio: profile.bio,
         quote: profile.quote,
         favoriteArtifact: profile.favoriteArtifact,
+        inventory: profile.inventory,
+        equippedCosmetics: profile.equippedCosmetics,
+        cosmetics: publicProfileCosmetics(profile),
+        profileUrl: `/member.html?id=${encodeURIComponent(userId)}`,
         badges: [...new Set([...(profile.badges || []), ...achievements.slice(0, 5)])].slice(0, 8),
         sortRank: profileSortRank(config, guild, userId, storedProfile),
         source: "profile"
@@ -4480,6 +4500,11 @@ export function createPanel({
 
   function profileEditPage({ config, member, message = "", error = "" }) {
     const profile = profileFor(config, member.id, member.displayName);
+    const walletBread = Math.max(Math.floor(Number(config.economy?.balances?.[member.id]) || 0), 0);
+    const catalog = shopCatalog()
+      .filter((item) => ["cosmetic", "badge", "title"].includes(item.type))
+      .slice(0, 24);
+    const equipped = new Set(profile.equippedCosmetics || []);
     const pendingEdit = config.community?.profileEdits?.[member.id]?.status === "pending"
       ? config.community.profileEdits[member.id]
       : null;
@@ -4498,6 +4523,7 @@ export function createPanel({
             <p class="eyebrow">Member profile</p>
             <h1>${escapeHtml(member.displayName)}</h1>
             <p class="muted">This edits the public member directory card tied to your Discord account.</p>
+            <p class="field-help">Wallet bread: <strong>${escapeHtml(walletBread.toLocaleString())}</strong></p>
           </div>
           <form method="post" action="/profile/logout">
             <button type="submit" class="secondary-button">Sign out</button>
@@ -4551,6 +4577,38 @@ export function createPanel({
             </div>
           </section>
         </form>
+        <section class="panel-section">
+          <div class="section-heading">
+            <h2>Bread Cosmetics</h2>
+            <p>Spend wallet bread on profile cosmetics, then equip what should show on your public member page.</p>
+          </div>
+          <div class="profile-shop-grid">
+            ${catalog.map((item) => {
+              const owned = Math.max(Number(profile.inventory?.[item.id]) || 0, 0);
+              const isEquipped = equipped.has(item.id);
+              return `
+                <article class="profile-shop-card">
+                  <div>
+                    <strong>${escapeHtml(item.name)}</strong>
+                    <small>${escapeHtml(item.type)} - ${escapeHtml(item.cost.toLocaleString())} bread</small>
+                    <p>${escapeHtml(item.description)}</p>
+                    ${owned ? `<span class="profile-owned-pill">Owned ${escapeHtml(owned)}</span>` : ""}
+                  </div>
+                  <div class="inline-controls">
+                    <form method="post" action="/profile/cosmetics/buy">
+                      <input type="hidden" name="itemId" value="${escapeHtml(item.id)}">
+                      <button type="submit" ${walletBread < item.cost ? "disabled" : ""}>Buy</button>
+                    </form>
+                    <form method="post" action="/profile/cosmetics/equip">
+                      <input type="hidden" name="itemId" value="${escapeHtml(item.id)}">
+                      <button type="submit" class="secondary-button" ${owned ? "" : "disabled"}>${isEquipped ? "Unequip" : "Equip"}</button>
+                    </form>
+                  </div>
+                </article>
+              `;
+            }).join("")}
+          </div>
+        </section>
       `
     });
   }
@@ -4813,6 +4871,11 @@ export function createPanel({
     response.sendStatus(204);
   });
 
+  app.options("/api/public/members/:userId", (_request, response) => {
+    setPublicApiHeaders(response);
+    response.sendStatus(204);
+  });
+
   app.options("/api/public/status", (_request, response) => {
     setPublicApiHeaders(response);
     response.sendStatus(204);
@@ -4870,6 +4933,23 @@ export function createPanel({
     await cachePublicProfileMembers(configuredGuild, config).catch(() => {});
     response.json({
       members: publicMembersFromConfig(config, configuredGuild),
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  app.get("/api/public/members/:userId", async (request, response) => {
+    setPublicApiHeaders(response);
+    const targetUserId = String(request.params.userId || "");
+    const config = getPublicGuildConfig();
+    const configuredGuild = guildId ? client.guilds.cache.get(guildId) : client.guilds.cache.first();
+    await cachePublicProfileMembers(configuredGuild, config).catch(() => {});
+    const member = publicMembersFromConfig(config, configuredGuild).find((entry) => entry.id === targetUserId);
+    if (!member) {
+      response.status(404).json({ error: "Member profile not found." });
+      return;
+    }
+    response.json({
+      member,
       updatedAt: new Date().toISOString()
     });
   });
@@ -5267,7 +5347,13 @@ export function createPanel({
     response.send(profileEditPage({
       config: store.getGuild(verified.guildId),
       member: verified.member,
-      message: request.query.saved ? "Profile submitted for root approval." : ""
+      message: request.query.saved
+        ? "Profile submitted for root approval."
+        : request.query.bought
+          ? "Cosmetic purchased with bread."
+          : request.query.equipped
+            ? "Profile cosmetics updated."
+            : ""
     }));
   });
 
@@ -5332,6 +5418,100 @@ export function createPanel({
       targetTag: verified.member.user.tag
     }).catch(() => {});
     response.redirect("/profile/edit?saved=1");
+  });
+
+  app.post("/profile/cosmetics/buy", async (request, response) => {
+    const sessionUser = request.session.publicProfileUser;
+    if (!sessionUser?.userId) {
+      response.redirect("/profile/login");
+      return;
+    }
+    const verified = await verifyProfileEditorMember(sessionUser.userId);
+    if (!verified.ok) {
+      request.session.publicProfileUser = null;
+      response.status(403).send(profileLoginPage(verified.reason, discordProfileOAuthUrl(request)));
+      return;
+    }
+    const itemId = String(request.body?.itemId || "").trim().toLowerCase();
+    const item = shopCatalog().find((entry) => entry.id === itemId && ["cosmetic", "badge", "title"].includes(entry.type));
+    if (!item) {
+      response.status(400).send(profileEditPage({
+        config: store.getGuild(verified.guildId),
+        member: verified.member,
+        error: "That profile cosmetic does not exist."
+      }));
+      return;
+    }
+    const profile = profileFor(store.getGuild(verified.guildId), verified.member.id, verified.member.displayName);
+    if (Number(profile.inventory?.[item.id] || 0) > 0) {
+      response.status(400).send(profileEditPage({
+        config: store.getGuild(verified.guildId),
+        member: verified.member,
+        error: "You already own that profile cosmetic."
+      }));
+      return;
+    }
+    const result = await purchaseShopItem(store, verified.guildId, verified.member.id, verified.member.displayName, item.id);
+    if (!result.ok) {
+      response.status(400).send(profileEditPage({
+        config: store.getGuild(verified.guildId),
+        member: verified.member,
+        error: result.error || "Could not buy that cosmetic."
+      }));
+      return;
+    }
+    await updateProfile(store, verified.guildId, verified.member.id, (nextProfile) => ({
+      ...nextProfile,
+      equippedCosmetics: [...new Set([...(nextProfile.equippedCosmetics || []), item.id])].slice(0, 6)
+    }), verified.member.displayName);
+    await addAuditLog(store, verified.guildId, {
+      type: "economy",
+      label: "Website cosmetic purchased",
+      details: `${verified.member.user.tag} bought ${item.name} for ${item.cost.toLocaleString()} bread on the website.`,
+      actor: verified.member.user.tag,
+      action: "profile_cosmetic_buy",
+      targetId: verified.member.id,
+      targetTag: verified.member.user.tag
+    }).catch(() => {});
+    writePublicMembersFile(publicMembersFromConfig(store.getGuild(verified.guildId), verified.guild));
+    response.redirect("/profile/edit?bought=1");
+  });
+
+  app.post("/profile/cosmetics/equip", async (request, response) => {
+    const sessionUser = request.session.publicProfileUser;
+    if (!sessionUser?.userId) {
+      response.redirect("/profile/login");
+      return;
+    }
+    const verified = await verifyProfileEditorMember(sessionUser.userId);
+    if (!verified.ok) {
+      request.session.publicProfileUser = null;
+      response.status(403).send(profileLoginPage(verified.reason, discordProfileOAuthUrl(request)));
+      return;
+    }
+    const itemId = String(request.body?.itemId || "").trim().toLowerCase();
+    const item = shopCatalog().find((entry) => entry.id === itemId && ["cosmetic", "badge", "title"].includes(entry.type));
+    const profile = profileFor(store.getGuild(verified.guildId), verified.member.id, verified.member.displayName);
+    if (!item || !Number(profile.inventory?.[itemId] || 0)) {
+      response.status(400).send(profileEditPage({
+        config: store.getGuild(verified.guildId),
+        member: verified.member,
+        error: "You need to own that cosmetic before equipping it."
+      }));
+      return;
+    }
+    const equipped = new Set(profile.equippedCosmetics || []);
+    if (equipped.has(itemId)) {
+      equipped.delete(itemId);
+    } else {
+      equipped.add(itemId);
+    }
+    await updateProfile(store, verified.guildId, verified.member.id, (nextProfile) => ({
+      ...nextProfile,
+      equippedCosmetics: [...equipped].slice(0, 6)
+    }), verified.member.displayName);
+    writePublicMembersFile(publicMembersFromConfig(store.getGuild(verified.guildId), verified.guild));
+    response.redirect("/profile/edit?equipped=1");
   });
 
   app.post("/profile/logout", (request, response) => {

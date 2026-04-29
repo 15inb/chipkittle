@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Member</title>
+  <meta name="description" content="A public Chipkittle member profile.">
+  <link rel="icon" type="image/png" href="/ckmascot.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <img src="/ckmascot.png" alt="">
+        <span>chipkittle</span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/status">Status</a>
+        <a href="/commands">Commands</a>
+        <a href="/members">Members</a>
+        <a href="/game">Games</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+
+    <section class="member-profile-shell" id="memberProfile">
+      <p class="empty">Loading member profile...</p>
+    </section>
+  </main>
+
+  <script>
+    const { fetchCachedJson } = window.ChipkittleSite;
+    const root = document.querySelector("#memberProfile");
+    const params = new URLSearchParams(window.location.search);
+    const memberId = String(params.get("id") || "").replace(/\D/g, "");
+    const panelMembersUrl = "https://panel.chipkittle.com/api/public/members";
+
+    function text(value) {
+      return String(value || "").replace(/[&<>"']/g, (match) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[match]));
+    }
+
+    async function loadMember() {
+      if (!memberId) return null;
+      try {
+        const payload = await fetchCachedJson(`${panelMembersUrl}/${memberId}`, {
+          key: `chipkittle-public-member-${memberId}`,
+          ttlMs: 0,
+          fetchOptions: { cache: "no-store" }
+        });
+        if (payload?.member) return payload.member;
+      } catch {}
+      const fallback = await fetch("/members.json").then((response) => response.ok ? response.json() : []).catch(() => []);
+      return Array.isArray(fallback) ? fallback.find((member) => String(member.id) === memberId) : null;
+    }
+
+    loadMember().then((member) => {
+      if (!member) {
+        root.innerHTML = '<p class="empty">That member profile could not be found.</p>';
+        return;
+      }
+      document.title = `${member.name || "Chipkittle Member"} - Chipkittle`;
+      const inventoryEntries = Object.entries(member.inventory || {}).filter(([, amount]) => Number(amount) > 0);
+      root.innerHTML = `
+        <section class="member-profile-hero">
+          <div>
+            <a class="quiet-link" href="/members">Back to members</a>
+            <h1>${text(member.name)}</h1>
+            <p>${text(member.bio || "No ceremonial biography has been recorded yet.")}</p>
+            <div class="member-profile-meta">
+              <span>${text(member.role || "Member")}</span>
+              ${member.title ? `<span>${text(member.title)}</span>` : ""}
+              ${member.favoriteArtifact ? `<span>Artifact: ${text(member.favoriteArtifact)}</span>` : ""}
+            </div>
+          </div>
+          <div class="member-profile-card">
+            <img src="/ckmascot.png" alt="">
+            ${member.quote ? `<q>${text(member.quote)}</q>` : "<q>The profile is quiet. Suspicious.</q>"}
+          </div>
+        </section>
+
+        <section class="member-profile-grid">
+          <article>
+            <h2>Equipped Cosmetics</h2>
+            ${(member.cosmetics || []).length
+              ? `<div class="cosmetic-list">${member.cosmetics.map((item) => `<span><strong>${text(item.name)}</strong><small>${text(item.description)}</small></span>`).join("")}</div>`
+              : '<p class="muted">No cosmetics equipped yet.</p>'}
+          </article>
+          <article>
+            <h2>Badges</h2>
+            ${(member.badges || []).length
+              ? `<div class="member-badges">${member.badges.map((badge) => `<span>${text(badge)}</span>`).join("")}</div>`
+              : '<p class="muted">No badges yet.</p>'}
+          </article>
+          <article>
+            <h2>Inventory</h2>
+            ${inventoryEntries.length
+              ? `<div class="inventory-list">${inventoryEntries.map(([itemId, amount]) => `<span>${text(itemId)} <b>x${text(amount)}</b></span>`).join("")}</div>`
+              : '<p class="muted">No public inventory items yet.</p>'}
+          </article>
+          <article>
+            <h2>Edit Yours</h2>
+            <p>Members can sign in with Discord, submit profile edits for approval, and buy cosmetics with bread.</p>
+            <a class="button primary" href="https://panel.chipkittle.com/profile/edit">Open profile editor</a>
+          </article>
+        </section>
+      `;
+    }).catch(() => {
+      root.innerHTML = '<p class="empty">Could not load that profile.</p>';
+    });
+  </script>
+</body>
+</html>

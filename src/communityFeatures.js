@@ -162,6 +162,7 @@ export function profileFor(config = {}, userId, fallbackName = "") {
     manualAchievements: Array.isArray(stored.manualAchievements) ? stored.manualAchievements.map((badge) => String(badge).slice(0, 60)).filter(Boolean).slice(0, 20) : [],
     artifacts: Array.isArray(stored.artifacts) ? stored.artifacts.map((item) => String(item).slice(0, 80)).filter(Boolean).slice(0, 20) : [],
     inventory: normalizeInventory(stored.inventory),
+    equippedCosmetics: Array.isArray(stored.equippedCosmetics) ? stored.equippedCosmetics.map((item) => String(item).slice(0, 80)).filter(Boolean).slice(0, 6) : [],
     pronouns: String(stored.pronouns || "").slice(0, 40),
     favoriteArtifact: String(stored.favoriteArtifact || "").slice(0, 80),
     quote: String(stored.quote || "").slice(0, 140),
