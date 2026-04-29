@@ -108,6 +108,7 @@ const state = {
   bossSpawned: false,
   waveClearing: false,
   upgradePending: false,
+  waveDamageTaken: 0,
   bossAttackTimer: 0,
   score: 0,
   bread: 0,
@@ -123,6 +124,7 @@ const state = {
   difficulty: 1,
   biome: "Outer Den",
   flash: 0,
+  muteLatch: false,
   gameOverHandled: false
 };
 
@@ -147,7 +149,9 @@ const player = {
   relic: 0,
   relicMax: 100,
   crit: 0.08,
-  regen: 0
+  regen: 0,
+  shield: 0,
+  overcharge: 0
 };
 
 const upgrades = [
@@ -344,6 +348,7 @@ function resetRun(practice = false) {
     bossSpawned: false,
     waveClearing: false,
     upgradePending: false,
+    waveDamageTaken: 0,
     bossAttackTimer: 0,
     score: 0,
     bread: 0,
@@ -358,6 +363,7 @@ function resetRun(practice = false) {
     difficulty: practice ? 0.78 : 1,
     biome: "Outer Den",
     flash: 0,
+    muteLatch: false,
     gameOverHandled: false
   });
   Object.assign(player, {
@@ -380,7 +386,9 @@ function resetRun(practice = false) {
     relic: 0,
     relicMax: 100,
     crit: 0.08,
-    regen: 0
+    regen: 0,
+    shield: 0,
+    overcharge: 0
   });
   applyMetaUpgrades();
   for (const list of Object.values(pools)) list.length = 0;
@@ -469,6 +477,13 @@ function spawnEnemyShot(x, y, angle, speed = 360, damage = 10, color = "#c68cff"
 }
 
 function spawnPickup(x, y, type = "bread", amount = 1) {
+  const pickupRadii = {
+    bread: 10,
+    relic: 13,
+    heart: 14,
+    shield: 14,
+    overcharge: 15
+  };
   pools.pickups.push({
     x,
     y,
@@ -476,7 +491,7 @@ function spawnPickup(x, y, type = "bread", amount = 1) {
     vy: rand(-40, 40),
     type,
     amount,
-    radius: type === "relic" ? 13 : 10,
+    radius: pickupRadii[type] || 10,
     life: 30,
     phase: rand(0, Math.PI * 2)
   });
@@ -499,6 +514,7 @@ function fireProjectile() {
   const angle = Math.atan2(dy, dx);
   const count = player.multiShot;
   const spread = count === 1 ? 0 : 0.12 + count * 0.018;
+  const damageMultiplier = player.overcharge > 0 ? 1.45 : 1;
   for (let i = 0; i < count; i += 1) {
     const offset = (i - (count - 1) / 2) * spread;
     const a = angle + offset;
@@ -509,7 +525,7 @@ function fireProjectile() {
       vx: Math.cos(a) * player.projectileSpeed,
       vy: Math.sin(a) * player.projectileSpeed,
       radius: crit ? 9 : 7,
-      damage: player.damage * (crit ? 2.15 : 1),
+      damage: player.damage * damageMultiplier * (crit ? 2.15 : 1),
       life: 0.82,
       crit,
       pierce: (crit ? 1 : 0) + (state.flags.has("piercing-shots") ? 1 : 0)
@@ -593,6 +609,7 @@ function applyUpgrade(upgradeId) {
   state.bossSpawned = false;
   state.waveClearing = false;
   state.upgradePending = false;
+  state.waveDamageTaken = 0;
   upgradeModal.close();
   updateSidebar();
   announce(`Wave ${state.wave}: ${upgrade.name}`, "#d7ff91");
@@ -600,7 +617,17 @@ function applyUpgrade(upgradeId) {
 }
 
 function update(dt) {
-  if (keys.has("p") || keys.has("P")) {
+  if (keys.has("m") || keys.has("M")) {
+    if (!state.muteLatch) {
+      audio.enabled = !audio.enabled;
+      state.muteLatch = true;
+      announce(audio.enabled ? "Audio on." : "Audio muted.", "#d7ff91");
+    }
+  } else {
+    state.muteLatch = false;
+  }
+
+  if (keys.has("p") || keys.has("P") || keys.has("Escape")) {
     if (!state.pauseLatch && state.mode === "playing") {
       state.mode = "paused";
       overlay.classList.remove("is-hidden");
@@ -623,6 +650,7 @@ function update(dt) {
   state.fireCooldown -= dt;
   state.relicCooldown -= dt;
   state.flash = Math.max(0, state.flash - dt);
+  player.overcharge = Math.max(0, player.overcharge - dt);
   player.dashCooldown -= dt;
   player.invulnerable -= dt;
   if (player.regen > 0 && player.invulnerable <= 0 && player.health > 0) {
@@ -734,6 +762,14 @@ function updateWave(dt) {
     audio.wave();
   }
   if (state.waveClearing && pools.enemies.length === 0) {
+    if (state.waveDamageTaken <= 0) {
+      const bonusBread = Math.max(3, Math.floor(state.wave * 1.5));
+      const bonusScore = 350 + state.wave * 90;
+      state.bread += bonusBread;
+      state.score += bonusScore;
+      unlockAchievement("Untouched Fur", "Cleared a wave without taking damage.");
+      announce(`Perfect wave: +${bonusBread} bread`, "#fff29b");
+    }
     openUpgradeModal();
   }
 }
@@ -811,14 +847,21 @@ function updateEnemies(dt) {
     }
 
     if (dist < enemy.radius + player.radius && enemy.attackCooldown <= 0 && player.invulnerable <= 0) {
-      const damage = Math.max(2, enemy.damage - player.armor);
+      let damage = Math.max(2, enemy.damage - player.armor);
+      if (player.shield > 0) {
+        const blocked = Math.min(player.shield, damage);
+        player.shield -= blocked;
+        damage -= blocked;
+        floatingText(player.x, player.y - 54, `BLOCK ${Math.round(blocked)}`, "#85ffd2");
+      }
       player.health -= damage;
+      state.waveDamageTaken += damage;
       player.invulnerable = 0.3;
       enemy.attackCooldown = 0.62;
       camera.trauma = Math.max(camera.trauma, 0.32);
       audio.hit();
       if (state.flags.has("hit-ward")) shockwave(player.x, player.y, 130, 18 + state.wave * 2);
-      floatingText(player.x, player.y - 34, `-${Math.round(damage)}`, "#ff9b9b");
+      if (damage > 0) floatingText(player.x, player.y - 34, `-${Math.round(damage)}`, "#ff9b9b");
       for (let p = 0; p < 16; p += 1) particle(player.x, player.y, rand(-260, 260), rand(-260, 260), rand(0.25, 0.55), "#ff7373", rand(2, 6));
     }
 
@@ -905,6 +948,12 @@ function killEnemy(enemy, index) {
     }
   }
   if (Math.random() < 0.16 || enemy.type === "boss" || enemy.type === "miniboss") spawnPickup(enemy.x, enemy.y, "relic", enemy.type === "boss" ? 18 : enemy.type === "miniboss" ? 14 : 8);
+  if (enemy.type === "boss" || enemy.type === "miniboss") {
+    spawnPickup(enemy.x + rand(-28, 28), enemy.y + rand(-28, 28), "heart", enemy.type === "boss" ? 36 : 24);
+    spawnPickup(enemy.x + rand(-28, 28), enemy.y + rand(-28, 28), "shield", enemy.type === "boss" ? 34 : 24);
+  } else if (Math.random() < 0.035) {
+    spawnPickup(enemy.x, enemy.y, Math.random() < 0.5 ? "heart" : "overcharge", 16);
+  }
   for (let i = 0; i < 20; i += 1) particle(enemy.x, enemy.y, rand(-220, 220), rand(-220, 220), rand(0.28, 0.8), enemy.color, rand(2, 6));
   if (state.flags.has("death-echo") && Math.random() < 0.22) {
     shockwave(enemy.x, enemy.y, 145, 48);
@@ -969,12 +1018,19 @@ function updateEnemyShots(dt) {
     let remove = shot.life <= 0 || shot.x < -100 || shot.y < -100 || shot.x > WORLD.width + 100 || shot.y > WORLD.height + 100;
     if (!remove && distanceSq(shot, player) < (shot.radius + player.radius) ** 2) {
       if (player.invulnerable <= 0) {
-        const damage = Math.max(2, shot.damage - player.armor * 0.6);
+        let damage = Math.max(2, shot.damage - player.armor * 0.6);
+        if (player.shield > 0) {
+          const blocked = Math.min(player.shield, damage);
+          player.shield -= blocked;
+          damage -= blocked;
+          floatingText(player.x, player.y - 54, `BLOCK ${Math.round(blocked)}`, "#85ffd2");
+        }
         player.health -= damage;
+        state.waveDamageTaken += damage;
         player.invulnerable = 0.22;
         camera.trauma = Math.max(camera.trauma, 0.24);
         audio.hit();
-        floatingText(player.x, player.y - 36, `-${Math.round(damage)}`, "#ff9b9b");
+        if (damage > 0) floatingText(player.x, player.y - 36, `-${Math.round(damage)}`, "#ff9b9b");
       }
       remove = true;
     }
@@ -1005,8 +1061,17 @@ function updatePickups(dt) {
         state.score += pickup.amount * 4;
         if (state.flags.has("bakery-heal")) player.health = Math.min(player.maxHealth, player.health + 1.5 * pickup.amount);
         if (state.bread >= 100) unlockAchievement("Bread Liable", "Collected 100 bread in one run.");
-      } else {
+      } else if (pickup.type === "relic") {
         player.relic = clamp(player.relic + pickup.amount, 0, player.relicMax);
+      } else if (pickup.type === "heart") {
+        player.health = Math.min(player.maxHealth, player.health + pickup.amount);
+        floatingText(player.x, player.y - 44, `+${Math.round(pickup.amount)} HP`, "#ff8fd8");
+      } else if (pickup.type === "shield") {
+        player.shield = Math.min(90, player.shield + pickup.amount);
+        floatingText(player.x, player.y - 44, `+${Math.round(pickup.amount)} SHIELD`, "#85ffd2");
+      } else if (pickup.type === "overcharge") {
+        player.overcharge = Math.max(player.overcharge, 7);
+        floatingText(player.x, player.y - 44, "OVERCHARGE", "#fff29b");
       }
       audio.pickup();
       pools.pickups.splice(i, 1);
@@ -1022,7 +1087,9 @@ function updateHazards(dt) {
     hazard.life -= dt;
     hazard.pulse += dt * 4;
     if (distanceSq(player, hazard) < hazard.radius ** 2 && player.invulnerable <= 0) {
-      player.health -= Math.max(3, 12 - player.armor) * dt;
+      const damage = Math.max(3, 12 - player.armor) * dt;
+      player.health -= damage;
+      state.waveDamageTaken += damage;
     }
     if (hazard.life <= 0) pools.hazards.splice(i, 1);
   }
@@ -1055,11 +1122,12 @@ function updateCamera(dt) {
 function updateHud() {
   hud.wave.textContent = state.wave;
   hud.health.textContent = `${Math.max(0, Math.ceil(player.health))}/${player.maxHealth}`;
+  if (player.shield > 0) hud.health.textContent += ` +${Math.ceil(player.shield)}`;
   hud.bread.textContent = state.bread;
   hud.score.textContent = state.score.toLocaleString();
   hud.relic.textContent = `${Math.floor((player.relic / player.relicMax) * 100)}%`;
   hud.dash.textContent = player.dashCooldown <= 0 ? "Ready" : `${player.dashCooldown.toFixed(1)}s`;
-  hud.combo.textContent = `x${state.combo.toFixed(1)}`;
+  hud.combo.textContent = player.overcharge > 0 ? `x${state.combo.toFixed(1)} OC` : `x${state.combo.toFixed(1)}`;
   difficultyText.textContent = state.practice ? "Practice" : `Threat ${state.difficulty.toFixed(1)}x`;
   intelLabel.textContent = state.biome;
 }
@@ -1078,6 +1146,8 @@ function updateSidebar() {
   intel.innerHTML = [
     `<span>Biome <b>${safeName(state.biome)}</b></span>`,
     `<span>Kills <b>${state.kills}</b></span>`,
+    `<span>Shield <b>${Math.ceil(player.shield)}</b></span>`,
+    `<span>Overcharge <b>${player.overcharge > 0 ? `${player.overcharge.toFixed(1)}s` : "None"}</b></span>`,
     `<span>Boss <b>${boss ? `${Math.ceil(Math.max(0, boss.hp))} HP` : "Dormant"}</b></span>`,
     `<span>Mini-boss <b>${pools.enemies.some((enemy) => enemy.type === "miniboss") ? "Active" : "Clear"}</b></span>`,
     `<span>Threat Mix <b>${new Set(pools.enemies.map((enemy) => enemy.type)).size || 0}</b></span>`,
@@ -1121,7 +1191,9 @@ function render() {
   drawPlayer();
   drawParticles();
   ctx.restore();
+  drawReticle();
   drawMinimap();
+  drawLowHealthWarning();
   drawFlash();
   if (state.mode === "paused") drawPauseTint();
 }
@@ -1225,6 +1297,45 @@ function drawPlayer() {
     ctx.stroke();
     ctx.restore();
   }
+  if (player.shield > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.22 + Math.sin(state.time * 8) * 0.06;
+    ctx.strokeStyle = "#85ffd2";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius + 16, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (player.overcharge > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.28 + Math.sin(state.time * 18) * 0.08;
+    ctx.strokeStyle = "#fff29b";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius + 24, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawReticle() {
+  if (state.mode !== "playing") return;
+  ctx.save();
+  ctx.strokeStyle = player.overcharge > 0 ? "#fff29b" : "rgba(215,255,145,0.88)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(pointer.x, pointer.y, 12, 0, Math.PI * 2);
+  ctx.moveTo(pointer.x - 20, pointer.y);
+  ctx.lineTo(pointer.x - 9, pointer.y);
+  ctx.moveTo(pointer.x + 9, pointer.y);
+  ctx.lineTo(pointer.x + 20, pointer.y);
+  ctx.moveTo(pointer.x, pointer.y - 20);
+  ctx.lineTo(pointer.x, pointer.y - 9);
+  ctx.moveTo(pointer.x, pointer.y + 9);
+  ctx.lineTo(pointer.x, pointer.y + 20);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawEnemies() {
@@ -1321,12 +1432,38 @@ function drawPickups() {
     const bob = Math.sin(pickup.phase) * 4;
     ctx.save();
     ctx.translate(pickup.x, pickup.y + bob);
-    ctx.fillStyle = pickup.type === "bread" ? "#f4c466" : "#7cff73";
-    ctx.shadowColor = pickup.type === "bread" ? "#f4c466" : "#7cff73";
+    const pickupColor = {
+      bread: "#f4c466",
+      relic: "#7cff73",
+      heart: "#ff8fd8",
+      shield: "#85ffd2",
+      overcharge: "#fff29b"
+    }[pickup.type] || "#f4c466";
+    ctx.fillStyle = pickupColor;
+    ctx.shadowColor = pickupColor;
     ctx.shadowBlur = 14;
     if (pickup.type === "bread") {
       ctx.beginPath();
       ctx.roundRect(-9, -6, 18, 12, 5);
+      ctx.fill();
+    } else if (pickup.type === "heart") {
+      ctx.beginPath();
+      ctx.arc(-5, -3, 6, 0, Math.PI * 2);
+      ctx.arc(5, -3, 6, 0, Math.PI * 2);
+      ctx.moveTo(-11, 0);
+      ctx.lineTo(0, 12);
+      ctx.lineTo(11, 0);
+      ctx.closePath();
+      ctx.fill();
+    } else if (pickup.type === "shield") {
+      ctx.beginPath();
+      ctx.moveTo(0, -13);
+      ctx.lineTo(12, -6);
+      ctx.lineTo(8, 10);
+      ctx.lineTo(0, 15);
+      ctx.lineTo(-8, 10);
+      ctx.lineTo(-12, -6);
+      ctx.closePath();
       ctx.fill();
     } else {
       ctx.rotate(Math.PI / 4);
@@ -1404,6 +1541,19 @@ function drawMinimap() {
 function drawPauseTint() {
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+  ctx.restore();
+}
+
+function drawLowHealthWarning() {
+  const ratio = player.health / Math.max(1, player.maxHealth);
+  if (ratio > 0.28 || state.mode !== "playing") return;
+  ctx.save();
+  ctx.globalAlpha = clamp((0.28 - ratio) * 2.8 + Math.sin(state.time * 9) * 0.04, 0.08, 0.42);
+  const gradient = ctx.createRadialGradient(VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.25, VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.78);
+  gradient.addColorStop(0, "rgba(255,0,0,0)");
+  gradient.addColorStop(1, "rgba(255,58,58,0.9)");
+  ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, VIEW.width, VIEW.height);
   ctx.restore();
 }
