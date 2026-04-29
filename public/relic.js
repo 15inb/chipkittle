@@ -15,6 +15,8 @@ const statusText = document.getElementById("relicStatus");
 const difficultyText = document.getElementById("relicDifficulty");
 const intel = document.getElementById("relicIntel");
 const intelLabel = document.getElementById("relicIntelLabel");
+const essenceCounter = document.getElementById("relicEssence");
+const metaUpgradeList = document.getElementById("relicMetaUpgrades");
 const upgradeModal = document.getElementById("relicUpgradeModal");
 const upgradeGrid = document.getElementById("relicUpgradeGrid");
 
@@ -38,6 +40,7 @@ const services = createGameServices("relic", {
 
 const WORLD = { width: 3200, height: 2200 };
 const VIEW = { width: 1280, height: 720 };
+const META_KEY = "chipkittle-relic-meta";
 const keys = new Set();
 const pointer = { x: VIEW.width / 2, y: VIEW.height / 2, down: false, worldX: 0, worldY: 0 };
 const camera = { x: 0, y: 0, shake: 0, trauma: 0 };
@@ -50,6 +53,17 @@ const pools = {
   texts: [],
   hazards: []
 };
+
+const metaUpgradeCatalog = [
+  { id: "vitality", name: "Fur Density", description: "+18 max health per level.", max: 8, baseCost: 20, step: 14 },
+  { id: "damage", name: "Horn Voltage", description: "+3 shot damage per level.", max: 10, baseCost: 24, step: 16 },
+  { id: "speed", name: "Panic Footwork", description: "+14 movement speed per level.", max: 8, baseCost: 18, step: 13 },
+  { id: "magnet", name: "Bread Gravity", description: "+22 pickup range per level.", max: 8, baseCost: 18, step: 12 },
+  { id: "relic", name: "Relic Familiarity", description: "Relic burst charges sooner.", max: 7, baseCost: 28, step: 18 },
+  { id: "crit", name: "Unwise Confidence", description: "+2% critical chance per level.", max: 6, baseCost: 30, step: 20 }
+];
+
+let meta = loadMetaProgress();
 
 const audio = {
   context: null,
@@ -91,6 +105,8 @@ const state = {
   waveTimer: 0,
   spawnTimer: 0,
   bossSpawned: false,
+  waveClearing: false,
+  upgradePending: false,
   bossAttackTimer: 0,
   score: 0,
   bread: 0,
@@ -238,6 +254,77 @@ const enemyTypes = {
   boss: { hp: 720, speed: 64, radius: 54, damage: 26, value: 480, color: "#ff7373" }
 };
 
+function loadMetaProgress() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(META_KEY) || "{}");
+    return {
+      essence: Math.max(0, Math.floor(Number(parsed.essence) || 0)),
+      upgrades: Object.fromEntries(metaUpgradeCatalog.map((item) => [
+        item.id,
+        clamp(Math.floor(Number(parsed.upgrades?.[item.id]) || 0), 0, item.max)
+      ]))
+    };
+  } catch {
+    return {
+      essence: 0,
+      upgrades: Object.fromEntries(metaUpgradeCatalog.map((item) => [item.id, 0]))
+    };
+  }
+}
+
+function saveMetaProgress() {
+  localStorage.setItem(META_KEY, JSON.stringify(meta));
+}
+
+function metaCost(item) {
+  const level = meta.upgrades[item.id] || 0;
+  return item.baseCost + item.step * level + Math.floor(level ** 1.6 * 8);
+}
+
+function renderMetaUpgrades() {
+  essenceCounter.textContent = Math.floor(meta.essence).toLocaleString();
+  metaUpgradeList.innerHTML = metaUpgradeCatalog.map((item) => {
+    const level = meta.upgrades[item.id] || 0;
+    const maxed = level >= item.max;
+    const cost = metaCost(item);
+    const affordable = meta.essence >= cost;
+    return `
+      <div class="relic-meta-row">
+        <span>
+          <strong>${item.name} ${level}/${item.max}</strong>
+          <small>${item.description}</small>
+        </span>
+        <button type="button" data-meta-upgrade="${item.id}" ${maxed || !affordable ? "disabled" : ""}>${maxed ? "Maxed" : `${cost} essence`}</button>
+      </div>
+    `;
+  }).join("");
+}
+
+function buyMetaUpgrade(upgradeId) {
+  const item = metaUpgradeCatalog.find((entry) => entry.id === upgradeId);
+  if (!item) return;
+  const level = meta.upgrades[item.id] || 0;
+  const cost = metaCost(item);
+  if (level >= item.max || meta.essence < cost) return;
+  meta.essence -= cost;
+  meta.upgrades[item.id] = level + 1;
+  saveMetaProgress();
+  renderMetaUpgrades();
+  announce(`${item.name} upgraded. Permanent weirdness increased.`, "#fff29b");
+  audio.pickup();
+}
+
+function applyMetaUpgrades() {
+  const levels = meta.upgrades || {};
+  player.maxHealth += (levels.vitality || 0) * 18;
+  player.health = player.maxHealth;
+  player.damage += (levels.damage || 0) * 3;
+  player.speed += (levels.speed || 0) * 14;
+  player.magnet += (levels.magnet || 0) * 22;
+  player.relicMax = Math.max(62, player.relicMax - (levels.relic || 0) * 4);
+  player.crit += (levels.crit || 0) * 0.02;
+}
+
 function resetRun(practice = false) {
   Object.assign(state, {
     mode: "playing",
@@ -248,6 +335,8 @@ function resetRun(practice = false) {
     waveTimer: 0,
     spawnTimer: 0,
     bossSpawned: false,
+    waveClearing: false,
+    upgradePending: false,
     bossAttackTimer: 0,
     score: 0,
     bread: 0,
@@ -286,6 +375,7 @@ function resetRun(practice = false) {
     crit: 0.08,
     regen: 0
   });
+  applyMetaUpgrades();
   for (const list of Object.values(pools)) list.length = 0;
   for (let i = 0; i < 30; i += 1) spawnPickup(rand(240, WORLD.width - 240), rand(220, WORLD.height - 220), "bread", 1);
   overlay.classList.add("is-hidden");
@@ -465,6 +555,8 @@ function chooseUpgradeOptions() {
 }
 
 function openUpgradeModal() {
+  if (state.mode === "upgrade" || state.upgradePending) return;
+  state.upgradePending = true;
   state.mode = "upgrade";
   const options = chooseUpgradeOptions();
   upgradeGrid.innerHTML = options.map((upgrade, index) => `
@@ -486,9 +578,12 @@ function applyUpgrade(upgradeId) {
   state.waveTimer = 0;
   state.spawnTimer = 0;
   state.bossSpawned = false;
+  state.waveClearing = false;
+  state.upgradePending = false;
   upgradeModal.close();
   updateSidebar();
   announce(`Wave ${state.wave}: ${upgrade.name}`, "#d7ff91");
+  audio.wave();
 }
 
 function update(dt) {
@@ -590,7 +685,13 @@ function updatePlayer(dt) {
 function updateWave(dt) {
   const waveLength = 22 + Math.min(28, state.wave * 3);
   state.biome = state.wave > 8 ? "Broken Archive" : state.wave > 4 ? "Green Furnace" : "Outer Den";
-  if (state.spawnTimer <= 0) {
+  if (!state.waveClearing && state.waveTimer >= waveLength) {
+    state.waveClearing = true;
+    state.spawnTimer = 999;
+    announce(`Wave ${state.wave} clearing: finish the leftovers.`, "#d7ff91");
+  }
+  const enemyCap = 24 + Math.min(28, state.wave * 3);
+  if (!state.waveClearing && state.spawnTimer <= 0 && pools.enemies.length < enemyCap) {
     const roll = Math.random();
     let type = "mite";
     if (state.wave > 2 && roll > 0.72) type = "brute";
@@ -609,7 +710,7 @@ function updateWave(dt) {
     announce("Boss thing detected. Deeply rude.", "#ff9797");
     audio.wave();
   }
-  if (state.waveTimer > waveLength && pools.enemies.length < 5) {
+  if (state.waveClearing && pools.enemies.length === 0) {
     openUpgradeModal();
   }
 }
@@ -864,8 +965,8 @@ function updateSidebar() {
     ? state.upgrades.slice(-10).map((item) => `<span>${safeName(item)}</span>`).join("")
     : "<span>No relics equipped yet.</span>";
   objectives.innerHTML = [
-    `Survive wave ${state.wave}.`,
-    `${Math.max(0, Math.ceil((22 + Math.min(28, state.wave * 3)) - state.waveTimer))} seconds until next relic choice.`,
+    state.waveClearing ? `Clear the remaining wave ${state.wave} enemies.` : `Survive wave ${state.wave}.`,
+    state.waveClearing ? "Spawner paused. Upgrade appears when the arena is clean." : `${Math.max(0, Math.ceil((22 + Math.min(28, state.wave * 3)) - state.waveTimer))} seconds until the wave starts clearing.`,
     `${pools.enemies.length} curse-things active.`,
     player.relic >= player.relicMax ? "Relic burst ready. Press Q." : "Charge relic burst with kills and shards."
   ].map((item) => `<li>${item}</li>`).join("");
@@ -882,12 +983,18 @@ function endRun() {
   state.gameOverHandled = true;
   state.mode = "gameover";
   const bread = Math.floor(state.bread * (state.practice ? 0.4 : 1));
+  const essenceEarned = Math.max(4, Math.floor(state.score / 650) + state.wave * 3 + Math.floor(state.kills / 12));
+  if (!state.practice) {
+    meta.essence += essenceEarned;
+    saveMetaProgress();
+    renderMetaUpgrades();
+  }
   const minutes = Math.floor(state.time / 60);
   const seconds = Math.floor(state.time % 60).toString().padStart(2, "0");
   overlay.classList.remove("is-hidden");
   overlay.querySelector("p").textContent = "Run complete";
   overlay.querySelector("h2").textContent = `${state.score.toLocaleString()} score`;
-  overlay.querySelector("span").textContent = `${bread.toLocaleString()} claimable bread. Survived ${minutes}:${seconds}, reached wave ${state.wave}, removed ${state.kills} curse-things, unlocked ${state.achievements.size} achievements.`;
+  overlay.querySelector("span").textContent = `${bread.toLocaleString()} claimable bread. Survived ${minutes}:${seconds}, reached wave ${state.wave}, removed ${state.kills} curse-things, unlocked ${state.achievements.size} achievements, and earned ${state.practice ? 0 : essenceEarned} essence.`;
   services.submitScore({ score: state.score, bread });
   services.createClaimCode({ score: state.score, bread });
   statusText.textContent = "Run complete";
@@ -1199,10 +1306,19 @@ upgradeGrid.addEventListener("click", (event) => {
   if (!button) return;
   applyUpgrade(button.dataset.upgrade);
 });
+upgradeModal.addEventListener("cancel", (event) => {
+  event.preventDefault();
+});
+metaUpgradeList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-meta-upgrade]");
+  if (!button) return;
+  buyMetaUpgrade(button.dataset.metaUpgrade);
+});
 startButton.addEventListener("click", () => resetRun(false));
 practiceButton.addEventListener("click", () => resetRun(true));
 
 resizeCanvas();
+renderMetaUpgrades();
 services.loadLeaderboard();
 updateHud();
 updateSidebar();

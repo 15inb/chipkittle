@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relic Siege Upgrades</title>
+  <meta name="description" content="Spend Relic Siege essence on permanent Chipkittle character upgrades.">
+  <link rel="icon" type="image/png" href="/ckmascot.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+  <link rel="stylesheet" href="/relic.css">
+</head>
+<body>
+  <main class="relic-page relic-upgrades-page">
+    <header class="relic-topbar" aria-label="Relic Siege upgrades navigation">
+      <a class="relic-brand" href="/relic">
+        <img src="/ckmascot.png" alt="">
+        <span>Relic Upgrades</span>
+      </a>
+      <nav>
+        <a href="/relic">Play</a>
+        <a href="/game">Games</a>
+        <a href="/">Home</a>
+      </nav>
+      <button class="theme-toggle relic-theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+    </header>
+
+    <section class="relic-upgrade-page-shell">
+      <div class="relic-panel relic-upgrade-hero">
+        <p class="relic-kicker">Permanent progression</p>
+        <h1>Upgrade the creature.</h1>
+        <p>Essence is earned from real Relic Siege runs. Spend it here to make future runs less doomed, or at least doomed with better stats.</p>
+        <div class="relic-essence-bank"><span>Available essence</span><strong id="relicUpgradeEssence">0</strong></div>
+        <div class="relic-actions">
+          <a class="relic-link-button" href="/relic">Back to Siege</a>
+          <button id="relicResetMeta" type="button">Reset Upgrades</button>
+        </div>
+      </div>
+
+      <div class="relic-panel">
+        <div class="relic-section-head">
+          <h2>Character Build</h2>
+          <span id="relicUpgradeStatus">Saved locally</span>
+        </div>
+        <div class="relic-upgrade-shop" id="relicUpgradeShop"></div>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/relic-upgrades.js"></script>
+</body>
+</html>

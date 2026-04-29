@@ -54,6 +54,10 @@
     {
       "source": "/relic",
       "destination": "/relic.html"
+    },
+    {
+      "source": "/relic-upgrades",
+      "destination": "/relic-upgrades.html"
     }
   ]
 }

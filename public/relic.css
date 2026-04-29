@@ -197,6 +197,82 @@
   margin-top: 14px;
 }
 
+.relic-meta-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.relic-meta-panel p {
+  margin: 0;
+  color: var(--quiet);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.relic-meta-upgrades {
+  display: grid;
+  gap: 8px;
+}
+
+.relic-meta-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 10px;
+}
+
+:root[data-theme="dark"] .relic-meta-row {
+  background: rgba(10, 20, 15, 0.64);
+}
+
+.relic-meta-row strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.relic-meta-row small {
+  color: var(--quiet);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.relic-meta-row button {
+  min-height: 36px;
+  border: 1px solid rgba(26, 138, 56, 0.22);
+  border-radius: 999px;
+  background: rgba(82, 215, 101, 0.16);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.relic-meta-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+.relic-link-button {
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(26, 138, 56, 0.24);
+  border-radius: 999px;
+  background: var(--green);
+  color: white;
+  font-weight: 950;
+}
+
 .relic-actions button,
 .relic-upgrade-grid button {
   min-height: 48px;
@@ -545,8 +621,135 @@
   line-height: 1.4;
 }
 
+.relic-upgrades-page {
+  overflow: auto;
+}
+
+.relic-upgrade-page-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.relic-upgrade-hero {
+  align-self: start;
+}
+
+.relic-upgrade-hero h1 {
+  margin: 0;
+  font-size: clamp(44px, 6vw, 80px);
+  line-height: 0.9;
+}
+
+.relic-upgrade-hero p:not(.relic-kicker) {
+  color: var(--soft-ink);
+  line-height: 1.55;
+}
+
+.relic-essence-bank {
+  display: grid;
+  gap: 4px;
+  margin: 20px 0;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(82, 215, 101, 0.12);
+  padding: 18px;
+}
+
+.relic-essence-bank span {
+  color: var(--quiet);
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.relic-essence-bank strong {
+  color: var(--green-dark);
+  font-size: 48px;
+  line-height: 1;
+}
+
+.relic-upgrade-shop {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.relic-upgrade-shop-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 16px;
+}
+
+:root[data-theme="dark"] .relic-upgrade-shop-card {
+  background: rgba(10, 20, 15, 0.64);
+}
+
+.relic-upgrade-shop-card strong {
+  display: block;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.relic-upgrade-shop-card small {
+  display: block;
+  margin-top: 5px;
+  color: var(--quiet);
+  line-height: 1.4;
+}
+
+.relic-upgrade-meter {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(18, 25, 21, 0.12);
+}
+
+.relic-upgrade-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #d7ff91);
+}
+
+.relic-upgrade-shop-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--soft-ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.relic-upgrade-shop-card button {
+  min-height: 38px;
+  border: 1px solid rgba(26, 138, 56, 0.22);
+  border-radius: 999px;
+  background: rgba(82, 215, 101, 0.16);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0 13px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.relic-upgrade-shop-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
 @media (max-width: 1180px) {
   .relic-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .relic-upgrade-page-shell {
     grid-template-columns: 1fr;
   }
 
@@ -568,7 +771,8 @@
 
   .relic-controls,
   .relic-name-field,
-  .relic-actions {
+  .relic-actions,
+  .relic-meta-panel {
     grid-column: 2;
   }
 }
@@ -581,6 +785,7 @@
   .relic-topbar,
   .relic-brief,
   .relic-side,
+  .relic-upgrade-shop,
   .relic-upgrade-grid {
     grid-template-columns: 1fr;
   }
@@ -593,6 +798,7 @@
   .relic-controls,
   .relic-name-field,
   .relic-actions,
+  .relic-meta-panel,
   .relic-brief h1,
   .relic-brief p {
     grid-column: auto;
