@@ -359,6 +359,10 @@ a {
   gap: 8px;
 }
 
+.member-card .member-badges {
+  grid-column: 1 / -1;
+}
+
 .member-badges span {
   border-radius: 999px;
   background: var(--green-soft);
@@ -1913,6 +1917,24 @@ a {
 
 .member-card p {
   margin: 0;
+  color: var(--soft-ink);
+}
+
+.member-note {
+  display: grid;
+  gap: 8px;
+}
+
+.member-note small,
+.member-note em,
+.member-note q {
+  color: var(--quiet);
+  font-size: 14px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.member-note q {
   color: var(--soft-ink);
 }
 

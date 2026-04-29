@@ -37,6 +37,10 @@
       <p class="eyebrow">Directory</p>
       <h1>Member Directory</h1>
       <p>The public roster for Chipkittle members, roles, and tiny notes of questionable historical importance.</p>
+      <div class="hero-actions compact-actions">
+        <a class="button primary" href="https://panel.chipkittle.com/profile/edit">Edit my profile</a>
+        <a class="button secondary" href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Join Discord</a>
+      </div>
     </section>
 
     <section class="directory">
@@ -89,8 +93,12 @@
           <article class="member-card">
             <strong>${text(member.name)}</strong>
             <span>${text(member.role || "Member")}</span>
-            ${member.title ? `<small>${text(member.title)}</small>` : ""}
-            <p>${text(member.bio || "No note yet.")}</p>
+            <div class="member-note">
+              ${member.title ? `<small>${text(member.title)}</small>` : ""}
+              <p>${text(member.bio || "No note yet.")}</p>
+              ${member.favoriteArtifact ? `<em>Favorite artifact: ${text(member.favoriteArtifact)}</em>` : ""}
+              ${member.quote ? `<q>${text(member.quote)}</q>` : ""}
+            </div>
             ${(member.badges || []).length ? `<div class="member-badges">${member.badges.map((badge) => `<span>${text(badge)}</span>`).join("")}</div>` : ""}
           </article>
         `).join("");

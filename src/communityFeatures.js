@@ -62,6 +62,7 @@ export const COMMUNITY_DEFAULTS = {
     seasonalMessage: "Current season: ceremonial optimism.",
     nextTrial: ""
   },
+  questClaims: {},
   staffNotes: {}
 };
 
@@ -93,6 +94,7 @@ export function communityState(config = {}) {
       ...clone(COMMUNITY_DEFAULTS.rituals),
       ...(community.rituals || {})
     },
+    questClaims: { ...(community.questClaims || {}) },
     staffNotes: { ...(community.staffNotes || {}) }
   };
 }
@@ -156,6 +158,10 @@ export function profileFor(config = {}, userId, fallbackName = "") {
     manualAchievements: Array.isArray(stored.manualAchievements) ? stored.manualAchievements.map((badge) => String(badge).slice(0, 60)).filter(Boolean).slice(0, 20) : [],
     artifacts: Array.isArray(stored.artifacts) ? stored.artifacts.map((item) => String(item).slice(0, 80)).filter(Boolean).slice(0, 20) : [],
     inventory: normalizeInventory(stored.inventory),
+    pronouns: String(stored.pronouns || "").slice(0, 40),
+    favoriteArtifact: String(stored.favoriteArtifact || "").slice(0, 80),
+    quote: String(stored.quote || "").slice(0, 140),
+    publicVisible: Boolean(stored.publicVisible),
     vouches: Array.isArray(stored.vouches) ? stored.vouches.map((entry) => ({
       from: String(entry.from || ""),
       name: String(entry.name || "").slice(0, 80),
@@ -170,16 +176,29 @@ export function profileFor(config = {}, userId, fallbackName = "") {
 export function derivedAchievements(config = {}, userId, fallbackName = "") {
   const profile = profileFor(config, userId, fallbackName);
   const balance = Math.max(Math.floor(Number(config.economy?.balances?.[userId]) || 0), 0);
+  const bank = Math.max(Math.floor(Number(config.economy?.bankBalances?.[userId]) || 0), 0);
+  const stats = config.economy?.stats?.[userId] || {};
+  const upgrades = config.economy?.upgrades?.[userId] || {};
   const achievements = [];
 
   if (balance >= 100) achievements.push("Bread Beginner");
   if (balance >= 1000) achievements.push("Bread Baron");
   if (balance >= 5000) achievements.push("Bakery Tyrant");
+  if (bank >= 1000) achievements.push("Banked Bread");
+  if (bank >= 10000) achievements.push("Vault Whisperer");
+  if ((balance + bank) >= 25000) achievements.push("Bread Cathedral");
+  if (Math.max(Number(stats.gamesPlayed) || 0, 0) >= 10) achievements.push("Casino Regular");
+  if (Math.max(Number(stats.gamesWon) || 0, 0) >= 5) achievements.push("Loaded Dice Survivor");
+  if (Math.max(Number(stats.biggestWin) || 0, 0) >= 1000) achievements.push("Big Crumb Energy");
   if (profile.vouches.length >= 1) achievements.push("Vouched");
   if (profile.vouches.length >= 5) achievements.push("Round Table Favorite");
   if (profile.artifacts.length >= 1) achievements.push("Artifact Bearer");
   if (Object.keys(profile.inventory).length >= 3) achievements.push("Well Equipped");
+  if (Object.keys(profile.inventory).length >= 6) achievements.push("Artifact Hoarder");
+  if (Object.values(upgrades).reduce((sum, level) => sum + Math.max(Number(level) || 0, 0), 0) >= 5) achievements.push("Upgrade Goblet");
   if (profile.badges.length >= 3) achievements.push("Decorated Horn");
+  if (profile.publicVisible) achievements.push("Directory Denizen");
+  if (profile.favoriteArtifact) achievements.push("Artifact Opinion Haver");
 
   return [...new Set([...profile.manualAchievements, ...achievements])];
 }

@@ -453,30 +453,164 @@ function formatVouchLines(profile) {
 }
 
 function dailyQuestFor(userId = "") {
-  const quests = [
-    "Win a bread gamble without immediately bragging about it.",
-    "Mention the artifact in a totally normal sentence.",
-    "Collect more bread than you spend today.",
-    "Convince another member the horns are a management style.",
-    "Post one message that sounds suspiciously ceremonial."
-  ];
-  const index = Math.abs(`${new Date().toISOString().slice(0, 10)}:${userId}`.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % quests.length;
-  return quests[index];
+  return questFor({}, userId, "daily").detail;
 }
 
 function weeklyQuestFor(userId = "") {
-  const quests = [
-    "Earn 500 bread through sheer ritual persistence.",
-    "Get vouched for by another member of the order.",
-    "Acquire one shop item to improve your ceremonial standing.",
-    "Learn the current artifact of the day and pretend you knew it already.",
-    "Use three different Chipkittle commands in public without alarming outsiders."
-  ];
+  return questFor({}, userId, "weekly").detail;
+}
+
+function stableIndex(seed = "", length = 1) {
+  return Math.abs(String(seed).split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % Math.max(length, 1);
+}
+
+function currentQuestPeriods() {
   const today = new Date();
+  const day = today.toISOString().slice(0, 10);
   const firstDay = new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
-  const week = Math.floor((Date.now() - firstDay.getTime()) / (7 * 86_400_000));
-  const index = Math.abs(`${week}:${userId}`.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % quests.length;
-  return quests[index];
+  const week = `${today.getUTCFullYear()}-W${Math.floor((Date.now() - firstDay.getTime()) / (7 * 86_400_000))}`;
+  return { day, week };
+}
+
+const DAILY_QUESTS = [
+  {
+    id: "daily-claim",
+    title: "Collect the Daily Loaf",
+    detail: "Use your daily bread claim today.",
+    target: 1,
+    progress(config, userId) {
+      return String(config.economy?.dailyClaims?.[userId] || "").startsWith(currentQuestPeriods().day) ? 1 : 0;
+    }
+  },
+  {
+    id: "daily-bank",
+    title: "Bank Something Before It Gets Weird",
+    detail: "Have at least 500 bread in the bank.",
+    target: 500,
+    progress(config, userId) {
+      return bankBalance(normalizeEconomy(config.economy || {}), userId);
+    }
+  },
+  {
+    id: "daily-profile",
+    title: "Polish the Public Mask",
+    detail: "Have a visible profile with a bio, title, and favorite artifact.",
+    target: 3,
+    progress(config, userId) {
+      const profile = profileFor(config, userId);
+      return [profile.publicVisible, profile.bio && !profile.bio.startsWith("No ceremonial"), profile.title, profile.favoriteArtifact].filter(Boolean).length;
+    }
+  },
+  {
+    id: "daily-inventory",
+    title: "Carry a Suspicious Object",
+    detail: "Own at least one shop item.",
+    target: 1,
+    progress(config, userId) {
+      return Object.keys(profileFor(config, userId).inventory || {}).length;
+    }
+  },
+  {
+    id: "daily-bread",
+    title: "Do Not Be Breadless",
+    detail: "Keep at least 1,000 bread total between wallet and bank.",
+    target: 1000,
+    progress(config, userId) {
+      return totalBreadWealth(normalizeEconomy(config.economy || {}), userId);
+    }
+  }
+];
+
+const WEEKLY_QUESTS = [
+  {
+    id: "weekly-games",
+    title: "Survive the Casino Fog",
+    detail: "Play 10 tracked gambling games.",
+    target: 10,
+    progress(config, userId) {
+      return Math.max(Number(config.economy?.stats?.[userId]?.gamesPlayed) || 0, 0);
+    }
+  },
+  {
+    id: "weekly-vouches",
+    title: "Earn the Den's Suspicious Trust",
+    detail: "Receive 2 vouches.",
+    target: 2,
+    progress(config, userId) {
+      return profileFor(config, userId).vouches.length;
+    }
+  },
+  {
+    id: "weekly-collector",
+    title: "Pocket the Little Relics",
+    detail: "Own 3 different shop items.",
+    target: 3,
+    progress(config, userId) {
+      return Object.keys(profileFor(config, userId).inventory || {}).length;
+    }
+  },
+  {
+    id: "weekly-vault",
+    title: "Become Harder to Mug",
+    detail: "Reach 5,000 total bread wealth.",
+    target: 5000,
+    progress(config, userId) {
+      return totalBreadWealth(normalizeEconomy(config.economy || {}), userId);
+    }
+  },
+  {
+    id: "weekly-upgrades",
+    title: "Improve the Bread Machine",
+    detail: "Own 3 total economy upgrade levels.",
+    target: 3,
+    progress(config, userId) {
+      return Object.values(config.economy?.upgrades?.[userId] || {}).reduce((sum, level) => sum + Math.max(Number(level) || 0, 0), 0);
+    }
+  }
+];
+
+function questFor(config = {}, userId = "", type = "daily") {
+  const periods = currentQuestPeriods();
+  const quests = type === "weekly" ? WEEKLY_QUESTS : DAILY_QUESTS;
+  const period = type === "weekly" ? periods.week : periods.day;
+  const quest = quests[stableIndex(`${period}:${userId}`, quests.length)];
+  const progress = Math.min(Math.max(Math.floor(Number(quest.progress(config, userId)) || 0), 0), quest.target);
+  const claimed = Boolean(config.community?.questClaims?.[userId]?.[questClaimKey({ ...quest, type, period })]);
+  return { ...quest, type, period, progress, complete: progress >= quest.target, claimed };
+}
+
+function formatQuest(quest) {
+  const status = quest.claimed ? "claimed" : quest.complete ? "ready to claim" : `${quest.progress}/${quest.target}`;
+  return `**${quest.title}** (${status})\n${quest.detail}`;
+}
+
+function questClaimKey(quest) {
+  return `${quest.type}:${quest.period}:${quest.id}`;
+}
+
+async function markQuestClaims(ctx, userId, quests = []) {
+  const claimEntries = Object.fromEntries(
+    quests.map((quest) => [
+      questClaimKey(quest),
+      {
+        title: quest.title,
+        reward: quest.reward,
+        claimedAt: new Date().toISOString()
+      }
+    ])
+  );
+
+  await ctx.store.updateGuild(ctx.message.guild.id, {
+    community: {
+      questClaims: {
+        ...(ctx.config.community?.questClaims || {}),
+        [userId]: {
+          ...(ctx.config.community?.questClaims?.[userId] || {}),
+          ...claimEntries
+        }
+      }
+    }
+  });
 }
 
 function profileEmbedFor(ctx, member) {
@@ -6359,12 +6493,98 @@ define({
   category: "Chipkittle",
   description: "Show your daily and weekly Chipkittle quests.",
   async run(ctx) {
+    const daily = questFor(ctx.config, ctx.message.author.id, "daily");
+    const weekly = questFor(ctx.config, ctx.message.author.id, "weekly");
     await ctx.message.reply([
-      `**Daily Quest**`,
-      dailyQuestFor(ctx.message.author.id),
+      "**Chipkittle Quests**",
       "",
-      `**Weekly Quest**`,
-      weeklyQuestFor(ctx.message.author.id)
+      "**Daily**",
+      formatQuest({ ...daily, reward: 250 }),
+      "",
+      "**Weekly**",
+      formatQuest({ ...weekly, reward: 1200 }),
+      "",
+      `Claim finished quests with \`${ctx.config.prefix}questclaim\`.`
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "questclaim",
+  aliases: ["claimquest", "claimquests"],
+  category: "Chipkittle",
+  description: "Claim bread rewards for completed daily and weekly quests.",
+  async run(ctx) {
+    const quests = [
+      { ...questFor(ctx.config, ctx.message.author.id, "daily"), reward: 250 },
+      { ...questFor(ctx.config, ctx.message.author.id, "weekly"), reward: 1200 }
+    ];
+    const claimable = quests.filter((quest) => quest.complete && !quest.claimed);
+    if (!claimable.length) {
+      await ctx.message.reply("No completed unclaimed quests yet. Check `!quests` to see what the artifact wants today.");
+      return;
+    }
+
+    const totalReward = claimable.reduce((sum, quest) => sum + quest.reward, 0);
+    const result = await updateBreadEconomy(ctx, (economy) => {
+      const nextBalance = breadBalance(economy, ctx.message.author.id) + totalReward;
+      setBreadBalance(economy, ctx.message.author.id, nextBalance);
+      recordEconomyTransaction(economy, {
+        userId: ctx.message.author.id,
+        type: "quest-claim",
+        amount: totalReward,
+        balance: nextBalance,
+        note: claimable.map((quest) => quest.title).join(", ")
+      });
+      return { balance: nextBalance };
+    });
+
+    await markQuestClaims(ctx, ctx.message.author.id, claimable);
+    await updateProfile(ctx.store, ctx.message.guild.id, ctx.message.author.id, (profile) => ({
+      ...profile,
+      displayName: ctx.message.member.displayName,
+      manualAchievements: [...new Set([...(profile.manualAchievements || []), "Quest Claimer"])].slice(0, 20)
+    }), ctx.message.member.displayName).catch(() => {});
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "quest",
+      label: "Quest reward claimed",
+      details: `${ctx.message.author.tag} claimed ${totalReward} bread from ${claimable.length} quest reward${claimable.length === 1 ? "" : "s"}.`,
+      actor: ctx.message.author.tag,
+      targetId: ctx.message.author.id,
+      targetTag: ctx.message.author.tag
+    }).catch(() => {});
+
+    await ctx.message.reply([
+      `Claimed **${totalReward} bread**.`,
+      `New wallet balance: **${result.balance} bread**.`,
+      "",
+      claimable.map((quest) => `- ${quest.title}`).join("\n")
+    ].join("\n"));
+  }
+});
+
+define({
+  name: "achievementboard",
+  aliases: ["achboard", "achievementleaderboard"],
+  category: "Chipkittle",
+  description: "Show who has stacked the most Chipkittle achievements.",
+  async run(ctx) {
+    const rows = Object.entries(ctx.config.community?.profiles || {})
+      .map(([userId, profile]) => ({
+        userId,
+        displayName: profile.displayName || userId,
+        achievements: derivedAchievements(ctx.config, userId, profile.displayName || userId)
+      }))
+      .filter((entry) => entry.achievements.length)
+      .sort((a, b) => b.achievements.length - a.achievements.length || a.displayName.localeCompare(b.displayName))
+      .slice(0, 10);
+    if (!rows.length) {
+      await ctx.message.reply("No achievements have been earned yet.");
+      return;
+    }
+    await ctx.message.reply([
+      "**Achievement Leaderboard**",
+      rows.map((entry, index) => `${index + 1}. **${entry.displayName}** - ${entry.achievements.length} achievement${entry.achievements.length === 1 ? "" : "s"}`).join("\n")
     ].join("\n"));
   }
 });

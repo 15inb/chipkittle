@@ -82,6 +82,10 @@ const DEFAULT_CONFIG = {
     suggestions: {
       channelId: "",
       staffUserId: "203025242753335296"
+    },
+    profileEditor: {
+      enabled: true,
+      allowedRoleIds: []
     }
   },
   ai: {
@@ -139,6 +143,7 @@ const DEFAULT_CONFIG = {
       nextTrial: ""
     },
     suggestions: [],
+    questClaims: {},
     staffNotes: {}
   }
 };
@@ -227,7 +232,22 @@ function mergeConfig(config = {}) {
     },
     publicSite: {
       ...clone(DEFAULT_CONFIG.publicSite),
-      ...(config.publicSite || {})
+      ...(config.publicSite || {}),
+      games: {
+        ...clone(DEFAULT_CONFIG.publicSite.games),
+        ...(config.publicSite?.games || {})
+      },
+      suggestions: {
+        ...clone(DEFAULT_CONFIG.publicSite.suggestions),
+        ...(config.publicSite?.suggestions || {})
+      },
+      profileEditor: {
+        ...clone(DEFAULT_CONFIG.publicSite.profileEditor),
+        ...(config.publicSite?.profileEditor || {}),
+        allowedRoleIds: Array.isArray(config.publicSite?.profileEditor?.allowedRoleIds)
+          ? config.publicSite.profileEditor.allowedRoleIds
+          : []
+      }
     },
     ai: {
       ...clone(DEFAULT_CONFIG.ai),
@@ -386,7 +406,22 @@ export class ConfigStore {
       },
       publicSite: {
         ...this.getGuild(guildId).publicSite,
-        ...(partialConfig.publicSite || {})
+        ...(partialConfig.publicSite || {}),
+        games: {
+          ...this.getGuild(guildId).publicSite.games,
+          ...(partialConfig.publicSite?.games || {})
+        },
+        suggestions: {
+          ...this.getGuild(guildId).publicSite.suggestions,
+          ...(partialConfig.publicSite?.suggestions || {})
+        },
+        profileEditor: {
+          ...this.getGuild(guildId).publicSite.profileEditor,
+          ...(partialConfig.publicSite?.profileEditor || {}),
+          allowedRoleIds: Array.isArray(partialConfig.publicSite?.profileEditor?.allowedRoleIds)
+            ? partialConfig.publicSite.profileEditor.allowedRoleIds
+            : this.getGuild(guildId).publicSite.profileEditor.allowedRoleIds
+        }
       },
       ai: {
         ...this.getGuild(guildId).ai,

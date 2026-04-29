@@ -13,9 +13,12 @@ import {
   artifactDirectoryText,
   communitySnapshot,
   deleteAuditLog,
+  derivedAchievements,
   parseArtifactDirectory,
+  profileFor,
   publicMemberCards,
   topCommands,
+  updateProfile,
 } from "./communityFeatures.js";
 import { CHIPKITTLE_LORE } from "./chipkittleLore.js";
 import { createDashClaim, redeemDashClaim } from "./dashClaims.js";
@@ -1354,8 +1357,55 @@ function profileDirectoryCards(config = {}) {
   `;
 }
 
+function profileEditorSettings(config = {}, roles = []) {
+  const settings = config.publicSite?.profileEditor || {};
+  const fallbackRoleId = config.applications?.approvedRoleId || "";
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Member Profile Self-Edit</h2>
+        <p>Let approved Discord members sign in with OAuth and edit their own public member card.</p>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" name="profileEditorEnabled" ${isChecked(settings.enabled !== false)}>
+        <span>Enable public profile editor</span>
+      </label>
+      <p class="field-help">Profile editor URL: <code>/profile/edit</code>. Add <code>/auth/discord/profile/callback</code> as a Discord OAuth redirect too.</p>
+      <div class="permission-rule-block">
+        <p class="field-help">Allowed member roles. If none are selected, the application approved role is used${fallbackRoleId ? `: <code>${escapeHtml(fallbackRoleId)}</code>` : "."}</p>
+        <div class="checkbox-grid compact">
+          ${roleCheckboxes(roles, settings.allowedRoleIds || [], "profileEditorAllowedRoleIds")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function publicMembersFromConfig(config = {}) {
-  return publicMemberCards(config);
+  const manualMembers = publicMemberCards(config).map((member) => ({
+    ...member,
+    source: member.source || "panel"
+  }));
+  const profileMembers = Object.entries(config.community?.profiles || {})
+    .map(([userId, storedProfile]) => {
+      const profile = profileFor(config, userId, storedProfile.displayName || userId);
+      if (!profile.publicVisible) return null;
+      const achievements = derivedAchievements(config, userId, profile.displayName);
+      return {
+        id: userId,
+        name: profile.displayName,
+        role: profile.title || "Member",
+        title: profile.pronouns || "",
+        bio: profile.bio,
+        quote: profile.quote,
+        favoriteArtifact: profile.favoriteArtifact,
+        badges: [...new Set([...(profile.badges || []), ...achievements.slice(0, 5)])].slice(0, 8),
+        source: "profile"
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return [...manualMembers, ...profileMembers].slice(0, 120);
 }
 
 function writePublicMembersFile(members = []) {
@@ -2095,7 +2145,11 @@ function parseConfigForm(body, section = "general") {
     case "members":
       return {
         publicSite: {
-          members: parseMemberDirectory(body.publicMembers)
+          members: parseMemberDirectory(body.publicMembers),
+          profileEditor: {
+            enabled: body.profileEditorEnabled === "on",
+            allowedRoleIds: arrayFromFormValue(body.profileEditorAllowedRoleIds).map(String)
+          }
         }
       };
     case "moderation":
@@ -3208,6 +3262,7 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
         currentMeta,
         `
           ${memberDirectoryEditor(config.publicSite.members)}
+          ${profileEditorSettings(config, guild.roles)}
           ${profileDirectoryCards(config)}
         `
       );
@@ -3772,6 +3827,7 @@ export function createPanel({
   const loginAttempts = new Map();
   const activePanelSessions = new Map();
   const oauthStates = new Map();
+  const profileOAuthStates = new Map();
   const sessionStore = new session.MemoryStore();
   const publicSuggestionCooldowns = new Map();
   const publicSuggestionCaptchas = new Map();
@@ -3888,6 +3944,186 @@ export function createPanel({
     url.searchParams.set("state", state);
     url.searchParams.set("prompt", "none");
     return url.toString();
+  }
+
+  function profileOAuthRedirectUri(request) {
+    const base = publicUrl || `${request.protocol}://${request.get("host")}`;
+    return new URL("/auth/discord/profile/callback", base).toString();
+  }
+
+  function discordProfileOAuthUrl(request) {
+    if (!clientId || !discordClientSecret) return "";
+    const state = crypto.randomBytes(OAUTH_STATE_BYTES).toString("base64url");
+    profileOAuthStates.set(state, {
+      createdAt: Date.now()
+    });
+    const url = new URL("https://discord.com/oauth2/authorize");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", profileOAuthRedirectUri(request));
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", "identify");
+    url.searchParams.set("state", state);
+    url.searchParams.set("prompt", "none");
+    return url.toString();
+  }
+
+  async function exchangeDiscordOAuthCode(code, redirectUri) {
+    const tokenBody = new URLSearchParams({
+      client_id: clientId,
+      client_secret: discordClientSecret,
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri
+    });
+    const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: tokenBody
+    });
+    if (!tokenResponse.ok) {
+      const body = await tokenResponse.text().catch(() => "");
+      const error = new Error(`Token exchange failed: ${tokenResponse.status} ${body}`);
+      error.oauthRedirectProblem = /redirect_uri|invalid_grant/i.test(body);
+      throw error;
+    }
+    const token = await tokenResponse.json();
+    const userResponse = await fetch("https://discord.com/api/users/@me", {
+      headers: { Authorization: `Bearer ${token.access_token}` }
+    });
+    if (!userResponse.ok) throw new Error(`User fetch failed: ${userResponse.status}`);
+    return userResponse.json();
+  }
+
+  function profileEditorRoleIds(config = {}) {
+    const configured = Array.isArray(config.publicSite?.profileEditor?.allowedRoleIds)
+      ? config.publicSite.profileEditor.allowedRoleIds.map(String).filter(Boolean)
+      : [];
+    if (configured.length) return configured;
+    return config.applications?.approvedRoleId ? [String(config.applications.approvedRoleId)] : [];
+  }
+
+  async function verifyProfileEditorMember(userId = "") {
+    const targetGuildId = currentPanelGuildId();
+    const config = store.getGuild(targetGuildId);
+    if (!config.publicSite?.profileEditor?.enabled) {
+      return { ok: false, reason: "The member profile editor is disabled right now." };
+    }
+    const requiredRoleIds = profileEditorRoleIds(config);
+    if (!requiredRoleIds.length) {
+      return { ok: false, reason: "Profile editor roles are not configured yet." };
+    }
+    const guild = client.guilds.cache.get(targetGuildId);
+    if (!guild) return { ok: false, reason: "The bot is not connected to the configured Discord server." };
+    const member = guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
+    if (!member) return { ok: false, reason: "You must be in the Chipkittle Discord to edit a public profile." };
+    const hasAllowedRole = member.id === guild.ownerId || requiredRoleIds.some((roleId) => member.roles.cache.has(roleId));
+    if (!hasAllowedRole) {
+      return { ok: false, reason: "Your Discord account does not have the role required to edit a public profile." };
+    }
+    return { ok: true, guild, guildId: targetGuildId, config, member };
+  }
+
+  function profileLoginPage(error = "", discordUrl = "") {
+    const redirectUri = (() => {
+      try {
+        return profileOAuthRedirectUri({
+          protocol: "https",
+          get: () => new URL(publicUrl || "https://panel.chipkittle.com").host
+        });
+      } catch {
+        return "https://panel.chipkittle.com/auth/discord/profile/callback";
+      }
+    })();
+    return layout({
+      title: "Edit Chipkittle Profile",
+      user: false,
+      body: `
+        <section class="login-panel">
+          <div>
+            <p class="eyebrow">Member profiles</p>
+            <h1>Edit your public Chipkittle card.</h1>
+            <p class="muted">Sign in with Discord. You must already be in the #CK Discord and have the configured member role.</p>
+          </div>
+          <div class="stack">
+            ${error ? `<p class="form-error">${escapeHtml(error)}</p>` : ""}
+            ${discordUrl
+              ? `<a class="primary-link oauth-login-button" href="${escapeHtml(discordUrl)}">Continue with Discord</a>`
+              : '<p class="form-error">Discord OAuth is not configured yet.</p>'}
+            <p class="field-help">Profile OAuth redirect: <code>${escapeHtml(redirectUri)}</code></p>
+            <a class="primary-link secondary-link" href="https://chipkittle.com/members">Back to members</a>
+          </div>
+        </section>
+      `
+    });
+  }
+
+  function profileEditPage({ config, member, message = "", error = "" }) {
+    const profile = profileFor(config, member.id, member.displayName);
+    const achievements = derivedAchievements(config, member.id, member.displayName);
+    return layout({
+      title: "Edit Chipkittle Profile",
+      user: false,
+      flash: message,
+      body: `
+        <section class="panel-hero">
+          <div>
+            <p class="eyebrow">Member profile</p>
+            <h1>${escapeHtml(member.displayName)}</h1>
+            <p class="muted">This edits the public member directory card tied to your Discord account.</p>
+          </div>
+          <form method="post" action="/profile/logout">
+            <button type="submit" class="secondary-button">Sign out</button>
+          </form>
+        </section>
+        ${error ? `<p class="form-error">${escapeHtml(error)}</p>` : ""}
+        <form method="post" action="/profile/edit" class="panel-form">
+          <section class="panel-section">
+            <div class="section-heading">
+              <h2>Public Card</h2>
+              <p>Keep it personal. The artifact dislikes corporate bios.</p>
+            </div>
+            <label>
+              Display name
+              <input name="displayName" maxlength="80" value="${escapeHtml(profile.displayName)}">
+            </label>
+            <label>
+              Title
+              <input name="title" maxlength="80" value="${escapeHtml(profile.title)}">
+            </label>
+            <label>
+              Pronouns or short tag
+              <input name="pronouns" maxlength="40" value="${escapeHtml(profile.pronouns)}">
+            </label>
+            <label>
+              Favorite artifact
+              <input name="favoriteArtifact" maxlength="80" value="${escapeHtml(profile.favoriteArtifact)}">
+            </label>
+            <label>
+              Tiny quote
+              <input name="quote" maxlength="140" value="${escapeHtml(profile.quote)}">
+            </label>
+            <label>
+              Bio
+              <textarea name="bio" rows="5" maxlength="260">${escapeHtml(profile.bio)}</textarea>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" name="publicVisible" ${isChecked(profile.publicVisible)}>
+              <span>Show my profile on the public member directory</span>
+            </label>
+            <button type="submit">Save profile</button>
+          </section>
+          <section class="panel-section">
+            <div class="section-heading">
+              <h2>Earned Achievements</h2>
+              <p>These are calculated from your bot profile, bread economy, shop items, and public profile state.</p>
+            </div>
+            <div class="member-badges">
+              ${achievements.length ? achievements.map((badge) => `<span>${escapeHtml(badge)}</span>`).join("") : '<span>No achievements yet</span>'}
+            </div>
+          </section>
+        </form>
+      `
+    });
   }
 
   function loginErrorMessage(code = "") {
@@ -4523,6 +4759,125 @@ export function createPanel({
     }
   });
 
+  app.get("/profile/login", (request, response) => {
+    if (request.session.publicProfileUser) {
+      response.redirect("/profile/edit");
+      return;
+    }
+    response.send(profileLoginPage(loginErrorMessage(request.query.error), discordProfileOAuthUrl(request)));
+  });
+
+  app.get("/auth/discord/profile", (request, response) => {
+    const url = discordProfileOAuthUrl(request);
+    if (!url) {
+      response.status(503).send(profileLoginPage("Discord OAuth is not configured yet.", ""));
+      return;
+    }
+    response.redirect(url);
+  });
+
+  app.get("/auth/discord/profile/callback", async (request, response) => {
+    const state = String(request.query.state || "");
+    const code = String(request.query.code || "");
+    const storedState = profileOAuthStates.get(state);
+    profileOAuthStates.delete(state);
+    if (!storedState || Date.now() - storedState.createdAt > 10 * 60 * 1000 || !code) {
+      response.redirect("/profile/login?error=state");
+      return;
+    }
+
+    try {
+      const discordUser = await exchangeDiscordOAuthCode(code, profileOAuthRedirectUri(request));
+      const discordUserId = String(discordUser.id || "");
+      const verified = await verifyProfileEditorMember(discordUserId);
+      if (!verified.ok) {
+        response.status(403).send(profileLoginPage(verified.reason, discordProfileOAuthUrl(request)));
+        return;
+      }
+      request.session.publicProfileUser = {
+        userId: discordUserId,
+        guildId: verified.guildId,
+        username: discordUser.username || discordUserId,
+        displayName: verified.member.displayName
+      };
+      response.redirect("/profile/edit");
+    } catch (error) {
+      console.error("Discord profile OAuth failed:", error);
+      response.redirect(`/profile/login?error=${error.oauthRedirectProblem ? "oauth-redirect" : "oauth"}`);
+    }
+  });
+
+  app.get("/profile/edit", async (request, response) => {
+    const sessionUser = request.session.publicProfileUser;
+    if (!sessionUser?.userId) {
+      response.redirect("/profile/login");
+      return;
+    }
+    const verified = await verifyProfileEditorMember(sessionUser.userId);
+    if (!verified.ok) {
+      request.session.publicProfileUser = null;
+      response.status(403).send(profileLoginPage(verified.reason, discordProfileOAuthUrl(request)));
+      return;
+    }
+    request.session.publicProfileUser = {
+      ...sessionUser,
+      guildId: verified.guildId,
+      displayName: verified.member.displayName
+    };
+    response.send(profileEditPage({
+      config: store.getGuild(verified.guildId),
+      member: verified.member,
+      message: request.query.saved ? "Profile saved." : ""
+    }));
+  });
+
+  app.post("/profile/edit", async (request, response) => {
+    const sessionUser = request.session.publicProfileUser;
+    if (!sessionUser?.userId) {
+      response.redirect("/profile/login");
+      return;
+    }
+    const verified = await verifyProfileEditorMember(sessionUser.userId);
+    if (!verified.ok) {
+      request.session.publicProfileUser = null;
+      response.status(403).send(profileLoginPage(verified.reason, discordProfileOAuthUrl(request)));
+      return;
+    }
+
+    const displayName = String(request.body?.displayName || verified.member.displayName).trim().slice(0, 80) || verified.member.displayName;
+    const title = String(request.body?.title || "Bread Initiate").trim().slice(0, 80) || "Bread Initiate";
+    const pronouns = String(request.body?.pronouns || "").trim().slice(0, 40);
+    const favoriteArtifact = String(request.body?.favoriteArtifact || "").trim().slice(0, 80);
+    const quote = String(request.body?.quote || "").trim().slice(0, 140);
+    const bio = String(request.body?.bio || "").trim().slice(0, 260) || "No ceremonial biography has been recorded yet.";
+
+    await updateProfile(store, verified.guildId, verified.member.id, (profile) => ({
+      ...profile,
+      displayName,
+      title,
+      pronouns,
+      favoriteArtifact,
+      quote,
+      bio,
+      publicVisible: request.body?.publicVisible === "on"
+    }), verified.member.displayName);
+    await addAuditLog(store, verified.guildId, {
+      type: "profile",
+      label: "Public profile updated",
+      details: `${verified.member.user.tag} edited their public profile from the website.`,
+      actor: verified.member.user.tag,
+      targetId: verified.member.id,
+      targetTag: verified.member.user.tag
+    }).catch(() => {});
+    writePublicMembersFile(publicMembersFromConfig(store.getGuild(verified.guildId)));
+    response.redirect("/profile/edit?saved=1");
+  });
+
+  app.post("/profile/logout", (request, response) => {
+    request.session.publicProfileUser = null;
+    response.redirect("/profile/login");
+  });
+
   app.get("/login", (request, response) => {
     if (request.session.authenticated) {
       response.redirect("/");
@@ -4978,7 +5333,7 @@ export function createPanel({
 
       const mergedConfig = await store.updateGuild(discordGuild.id, partial);
       if (partial.publicSite || partial.community?.artifacts || partial.community?.rituals) {
-        writePublicMembersFile(mergedConfig.publicSite?.members || []);
+        writePublicMembersFile(publicMembersFromConfig(mergedConfig));
       }
       await addAuditLog(store, discordGuild.id, {
         type: "panel",
@@ -5841,7 +6196,7 @@ export function createPanel({
         };
       }
       const mergedConfig = await store.updateGuild(discordGuild.id, nextConfig);
-      writePublicMembersFile(mergedConfig.publicSite?.members || []);
+      writePublicMembersFile(publicMembersFromConfig(mergedConfig));
       await addAuditLog(store, discordGuild.id, {
         type: "panel",
         label: "Panel settings saved",
