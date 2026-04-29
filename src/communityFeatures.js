@@ -39,6 +39,7 @@ export const SHOP_ITEMS = [
 
 export const COMMUNITY_DEFAULTS = {
   profiles: {},
+  profileEdits: {},
   artifacts: DEFAULT_ARTIFACTS,
   auditLog: [],
   cases: [],
@@ -83,6 +84,7 @@ export function communityState(config = {}) {
     ...clone(COMMUNITY_DEFAULTS),
     ...community,
     profiles: { ...(community.profiles || {}) },
+    profileEdits: { ...(community.profileEdits || {}) },
     artifacts: normalizeArtifacts(community.artifacts),
     auditLog: Array.isArray(community.auditLog) ? community.auditLog.slice(-MAX_AUDIT_LOG) : [],
     cases: normalizeCases(community.cases),

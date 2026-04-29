@@ -189,6 +189,24 @@ const BUILT_IN_BLOCKED_LEADERBOARD_TERMS = [
   "kike",
   "tranny"
 ];
+const STRICT_PROFILE_BLOCKED_TERMS = [
+  ...BUILT_IN_BLOCKED_LEADERBOARD_TERMS,
+  "heil",
+  "nazi",
+  "hitler",
+  "kkk",
+  "rape",
+  "rapist",
+  "porn",
+  "onlyfans",
+  "suicide",
+  "killmyself",
+  "killyourself",
+  "kys",
+  "dox",
+  "doxx",
+  "doxxed"
+];
 
 function escapeHtml(value = "") {
   return String(value)
@@ -1329,6 +1347,50 @@ function memberDirectoryEditor(members = []) {
   `;
 }
 
+function profileEditPreviewCard(userId, entry = {}, guildId = "") {
+  const draft = entry.draft || {};
+  return `
+    <article class="member-mini-card profile-approval-card">
+      <strong>${escapeHtml(draft.displayName || entry.username || userId)}</strong>
+      <small>${escapeHtml(draft.title || "No title")} &middot; ${escapeHtml(entry.username || userId)}</small>
+      <p>${escapeHtml(draft.bio || "No bio submitted.")}</p>
+      ${draft.favoriteArtifact ? `<p><strong>Artifact:</strong> ${escapeHtml(draft.favoriteArtifact)}</p>` : ""}
+      ${draft.quote ? `<p><strong>Quote:</strong> ${escapeHtml(draft.quote)}</p>` : ""}
+      <div class="mini-stats"><span>${entry.submittedAt ? `Submitted ${escapeHtml(entry.submittedAt)}` : "Pending"}</span><span>${draft.publicVisible ? "Public requested" : "Hidden requested"}</span></div>
+      <div class="inline-controls">
+        <form method="post" action="/guilds/${encodeURIComponent(guildId)}/profiles/${encodeURIComponent(userId)}/approve" class="inline-form">
+          <button type="submit">Approve</button>
+        </form>
+        <form method="post" action="/guilds/${encodeURIComponent(guildId)}/profiles/${encodeURIComponent(userId)}/reject" class="inline-form">
+          <button type="submit" class="danger-button">Reject</button>
+        </form>
+      </div>
+    </article>
+  `;
+}
+
+function profileApprovalQueue(config = {}, guildId = "", panelUser = null) {
+  const pending = Object.entries(config.community?.profileEdits || {})
+    .filter(([, entry]) => entry?.status === "pending")
+    .sort((a, b) => String(b[1]?.submittedAt || "").localeCompare(String(a[1]?.submittedAt || "")));
+  const canApprove = panelAccessAtLeast(panelUser?.level || "", "root");
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Profile Approval Queue</h2>
+        <p>Website profile edits wait here until root approves them. Approved versions are the only ones shown publicly.</p>
+      </div>
+      ${
+        pending.length
+          ? canApprove
+            ? `<div class="member-chip-grid">${pending.map(([userId, entry]) => profileEditPreviewCard(userId, entry, guildId)).join("")}</div>`
+            : '<p class="muted">There are pending profile edits, but only root can review them.</p>'
+          : '<p class="muted">No profile edits are waiting for approval.</p>'
+      }
+    </section>
+  `;
+}
+
 function profileDirectoryCards(config = {}) {
   const profiles = Object.entries(config.community?.profiles || {})
     .map(([userId, profile]) => ({
@@ -1968,6 +2030,24 @@ function blockedSuggestionTerm(payload = {}, config = {}) {
   return ["name", "title", "body", "suggestion"]
     .map((key) => blockedLeaderboardTerm(payload?.[key], config))
     .find(Boolean) || "";
+}
+
+function blockedProfileTerm(payload = {}, config = {}) {
+  const values = ["displayName", "title", "pronouns", "favoriteArtifact", "quote", "bio"]
+    .map((key) => String(payload?.[key] || ""));
+  const normalizedValues = values.map(normalizeNameModerationText);
+  const configuredTerms = publicGameSettings(config).blockedLeaderboardWords || [];
+  const blockedTerms = [...new Set([...STRICT_PROFILE_BLOCKED_TERMS, ...configuredTerms])];
+  const matchedTerm = blockedTerms.find((term) => normalizedValues.some((value) => value.includes(normalizeNameModerationText(term))));
+  if (matchedTerm) return matchedTerm;
+  if (values.some((value) => /https?:\/\/|discord\.gg|discord\.com\/invite/i.test(value))) return "links";
+  if (values.some((value) => /@everyone|@here|<@&?\d+>|<#\d+>/i.test(value))) return "mentions";
+  if (values.some((value) => /(.)\1{9,}/i.test(value))) return "spam";
+  if (values.some((value) => {
+    const letters = value.replace(/[^a-z]/gi, "");
+    return letters.length >= 18 && letters === letters.toUpperCase();
+  })) return "excessive caps";
+  return "";
 }
 
 function readGameLeaderboard() {
@@ -3263,6 +3343,7 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
         `
           ${memberDirectoryEditor(config.publicSite.members)}
           ${profileEditorSettings(config, guild.roles)}
+          ${profileApprovalQueue(config, guild.id, panelUser)}
           ${profileDirectoryCards(config)}
         `
       );
@@ -4059,6 +4140,10 @@ export function createPanel({
 
   function profileEditPage({ config, member, message = "", error = "" }) {
     const profile = profileFor(config, member.id, member.displayName);
+    const pendingEdit = config.community?.profileEdits?.[member.id]?.status === "pending"
+      ? config.community.profileEdits[member.id]
+      : null;
+    const formProfile = pendingEdit?.draft ? { ...profile, ...pendingEdit.draft } : profile;
     const achievements = derivedAchievements(config, member.id, member.displayName);
     return layout({
       title: "Edit Chipkittle Profile",
@@ -4076,6 +4161,7 @@ export function createPanel({
           </form>
         </section>
         ${error ? `<p class="form-error">${escapeHtml(error)}</p>` : ""}
+        ${pendingEdit ? `<p class="flash">Your latest edit is waiting for root approval. The public site still shows the last approved version.</p>` : ""}
         <form method="post" action="/profile/edit" class="panel-form">
           <section class="panel-section">
             <div class="section-heading">
@@ -4084,33 +4170,33 @@ export function createPanel({
             </div>
             <label>
               Display name
-              <input name="displayName" maxlength="80" value="${escapeHtml(profile.displayName)}">
+              <input name="displayName" maxlength="80" value="${escapeHtml(formProfile.displayName)}">
             </label>
             <label>
               Title
-              <input name="title" maxlength="80" value="${escapeHtml(profile.title)}">
+              <input name="title" maxlength="80" value="${escapeHtml(formProfile.title)}">
             </label>
             <label>
               Pronouns or short tag
-              <input name="pronouns" maxlength="40" value="${escapeHtml(profile.pronouns)}">
+              <input name="pronouns" maxlength="40" value="${escapeHtml(formProfile.pronouns)}">
             </label>
             <label>
               Favorite artifact
-              <input name="favoriteArtifact" maxlength="80" value="${escapeHtml(profile.favoriteArtifact)}">
+              <input name="favoriteArtifact" maxlength="80" value="${escapeHtml(formProfile.favoriteArtifact)}">
             </label>
             <label>
               Tiny quote
-              <input name="quote" maxlength="140" value="${escapeHtml(profile.quote)}">
+              <input name="quote" maxlength="140" value="${escapeHtml(formProfile.quote)}">
             </label>
             <label>
               Bio
-              <textarea name="bio" rows="5" maxlength="260">${escapeHtml(profile.bio)}</textarea>
+              <textarea name="bio" rows="5" maxlength="260">${escapeHtml(formProfile.bio)}</textarea>
             </label>
             <label class="toggle">
-              <input type="checkbox" name="publicVisible" ${isChecked(profile.publicVisible)}>
-              <span>Show my profile on the public member directory</span>
+              <input type="checkbox" name="publicVisible" ${isChecked(formProfile.publicVisible)}>
+              <span>Request showing my profile on the public member directory</span>
             </label>
-            <button type="submit">Save profile</button>
+            <button type="submit">Submit for approval</button>
           </section>
           <section class="panel-section">
             <div class="section-heading">
@@ -4827,7 +4913,7 @@ export function createPanel({
     response.send(profileEditPage({
       config: store.getGuild(verified.guildId),
       member: verified.member,
-      message: request.query.saved ? "Profile saved." : ""
+      message: request.query.saved ? "Profile submitted for root approval." : ""
     }));
   });
 
@@ -4850,9 +4936,7 @@ export function createPanel({
     const favoriteArtifact = String(request.body?.favoriteArtifact || "").trim().slice(0, 80);
     const quote = String(request.body?.quote || "").trim().slice(0, 140);
     const bio = String(request.body?.bio || "").trim().slice(0, 260) || "No ceremonial biography has been recorded yet.";
-
-    await updateProfile(store, verified.guildId, verified.member.id, (profile) => ({
-      ...profile,
+    const draft = {
       displayName,
       title,
       pronouns,
@@ -4860,22 +4944,120 @@ export function createPanel({
       quote,
       bio,
       publicVisible: request.body?.publicVisible === "on"
-    }), verified.member.displayName);
+    };
+    const blockedTerm = blockedProfileTerm(draft, verified.config);
+    if (blockedTerm) {
+      response.status(400).send(profileEditPage({
+        config: store.getGuild(verified.guildId),
+        member: verified.member,
+        error: `That profile edit was blocked by the profile filter: ${blockedTerm}.`
+      }));
+      return;
+    }
+
+    const currentConfig = store.getGuild(verified.guildId);
+    await store.updateGuild(verified.guildId, {
+      community: {
+        profileEdits: {
+          ...(currentConfig.community?.profileEdits || {}),
+          [verified.member.id]: {
+            status: "pending",
+            draft,
+            username: verified.member.user.tag,
+            submittedAt: new Date().toISOString()
+          }
+        }
+      }
+    });
     await addAuditLog(store, verified.guildId, {
       type: "profile",
-      label: "Public profile updated",
-      details: `${verified.member.user.tag} edited their public profile from the website.`,
+      label: "Public profile edit submitted",
+      details: `${verified.member.user.tag} submitted a public profile edit for root approval.`,
       actor: verified.member.user.tag,
       targetId: verified.member.id,
       targetTag: verified.member.user.tag
     }).catch(() => {});
-    writePublicMembersFile(publicMembersFromConfig(store.getGuild(verified.guildId)));
     response.redirect("/profile/edit?saved=1");
   });
 
   app.post("/profile/logout", (request, response) => {
     request.session.publicProfileUser = null;
     response.redirect("/profile/login");
+  });
+
+  app.post("/guilds/:guildId/profiles/:userId/approve", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const targetGuildId = String(request.params.guildId || "");
+      const targetUserId = String(request.params.userId || "");
+      const discordGuild = client.guilds.cache.get(targetGuildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const config = store.getGuild(targetGuildId);
+      const pending = config.community?.profileEdits?.[targetUserId];
+      if (!pending || pending.status !== "pending" || !pending.draft) {
+        response.redirect(`/guilds/${targetGuildId}?section=members&saved=1`);
+        return;
+      }
+      const blockedTerm = blockedProfileTerm(pending.draft, config);
+      if (blockedTerm) {
+        response.redirect(`/guilds/${targetGuildId}?section=members&update=${encodeURIComponent(`profile-filter-${blockedTerm}`)}`);
+        return;
+      }
+      const member = discordGuild.members.cache.get(targetUserId) || await discordGuild.members.fetch(targetUserId).catch(() => null);
+      await updateProfile(store, targetGuildId, targetUserId, (profile) => ({
+        ...profile,
+        ...pending.draft
+      }), member?.displayName || pending.draft.displayName || targetUserId);
+      const nextConfig = store.getGuild(targetGuildId);
+      const nextProfileEdits = { ...(nextConfig.community?.profileEdits || {}) };
+      delete nextProfileEdits[targetUserId];
+      await store.updateGuild(targetGuildId, {
+        community: {
+          profileEdits: nextProfileEdits
+        }
+      });
+      await addAuditLog(store, targetGuildId, {
+        type: "profile",
+        label: "Public profile edit approved",
+        details: `${pending.username || targetUserId}'s website profile edit was approved by root.`,
+        actor: currentPanelUser(request, targetGuildId)?.username || "Panel",
+        targetId: targetUserId,
+        targetTag: pending.username || targetUserId
+      }).catch(() => {});
+      writePublicMembersFile(publicMembersFromConfig(store.getGuild(targetGuildId)));
+      response.redirect(`/guilds/${targetGuildId}?section=members&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/profiles/:userId/reject", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const targetGuildId = String(request.params.guildId || "");
+      const targetUserId = String(request.params.userId || "");
+      const config = store.getGuild(targetGuildId);
+      const pending = config.community?.profileEdits?.[targetUserId];
+      const nextProfileEdits = { ...(config.community?.profileEdits || {}) };
+      delete nextProfileEdits[targetUserId];
+      await store.updateGuild(targetGuildId, {
+        community: {
+          profileEdits: nextProfileEdits
+        }
+      });
+      await addAuditLog(store, targetGuildId, {
+        type: "profile",
+        label: "Public profile edit rejected",
+        details: `${pending?.username || targetUserId}'s website profile edit was rejected by root.`,
+        actor: currentPanelUser(request, targetGuildId)?.username || "Panel",
+        targetId: targetUserId,
+        targetTag: pending?.username || targetUserId
+      }).catch(() => {});
+      response.redirect(`/guilds/${targetGuildId}?section=members&saved=1`);
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get("/login", (request, response) => {

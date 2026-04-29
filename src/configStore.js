@@ -131,6 +131,7 @@ const DEFAULT_CONFIG = {
   },
   community: {
     profiles: {},
+    profileEdits: {},
     artifacts: [],
     auditLog: [],
     analytics: {
