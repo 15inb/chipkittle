@@ -4203,7 +4203,10 @@ export function createPanel({
     const pendingEdit = config.community?.profileEdits?.[member.id]?.status === "pending"
       ? config.community.profileEdits[member.id]
       : null;
-    const formProfile = pendingEdit?.draft ? { ...profile, ...pendingEdit.draft } : profile;
+    const hasApprovedProfile = Boolean(config.community?.profiles?.[member.id]);
+    const formProfile = pendingEdit?.draft
+      ? { ...profile, ...pendingEdit.draft }
+      : { ...profile, publicVisible: hasApprovedProfile ? profile.publicVisible : true };
     const achievements = derivedAchievements(config, member.id, member.displayName);
     return layout({
       title: "Edit Chipkittle Profile",
@@ -5080,6 +5083,7 @@ export function createPanel({
       await updateProfile(store, targetGuildId, targetUserId, (profile) => ({
         ...profile,
         ...pending.draft,
+        publicVisible: true,
         approvedRoleIds: member?.roles?.cache?.map((role) => role.id).filter(Boolean) || profile.approvedRoleIds || []
       }), member?.displayName || pending.draft.displayName || targetUserId);
       const nextConfig = store.getGuild(targetGuildId);

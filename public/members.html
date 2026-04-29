@@ -54,8 +54,8 @@
     const { readCachedJson, fetchCachedJson } = window.ChipkittleSite;
     const grid = document.querySelector("#memberGrid");
     const panelMembersUrl = "https://panel.chipkittle.com/api/public/members";
-    const panelCacheKey = "chipkittle-public-members-v1";
-    const panelCacheTtlMs = 10 * 60 * 1000;
+    const panelCacheKey = "chipkittle-public-members-v2";
+    const panelCacheTtlMs = 0;
 
     function text(value) {
       return String(value || "").replace(/[&<>"']/g, (match) => ({
@@ -71,7 +71,8 @@
       try {
         const payload = await fetchCachedJson(panelMembersUrl, {
           key: panelCacheKey,
-          ttlMs: panelCacheTtlMs
+          ttlMs: panelCacheTtlMs,
+          fetchOptions: { cache: "no-store" }
         });
         if (Array.isArray(payload?.members)) {
           return payload.members;
