@@ -76,6 +76,17 @@ jobs:
                       break
               return "\n".join(output) or "+ No details provided"
 
+          def bullet_lines(lines, max_chars=900, max_lines=8):
+              cleaned_lines = []
+              for line in lines:
+                  cleaned = str(line or "").strip()
+                  if not cleaned:
+                      continue
+                  cleaned = cleaned.lstrip("+").strip()
+                  cleaned_lines.append(f"- {cleaned}")
+              text = shorten_lines(cleaned_lines, max_chars=max_chars, max_lines=max_lines)
+              return text.replace("+ ...more on the public commit page", "- More on the public commit page").replace("+ No details provided", "- No details provided")
+
           head_message_full = normalize_message(head_commit.get("message") or os.environ["HEAD_MESSAGE"] or "")
           head_message = (head_message_full.splitlines()[0] if head_message_full else "No commit message")[:180]
 
@@ -125,20 +136,20 @@ jobs:
                   *(commit.get("removed") or []),
               ]
               category = commit_category(title, changed_files)
-              category_lines[category].append(f"+ {title} ({commit_sha})")
-              commit_lines.append(f"+ {title} ({commit_sha} by {commit_author})")
+              category_lines[category].append(f"{title} ({commit_sha})")
+              commit_lines.append(f"{title} ({commit_sha} by {commit_author})")
 
               for line in body_lines:
                   cleaned = line.strip().lstrip("-* ").strip()
                   if cleaned:
-                      changelog_lines.append(f"+ {cleaned[:150]}")
+                      changelog_lines.append(cleaned[:150])
 
               added.update(commit.get("added") or [])
               modified.update(commit.get("modified") or [])
               removed.update(commit.get("removed") or [])
 
           if not commit_lines:
-              commit_lines = [f"+ {head_message} ({short_sha} by {author})"]
+              commit_lines = [f"{head_message} ({short_sha} by {author})"]
 
           if not changelog_lines:
               changelog_lines = commit_lines[:6]
@@ -156,11 +167,11 @@ jobs:
           category_block_lines = []
           for category, lines in category_lines.items():
               if lines:
-                  category_block_lines.append(f"@@ {category} @@")
+                  category_block_lines.append(f"{category}:")
                   category_block_lines.extend(lines[:5])
-          changelog_block = shorten_lines(category_block_lines or changelog_lines, max_chars=1200, max_lines=14)
-          details_block = shorten_lines(changelog_lines, max_chars=900, max_lines=8)
-          commit_block = shorten_lines(commit_lines, max_chars=900, max_lines=8)
+          changelog_block = bullet_lines(changelog_lines, max_chars=1000, max_lines=8)
+          category_block = bullet_lines(category_block_lines, max_chars=800, max_lines=10)
+          commit_block = bullet_lines(commit_lines, max_chars=900, max_lines=8)
 
           relative_time = "Just now"
           timestamp = os.environ.get("HEAD_TIMESTAMP")
@@ -179,31 +190,44 @@ jobs:
                   minutes = seconds // 60
                   relative_time = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
 
+          fields = [
+              {
+                  "name": "What changed",
+                  "value": changelog_block[:1024],
+                  "inline": False
+              },
+              {
+                  "name": "Files touched",
+                  "value": file_summary[:1024],
+                  "inline": False
+              }
+          ]
+
+          if commit_count > 1:
+              fields.insert(1, {
+                  "name": "Areas",
+                  "value": category_block[:1024],
+                  "inline": False
+              })
+              fields.insert(2, {
+                  "name": "Commits included",
+                  "value": commit_block[:1024],
+                  "inline": False
+              })
+
           payload = {
               "username": "[CK] Commits",
               "allowed_mentions": {"parse": []},
               "embeds": [
                   {
-                      "title": f"Chipkittle Changelog - {commit_count} commit{'s' if commit_count != 1 else ''}",
+                      "title": f"Chipkittle Update - {commit_count} commit{'s' if commit_count != 1 else ''}",
                       "url": commits_url,
                       "description": (
                           f"**{relative_time}**\n\n"
-                          f"[View the public commit page]({commits_url})\n\n"
-                          "**Changelog**\n"
-                          f"```diff\n{changelog_block}\n```\n"
-                          "**Details**\n"
-                          f"```diff\n{details_block}\n```\n"
-                          "**Commits included**\n"
-                          f"```diff\n{commit_block}\n```"
+                          f"[View the public commit page]({commits_url})"
                       ),
                       "color": 3447003,
-                      "fields": [
-                          {
-                              "name": "Files",
-                              "value": file_summary[:1024],
-                              "inline": False
-                          }
-                      ],
+                      "fields": fields,
                       "footer": {"text": f"Latest by {author} | {short_sha} | {repository}"}
                   }
               ]
