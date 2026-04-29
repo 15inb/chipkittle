@@ -2803,7 +2803,6 @@ function oauthConfigRows({ publicUrl = "", clientId = "", discordClientSecret = 
 }
 
 function loginPage(error = "", discordUrl = "", oauthInfo = {}) {
-  const redirectUri = oauthInfo.redirectUri || oauthExpectedRedirect(oauthInfo.publicUrl);
   return layout({
     title: "Sign in",
     body: `
@@ -2821,19 +2820,6 @@ function loginPage(error = "", discordUrl = "", oauthInfo = {}) {
           <p class="field-help">If you were granted access before, sign in with the same Discord account. Password logins are disabled.</p>
           <a class="primary-link secondary-link" href="/recovery">Use root recovery code</a>
         </div>
-      </section>
-      <section class="panel-section oauth-diagnostics">
-        <div class="section-heading">
-          <h2>OAuth Setup Check</h2>
-          <p>Discord must have this exact redirect URI saved in the Developer Portal. Tiny differences count.</p>
-        </div>
-        <div class="oauth-redirect-copy">
-          <code>${escapeHtml(redirectUri)}</code>
-        </div>
-        <div class="oauth-check-list">
-          ${oauthConfigRows({ ...oauthInfo, redirectUri })}
-        </div>
-        <p class="field-help">Developer Portal path: Application &rarr; OAuth2 &rarr; Redirects. Save the redirect above, then restart the panel after changing <code>.env</code>.</p>
       </section>
     `
   });
