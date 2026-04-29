@@ -1400,12 +1400,8 @@ function profileEditPreviewCard(userId, entry = {}, guildId = "") {
       ${draft.quote ? `<p><strong>Quote:</strong> ${escapeHtml(draft.quote)}</p>` : ""}
       <div class="mini-stats"><span>${entry.submittedAt ? `Submitted ${escapeHtml(entry.submittedAt)}` : "Pending"}</span><span>${draft.publicVisible ? "Public requested" : "Hidden requested"}</span></div>
       <div class="inline-controls">
-        <form method="post" action="/guilds/${encodeURIComponent(guildId)}/profiles/${encodeURIComponent(userId)}/approve" class="inline-form">
-          <button type="submit">Approve</button>
-        </form>
-        <form method="post" action="/guilds/${encodeURIComponent(guildId)}/profiles/${encodeURIComponent(userId)}/reject" class="inline-form">
-          <button type="submit" class="danger-button">Reject</button>
-        </form>
+        <button type="button" data-post-action="/guilds/${encodeURIComponent(guildId)}/profiles/${encodeURIComponent(userId)}/approve">Approve</button>
+        <button type="button" class="danger-button" data-post-action="/guilds/${encodeURIComponent(guildId)}/profiles/${encodeURIComponent(userId)}/reject">Reject</button>
       </div>
     </article>
   `;
