@@ -3651,6 +3651,29 @@ button,
   font-size: 13px;
 }
 
+.topbar-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+  padding: 4px;
+}
+
+.topbar-action-group > a,
+.topbar-action-group > button,
+.topbar-action-group > .theme-picker {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.topbar-action-group.account-actions {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
 .panel-ui .topbar-nav a:hover,
 .panel-ui .mode-toggle:hover {
   background: var(--text);
@@ -3673,15 +3696,15 @@ button,
   position: sticky;
   top: 86px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
   max-height: calc(100svh - 104px);
   overflow: auto;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  border-radius: 26px;
+  border-radius: 22px;
   background: rgba(255, 255, 255, 0.78);
   box-shadow: 0 24px 70px rgba(20, 34, 26, 0.1);
   backdrop-filter: blur(18px);
-  padding: 16px;
+  padding: 14px;
 }
 
 .panel-sidebar-head {
@@ -3721,7 +3744,7 @@ button,
 }
 
 .panel-quick-links {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .panel-search-results {
@@ -3765,7 +3788,7 @@ button,
 .panel-quick-links a,
 .panel-nav-links a {
   border: 1px solid rgba(27, 53, 38, 0.1);
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(244, 247, 243, 0.82);
   color: var(--text);
   font-weight: 850;
@@ -3778,17 +3801,23 @@ button,
 }
 
 .panel-nav-group {
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(244, 247, 243, 0.54);
+  padding: 6px;
 }
 
 .panel-nav-group summary {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   cursor: pointer;
   list-style: none;
   color: var(--text);
+  min-height: 38px;
+  border-radius: 12px;
+  padding: 0 8px;
 }
 
 .panel-nav-group summary::-webkit-details-marker {
@@ -3807,27 +3836,34 @@ button,
 }
 
 .panel-nav-links {
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 .panel-nav-links a {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  padding: 9px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 4px;
+  padding: 10px 11px;
   font-size: 14px;
 }
 
-.panel-nav-links b {
+.panel-nav-links a span {
   display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border-radius: 12px;
-  background: rgba(var(--accent-rgb), 0.12);
-  color: var(--accent);
+  gap: 3px;
+  min-width: 0;
+}
+
+.panel-nav-links a strong {
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.panel-nav-links a small {
+  color: var(--muted);
   font-size: 11px;
+  line-height: 1.25;
+  font-weight: 750;
 }
 
 .panel-quick-links a:hover,
@@ -3838,9 +3874,12 @@ button,
   background: rgba(var(--accent-rgb), 0.12);
 }
 
-.panel-nav-links a.active b {
-  background: var(--accent);
-  color: var(--accent-ink);
+.panel-nav-links a.active {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.panel-nav-links a.active small {
+  color: var(--text);
 }
 
 .panel-sidebar-stats {
@@ -4348,16 +4387,112 @@ button:hover,
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
+.dashboard-overview-grid {
+  align-items: start;
+}
+
 .stats-grid {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.dashboard-stat-grid {
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
 }
 
 .stat-card {
   padding: 18px;
 }
 
-.stat-card strong {
+.dashboard-stat-card {
+  min-height: 142px;
+  align-content: start;
+  gap: 10px;
+}
+
+.dashboard-stat-card strong {
   color: var(--accent);
+  order: 2;
+}
+
+.dashboard-stat-card span {
+  order: 1;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.dashboard-stat-card small {
+  order: 3;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.dashboard-panel {
+  gap: 16px;
+}
+
+.compact-list {
+  gap: 10px;
+}
+
+.activity-item {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(244, 247, 243, 0.72);
+  padding: 14px;
+}
+
+.activity-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.activity-item strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.activity-item time,
+.activity-item small {
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.activity-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.empty-state {
+  display: grid;
+  gap: 7px;
+  min-height: 128px;
+  align-content: center;
+  border: 1px dashed var(--line);
+  border-radius: 18px;
+  background: rgba(244, 247, 243, 0.42);
+  padding: 18px;
+}
+
+.empty-state strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.empty-state p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .list-row,
@@ -4433,14 +4568,23 @@ html[data-panel-mode="dark"] .panel-ui .topbar-status,
 html[data-panel-mode="dark"] .panel-ui .topbar-nav a,
 html[data-panel-mode="dark"] .panel-ui .theme-picker,
 html[data-panel-mode="dark"] .panel-ui .mode-toggle,
+html[data-panel-mode="dark"] .topbar-action-group,
 html[data-panel-mode="dark"] .mission-module,
 html[data-panel-mode="dark"] .panel-quick-links a,
+html[data-panel-mode="dark"] .panel-nav-group,
 html[data-panel-mode="dark"] .panel-nav-links a,
 html[data-panel-mode="dark"] .checkbox-grid,
 html[data-panel-mode="dark"] .list-row,
-html[data-panel-mode="dark"] .audit-row {
+html[data-panel-mode="dark"] .audit-row,
+html[data-panel-mode="dark"] .activity-item,
+html[data-panel-mode="dark"] .empty-state {
   background: rgba(18, 29, 25, 0.76);
   color: var(--muted);
+}
+
+html[data-panel-mode="dark"] .topbar-action-group.account-actions,
+html[data-panel-mode="dark"] .panel-nav-links a.active {
+  background: rgba(var(--accent-rgb), 0.16);
 }
 
 html[data-panel-mode="dark"] input,
@@ -4508,6 +4652,21 @@ html[data-panel-mode="dark"] .punishment-modal-backdrop {
 }
 
 @media (max-width: 1180px) {
+  .panel-ui .topbar,
+  .topbar-brand,
+  .topbar-nav {
+    flex-wrap: wrap;
+  }
+
+  .panel-ui .topbar {
+    border-radius: 24px;
+    align-items: flex-start;
+  }
+
+  .topbar-nav {
+    justify-content: flex-start;
+  }
+
   .mission-hero,
   .mission-panel,
   .mission-workbench,
@@ -4518,6 +4677,7 @@ html[data-panel-mode="dark"] .punishment-modal-backdrop {
   .panel-sidebar {
     position: static;
     max-height: none;
+    overflow: visible;
   }
 
   .mission-context-card {
@@ -4546,6 +4706,21 @@ html[data-panel-mode="dark"] .punishment-modal-backdrop {
   .mission-work-surface-head {
     display: grid;
     align-items: start;
+  }
+
+  .topbar-action-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .topbar-action-group > a,
+  .topbar-action-group > button,
+  .topbar-action-group > .theme-picker {
+    flex: 1 1 auto;
+  }
+
+  .panel-quick-links {
+    grid-template-columns: 1fr 1fr;
   }
 
   .mission-readouts {

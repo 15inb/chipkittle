@@ -102,10 +102,13 @@ const SETTINGS_SECTIONS = [
 ];
 
 const SETTINGS_NAV_GROUPS = [
-  { label: "Daily Ops", description: "What staff touches most", sections: ["dashboard", "inbox", "audit", "moderation", "applications", "suggestions"] },
-  { label: "Bot Setup", description: "Bot behavior and command access", sections: ["general", "ai", "commands", "permissions"] },
-  { label: "Site & Games", description: "Public pages, members, and game controls", sections: ["public", "members", "community", "games"] },
-  { label: "Root Tools", description: "Economy, access, backups, and runtime", sections: ["economy", "access", "backups", "server"] }
+  { label: "Dashboard", description: "Overview and review queue", sections: ["dashboard", "inbox", "audit"] },
+  { label: "Server Management", description: "Bot setup, runtime, and command access", sections: ["general", "server", "commands", "permissions"] },
+  { label: "Moderation", description: "Member actions and safety tools", sections: ["moderation", "applications", "suggestions"] },
+  { label: "Economy", description: "Bread, loans, games, and rewards", sections: ["economy", "games"] },
+  { label: "AI", description: "Model, personality, cooldowns, and channels", sections: ["ai"] },
+  { label: "Website", description: "Public site, members, and lore", sections: ["public", "members", "community"] },
+  { label: "Settings", description: "Panel users, access, and backups", sections: ["access", "backups"] }
 ];
 
 const SETTINGS_NAV_MARKS = {
@@ -1220,55 +1223,81 @@ function communityWorkspace(guildId, config = {}) {
   `;
 }
 
+function emptyState(title = "Nothing here yet.", detail = "") {
+  return `
+    <div class="empty-state">
+      <strong>${escapeHtml(title)}</strong>
+      ${detail ? `<p>${escapeHtml(detail)}</p>` : ""}
+    </div>
+  `;
+}
+
+function statCard({ label, value, help = "" }) {
+  const formattedValue = Number.isFinite(Number(value)) ? Number(value).toLocaleString() : value;
+  return `
+    <article class="stat-card dashboard-stat-card" ${help ? `title="${escapeHtml(help)}"` : ""}>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(formattedValue)}</strong>
+      ${help ? `<small>${escapeHtml(help)}</small>` : ""}
+    </article>
+  `;
+}
+
+function dashboardPanel(title = "", description = "", innerHtml = "") {
+  return `
+    <section class="panel-section dashboard-panel">
+      <div class="section-heading">
+        <h2>${escapeHtml(title)}</h2>
+        ${description ? `<p>${escapeHtml(description)}</p>` : ""}
+      </div>
+      ${innerHtml}
+    </section>
+  `;
+}
+
+function activityItem({ title = "", source = "", timestamp = "", description = "" } = {}) {
+  return `
+    <article class="activity-item">
+      <div class="activity-item-head">
+        <strong>${escapeHtml(title || "Activity")}</strong>
+        ${timestamp ? `<time>${escapeHtml(timestamp)}</time>` : ""}
+      </div>
+      ${source ? `<small>${escapeHtml(source)}</small>` : ""}
+      ${description ? `<p>${escapeHtml(description)}</p>` : ""}
+    </article>
+  `;
+}
+
 function dashboardCards(guild, config = {}) {
   const snapshot = communitySnapshot(config);
   const top = topCommands(config, 5);
   const auditLog = (config.community?.auditLog || []).slice(0, 8);
   const recentPunishments = (config.community?.auditLog || []).filter((entry) => String(entry.type || "") === "moderation").slice(0, 6);
+  const statCards = [
+    { label: "Members", value: guild.memberCount, help: "Current Discord server member count." },
+    { label: "Commands Run", value: snapshot.commandsRun, help: "Total tracked bot commands used by members." },
+    { label: "AI Replies", value: snapshot.aiReplies, help: "Lore chat and AI responses sent by the bot." },
+    { label: "Applications", value: snapshot.applicationsOpened, help: "Membership applications opened through the bot." },
+    { label: "Moderation Actions", value: recentPunishments.length, help: "Recent moderation entries in the audit feed." },
+    { label: "Artifacts", value: snapshot.artifacts, help: "Lore artifacts registered for the public archive." },
+    { label: "Shop Purchases", value: snapshot.shopPurchases, help: "Bread shop purchases and profile cosmetics bought." }
+  ];
   return `
-    <section class="panel-section">
-      <div class="section-heading">
-        <h2>Overview</h2>
-        <p>Live server and community stats pulled from the bot runtime.</p>
+    ${dashboardPanel("Control Panel Overview", "Live server health, community activity, and key bot signals.", `
+      <div class="stats-grid dashboard-stat-grid">
+        ${statCards.map((card) => statCard(card)).join("")}
       </div>
-      <div class="stats-grid">
-        <article class="stat-card"><strong>${escapeHtml(guild.memberCount)}</strong><span>Members</span></article>
-        <article class="stat-card"><strong>${escapeHtml(snapshot.commandsRun)}</strong><span>Commands Run</span></article>
-        <article class="stat-card"><strong>${escapeHtml(snapshot.aiReplies)}</strong><span>AI Replies</span></article>
-        <article class="stat-card"><strong>${escapeHtml(snapshot.applicationsOpened)}</strong><span>Applications</span></article>
-        <article class="stat-card"><strong>${escapeHtml(recentPunishments.length)}</strong><span>Recent Punishments</span></article>
-        <article class="stat-card"><strong>${escapeHtml(snapshot.artifacts)}</strong><span>Artifacts</span></article>
-        <article class="stat-card"><strong>${escapeHtml(snapshot.shopPurchases)}</strong><span>Shop Purchases</span></article>
-      </div>
-    </section>
-    <div class="dashboard-grid">
-      <section class="panel-section">
-        <div class="section-heading">
-          <h2>Top Commands</h2>
-          <p>The commands members are using most often.</p>
-        </div>
-        ${top.length
-          ? `<div class="stack-list">${top.map((item) => `<div class="list-row"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.count)} uses</span></div>`).join("")}</div>`
-          : '<p class="muted">No command activity yet.</p>'}
-      </section>
-      <section class="panel-section">
-        <div class="section-heading">
-          <h2>Recent Punishments</h2>
-          <p>Newest moderation actions recorded by the bot and panel.</p>
-        </div>
-        ${recentPunishments.length
-          ? `<div class="stack-list">${recentPunishments.map((entry) => `<div class="audit-row"><strong>${escapeHtml(entry.label || entry.action || "Moderation action")}</strong><small>${escapeHtml(entry.targetTag || entry.targetId || "Unknown target")} &middot; ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.details || "No details recorded.")}</p></div>`).join("")}</div>`
-          : '<p class="muted">No moderation actions yet.</p>'}
-      </section>
-      <section class="panel-section">
-        <div class="section-heading">
-          <h2>Activity Feed</h2>
-          <p>Recent application, moderation, shop, and profile events.</p>
-        </div>
-        ${auditLog.length
-          ? `<div class="stack-list">${auditLog.map((entry) => `<div class="audit-row"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.actor || "System")} &middot; ${escapeHtml(entry.createdAt || "")}</small><p>${escapeHtml(entry.details || "")}</p></div>`).join("")}</div>`
-          : '<p class="muted">No audit activity yet.</p>'}
-      </section>
+    `)}
+    <div class="dashboard-grid dashboard-overview-grid">
+      ${dashboardPanel("Top Commands", "Commands members are using most often.", top.length
+        ? `<div class="stack-list compact-list">${top.map((item) => activityItem({ title: item.name, source: "Command usage", timestamp: `${item.count} uses`, description: "Tracked from bot command analytics." })).join("")}</div>`
+        : emptyState("No command activity yet.", "Once members use bot commands, the most common ones will appear here."))}
+      ${dashboardPanel("Recent Punishments", "Newest moderation actions recorded by the bot and panel.", recentPunishments.length
+        ? `<div class="stack-list compact-list">${recentPunishments.map((entry) => activityItem({ title: entry.label || entry.action || "Moderation action", source: entry.targetTag || entry.targetId || "Unknown target", timestamp: entry.createdAt || "", description: entry.details || "No details recorded." })).join("")}</div>`
+        : emptyState("No moderation actions yet.", "Warnings, timeouts, kicks, bans, and panel punishments will show here."))}
+      ${dashboardPanel("Activity Feed", "Recent application, moderation, shop, and profile events.", auditLog.length
+        ? `<div class="stack-list compact-list">${auditLog.map((entry) => activityItem({ title: entry.label || "Panel activity", source: entry.actor || "System", timestamp: entry.createdAt || "", description: entry.details || "No details recorded." })).join("")}</div>`
+        : emptyState("No audit activity yet.", "Panel changes and bot activity will appear here as they happen."))}
     </div>
   `;
 }
@@ -2668,6 +2697,18 @@ function restorePartialForScope(scope, payload, guildId) {
 }
 
 function layout({ title, body, user, flash = "" }) {
+  const topbarActions = user
+    ? `
+      <div class="topbar-action-group">
+        <a href="https://chipkittle.com" target="_blank" rel="noreferrer">Public Website</a>
+        <a href="/commits">Commits</a>
+      </div>
+      <div class="topbar-action-group account-actions">
+        <a href="/account">My Account</a>
+        <a href="/logout">Sign out</a>
+      </div>
+    `
+    : '<div class="topbar-action-group account-actions"><a href="/login">Sign in</a></div>';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -2683,7 +2724,7 @@ function layout({ title, body, user, flash = "" }) {
           return fallback;
         }
       };
-      const theme = readSetting("chipkittlePanelTheme", "green");
+      const theme = readSetting("chipkittlePanelTheme", "gold");
       const storedMode = readSetting("chipkittlePanelMode", "");
       let mode = storedMode || "dark";
       try {
@@ -2715,22 +2756,20 @@ function layout({ title, body, user, flash = "" }) {
         </div>
       </div>
       <nav class="topbar-nav">
-        <label class="theme-picker">
-          <span>Theme</span>
-          <select data-theme-picker aria-label="Panel color theme">
-            <option value="green">Green</option>
-            <option value="blue">Blue</option>
-            <option value="red">Red</option>
-            <option value="purple">Purple</option>
-            <option value="gold">Gold</option>
-          </select>
-        </label>
-        <button type="button" class="mode-toggle" data-mode-toggle aria-label="Toggle panel light or dark mode">Dark mode</button>
-        <a href="/">Panel</a>
-        <a href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
-        ${user ? '<a href="/account">My account</a>' : ""}
-        ${user ? '<a href="/commits">Commits</a>' : ""}
-        ${user ? '<a href="/logout">Sign out</a>' : '<a href="/login">Sign in</a>'}
+        <div class="topbar-action-group">
+          <label class="theme-picker">
+            <span>Theme</span>
+            <select data-theme-picker aria-label="Panel color theme">
+              <option value="green">Green</option>
+              <option value="blue">Blue</option>
+              <option value="red">Red</option>
+              <option value="purple">Purple</option>
+              <option value="gold">Gold</option>
+            </select>
+          </label>
+          <button type="button" class="mode-toggle" data-mode-toggle aria-label="Toggle panel light or dark mode">Dark mode</button>
+        </div>
+        ${topbarActions}
       </nav>
     </header>
     <main class="content content-wide panel-content">
@@ -2742,10 +2781,10 @@ function layout({ title, body, user, flash = "" }) {
     (() => {
       const picker = document.querySelector("[data-theme-picker]");
       if (!picker) return;
-      const current = document.documentElement.dataset.panelTheme || "green";
+      const current = document.documentElement.dataset.panelTheme || "gold";
       picker.value = current;
       picker.addEventListener("change", () => {
-        const next = picker.value || "green";
+        const next = picker.value || "gold";
         document.documentElement.dataset.panelTheme = next;
         try {
           localStorage.setItem("chipkittlePanelTheme", next);
@@ -3588,8 +3627,10 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
                   if (!section) return "";
                   return `
                     <a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}" data-nav-link data-nav-text="${escapeHtml(`${section.label} ${section.description} ${group.label}`)}">
-                      <b>${escapeHtml(SETTINGS_NAV_MARKS[section.id] || section.label.slice(0, 2).toUpperCase())}</b>
-                      <span>${escapeHtml(section.label)}</span>
+                      <span>
+                        <strong>${escapeHtml(section.label)}</strong>
+                        <small>${escapeHtml(section.description)}</small>
+                      </span>
                     </a>`;
                 }).join("")}
               </div>
@@ -4222,7 +4263,7 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
               </div>
               <div class="mission-context-actions compact-actions">
                 ${mobileSectionSelect(guild, currentSection, panelUser)}
-                <a class="secondary-button" href="https://chipkittle.com" target="_blank" rel="noreferrer">Website</a>
+                <a class="secondary-button" href="https://chipkittle.com" target="_blank" rel="noreferrer">Open Website</a>
                 <a class="secondary-button" href="/commits">Commits</a>
               </div>
             </div>
