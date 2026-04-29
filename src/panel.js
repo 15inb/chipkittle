@@ -4805,9 +4805,17 @@ export function createPanel({
   }
 
   function setPublicApiHeaders(response) {
-    response.setHeader("Access-Control-Allow-Origin", "*");
+    const origin = String(response.req?.headers?.origin || "");
+    const allowedOrigin = /^https?:\/\/([a-z0-9-]+\.)?chipkittle\.com$/i.test(origin)
+      || /^https?:\/\/localhost(?::\d+)?$/i.test(origin)
+      || /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin);
+    response.setHeader("Access-Control-Allow-Origin", allowedOrigin ? origin : "*");
     response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (allowedOrigin) {
+      response.setHeader("Access-Control-Allow-Credentials", "true");
+      response.setHeader("Vary", "Origin");
+    }
     response.setHeader("Cache-Control", "no-store");
   }
 

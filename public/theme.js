@@ -1,4 +1,5 @@
 (function () {
+  const PANEL_BASE = "https://panel.chipkittle.com";
   const storageKey = "chipkittle-theme";
   const root = document.documentElement;
   function safeStorageGet(key) {
@@ -99,17 +100,16 @@
       const account = document.createElement("span");
       account.className = "public-account";
       account.dataset.publicAccount = "loading";
-      const next = encodeURIComponent(`${window.location.pathname}${window.location.search}`);
-      account.innerHTML = `<a class="nav-button account-login" href="/profile/login?next=${next}">Log in</a>`;
+      account.innerHTML = `<a class="nav-button account-login" href="${PANEL_BASE}/profile/login">Log in</a>`;
       actions.prepend(account);
 
-      fetch("/api/public/me", { cache: "no-store", credentials: "same-origin" })
+      fetch(`${PANEL_BASE}/api/public/me`, { cache: "no-store", credentials: "include" })
         .then((response) => response.ok ? response.json() : { authenticated: false })
         .then((payload) => {
           if (!payload?.authenticated || !payload.user) return;
           account.dataset.publicAccount = "ready";
           account.innerHTML = `
-            <a class="account-chip" href="/profile/edit" title="Edit your Chipkittle profile">
+            <a class="account-chip" href="${PANEL_BASE}/profile/edit" title="Edit your Chipkittle profile">
               ${payload.user.avatarUrl ? `<img src="${escapeHtml(payload.user.avatarUrl)}" alt="">` : ""}
               <span>${escapeHtml(payload.user.displayName || payload.user.username || "Member")}</span>
               <small>${Number(payload.user.walletBread || 0).toLocaleString()} bread</small>
@@ -127,6 +127,7 @@
   window.ChipkittleSite = Object.assign(window.ChipkittleSite || {}, {
     debounce,
     escapeHtml,
+    panelBase: PANEL_BASE,
     readCachedJson,
     fetchCachedJson
   });

@@ -83,7 +83,7 @@ export function createGameServices(gameId, options) {
   async function loadCurrentUser() {
     if (currentUser) return currentUser;
     try {
-      const response = await fetch("/api/public/me", { cache: "no-store", credentials: "same-origin" });
+      const response = await fetch(`${PANEL_BASE}/api/public/me`, { cache: "no-store", credentials: "include" });
       const payload = await response.json().catch(() => ({}));
       if (response.ok && payload?.authenticated && payload.user) {
         currentUser = payload.user;
@@ -156,7 +156,7 @@ export function createGameServices(gameId, options) {
             </label>
             <button type="submit">${currentUser ? "Claim to my account" : "Claim to Discord"}</button>
           </form>
-          ${currentUser ? "" : `<a class="button secondary" href="/profile/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}">Log in to auto-claim</a>`}
+          ${currentUser ? "" : `<a class="button secondary" href="${PANEL_BASE}/profile/login">Log in to auto-claim</a>`}
           <small data-claim-status></small>
         `
       : `<span>Discord claim</span><small>${escapeHtml(message)}</small>`;
@@ -191,10 +191,10 @@ export function createGameServices(gameId, options) {
     if (!user) localStorage.setItem(DISCORD_ID_KEY, discordId);
     setClaimStatus("Claiming bread...");
     try {
-      const response = await fetch(user ? "/api/public/dash-claim/redeem" : claimRedeemUrl, {
+      const response = await fetch(claimRedeemUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: user ? "same-origin" : "omit",
+        credentials: user ? "include" : "omit",
         body: JSON.stringify(user ? { code: activeClaim.code } : { code: activeClaim.code, discordId })
       });
       const payload = await response.json().catch(() => ({}));
