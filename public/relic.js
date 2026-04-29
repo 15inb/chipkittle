@@ -252,6 +252,12 @@ const enemyTypes = {
   wisp: { hp: 22, speed: 190, radius: 14, damage: 7, value: 30, color: "#79eaff" },
   spitter: { hp: 48, speed: 112, radius: 20, damage: 10, value: 46, color: "#c68cff" },
   guardian: { hp: 150, speed: 58, radius: 35, damage: 20, value: 82, color: "#85ffd2" },
+  charger: { hp: 76, speed: 118, radius: 23, damage: 18, value: 62, color: "#ffb35c" },
+  splitter: { hp: 64, speed: 105, radius: 24, damage: 12, value: 58, color: "#b7ff4f" },
+  healer: { hp: 70, speed: 92, radius: 22, damage: 8, value: 72, color: "#ff8fd8" },
+  mine: { hp: 30, speed: 42, radius: 18, damage: 28, value: 38, color: "#ffdf6e" },
+  fragment: { hp: 18, speed: 155, radius: 14, damage: 5, value: 10, color: "#d7ff91" },
+  miniboss: { hp: 340, speed: 72, radius: 44, damage: 24, value: 220, color: "#ff6fb4" },
   boss: { hp: 720, speed: 64, radius: 54, damage: 26, value: 480, color: "#ff7373" }
 };
 
@@ -441,6 +447,10 @@ function spawnEnemy(type = "mite") {
     hitFlash: 0,
     attackCooldown: 0,
     specialCooldown: rand(1.2, 3.4),
+    state: "idle",
+    stateTimer: 0,
+    chargeX: 0,
+    chargeY: 0,
     phase: rand(0, Math.PI * 2)
   });
 }
@@ -701,11 +711,21 @@ function updateWave(dt) {
     if (state.wave > 1 && roll < 0.22) type = "wisp";
     if (state.wave > 3 && roll > 0.42 && roll < 0.58) type = "spitter";
     if (state.wave > 6 && roll > 0.86) type = "guardian";
+    if (state.wave > 4 && roll > 0.58 && roll < 0.68) type = "charger";
+    if (state.wave > 5 && roll > 0.31 && roll < 0.41) type = "splitter";
+    if (state.wave > 7 && roll > 0.16 && roll < 0.23) type = "healer";
+    if (state.wave > 8 && roll > 0.68 && roll < 0.76) type = "mine";
     spawnEnemy(type);
     if (state.wave > 4 && Math.random() < 0.18) spawnEnemy("mite");
     state.spawnTimer = Math.max(0.22, 1.05 - state.wave * 0.055) / state.difficulty;
   }
   if (state.wave > 2 && Math.random() < dt * 0.035) spawnHazard();
+  if (state.wave > 3 && state.wave % 3 === 0 && state.wave % 4 !== 0 && !state.bossSpawned && state.waveTimer > 7) {
+    spawnEnemy("miniboss");
+    state.bossSpawned = true;
+    announce("Mini-boss entering the den. Horrible posture.", "#ff9bd6");
+    audio.wave();
+  }
   if (state.wave % 4 === 0 && !state.bossSpawned && state.waveTimer > 8) {
     spawnEnemy("boss");
     state.bossSpawned = true;
@@ -734,6 +754,33 @@ function updateEnemies(dt) {
     enemy.hitFlash -= dt;
     enemy.attackCooldown -= dt;
     enemy.specialCooldown -= dt;
+    enemy.stateTimer -= dt;
+
+    if (enemy.type === "charger") {
+      if (enemy.state === "idle" && enemy.specialCooldown <= 0 && dist < 680) {
+        enemy.state = "telegraph";
+        enemy.stateTimer = 0.72;
+        enemy.chargeX = nx;
+        enemy.chargeY = ny;
+        enemy.specialCooldown = rand(3.4, 4.7);
+        floatingText(enemy.x, enemy.y - enemy.radius - 8, "!", "#ffdf6e");
+      } else if (enemy.state === "telegraph" && enemy.stateTimer <= 0) {
+        enemy.state = "charging";
+        enemy.stateTimer = 0.42;
+        enemy.vx = enemy.chargeX * 780;
+        enemy.vy = enemy.chargeY * 780;
+        camera.trauma = Math.max(camera.trauma, 0.12);
+      } else if (enemy.state === "charging" && enemy.stateTimer <= 0) {
+        enemy.state = "idle";
+      }
+    }
+
+    if (enemy.type === "mine" && dist < 110 && enemy.specialCooldown <= 0) {
+      enemy.hp = 0;
+      shockwave(enemy.x, enemy.y, 170, 58);
+      for (let p = 0; p < 28; p += 1) particle(enemy.x, enemy.y, rand(-320, 320), rand(-320, 320), rand(0.22, 0.6), enemy.color, rand(3, 8));
+      camera.trauma = Math.max(camera.trauma, 0.34);
+    }
 
     if (enemy.type === "spitter" && enemy.specialCooldown <= 0 && dist < 760) {
       const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
@@ -746,6 +793,16 @@ function updateEnemies(dt) {
     if (enemy.type === "guardian" && enemy.specialCooldown <= 0) {
       shockwave(enemy.x, enemy.y, 118, 24);
       enemy.specialCooldown = rand(4.2, 5.8);
+    }
+
+    if (enemy.type === "healer" && enemy.specialCooldown <= 0) {
+      healNearbyEnemies(enemy);
+      enemy.specialCooldown = rand(3.2, 4.8);
+    }
+
+    if (enemy.type === "miniboss" && enemy.specialCooldown <= 0) {
+      miniBossPattern(enemy);
+      enemy.specialCooldown = rand(2.4, 3.6);
     }
 
     if (enemy.type === "boss" && enemy.specialCooldown <= 0) {
@@ -788,6 +845,33 @@ function bossPattern(enemy) {
   camera.trauma = Math.max(camera.trauma, 0.16);
 }
 
+function miniBossPattern(enemy) {
+  const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+  for (let i = 0; i < 7; i += 1) {
+    const angle = base + (i - 3) * 0.26;
+    spawnEnemyShot(enemy.x, enemy.y, angle, 330 + state.wave * 6, enemy.damage * 0.72, "#ff8fd8", 9);
+  }
+  if (!state.waveClearing && Math.random() < 0.5) {
+    spawnEnemy(Math.random() < 0.5 ? "charger" : "spitter");
+  }
+  camera.trauma = Math.max(camera.trauma, 0.14);
+}
+
+function healNearbyEnemies(source) {
+  let healed = 0;
+  for (const enemy of pools.enemies) {
+    if (enemy === source || enemy.hp <= 0 || enemy.hp >= enemy.maxHp) continue;
+    if (distanceSq(source, enemy) > 240 ** 2) continue;
+    enemy.hp = Math.min(enemy.maxHp, enemy.hp + 34 + state.wave * 3);
+    enemy.hitFlash = 0.1;
+    healed += 1;
+    particle(enemy.x, enemy.y, rand(-50, 50), rand(-90, -20), 0.55, "#ff8fd8", 4);
+  }
+  if (healed) {
+    floatingText(source.x, source.y - source.radius - 10, `HEAL x${healed}`, "#ff8fd8");
+  }
+}
+
 function killEnemy(enemy, index) {
   pools.enemies.splice(index, 1);
   state.kills += 1;
@@ -795,15 +879,32 @@ function killEnemy(enemy, index) {
   state.comboTimer = 2.5;
   const scoreGain = Math.floor(enemy.value * state.combo);
   state.score += scoreGain;
-  player.relic = clamp(player.relic + (enemy.type === "boss" ? 32 : 8), 0, player.relicMax);
+  const relicGain = enemy.type === "boss" ? 32 : enemy.type === "miniboss" ? 22 : 8;
+  player.relic = clamp(player.relic + relicGain, 0, player.relicMax);
   if (state.kills === 25) unlockAchievement("First Furstorm", "25 curse-things removed.");
   if (state.combo >= 3) unlockAchievement("Combo Creature", "Reached a 3x score chain.");
   if (enemy.type === "boss") unlockAchievement("Boss Handler", "Defeated a boss wave.");
+  if (enemy.type === "miniboss") unlockAchievement("Mini Problem", "Defeated a mini-boss.");
   audio.pickup();
   floatingText(enemy.x, enemy.y - enemy.radius, `+${scoreGain}`, enemy.color);
-  const breadDrops = enemy.type === "boss" ? 10 : enemy.type === "brute" ? 3 : 1;
+  const breadDrops = enemy.type === "boss" ? 10 : enemy.type === "miniboss" ? 7 : enemy.type === "brute" || enemy.type === "guardian" ? 3 : 1;
   for (let i = 0; i < breadDrops; i += 1) spawnPickup(enemy.x + rand(-24, 24), enemy.y + rand(-24, 24), "bread", enemy.type === "boss" ? 5 : 1);
-  if (Math.random() < 0.16 || enemy.type === "boss") spawnPickup(enemy.x, enemy.y, "relic", enemy.type === "boss" ? 18 : 8);
+  if (enemy.type === "splitter") {
+    for (let i = 0; i < 3; i += 1) {
+      spawnEnemy("mite");
+      const child = pools.enemies[pools.enemies.length - 1];
+      child.x = enemy.x + rand(-18, 18);
+      child.y = enemy.y + rand(-18, 18);
+      child.hp *= 0.55;
+      child.maxHp = child.hp;
+      child.radius *= 0.82;
+      child.value = Math.floor(child.value * 0.45);
+      child.type = "fragment";
+      child.color = "#d7ff91";
+      child.damage = Math.max(3, child.damage * 0.55);
+    }
+  }
+  if (Math.random() < 0.16 || enemy.type === "boss" || enemy.type === "miniboss") spawnPickup(enemy.x, enemy.y, "relic", enemy.type === "boss" ? 18 : enemy.type === "miniboss" ? 14 : 8);
   for (let i = 0; i < 20; i += 1) particle(enemy.x, enemy.y, rand(-220, 220), rand(-220, 220), rand(0.28, 0.8), enemy.color, rand(2, 6));
   if (state.flags.has("death-echo") && Math.random() < 0.22) {
     shockwave(enemy.x, enemy.y, 145, 48);
@@ -978,6 +1079,8 @@ function updateSidebar() {
     `<span>Biome <b>${safeName(state.biome)}</b></span>`,
     `<span>Kills <b>${state.kills}</b></span>`,
     `<span>Boss <b>${boss ? `${Math.ceil(Math.max(0, boss.hp))} HP` : "Dormant"}</b></span>`,
+    `<span>Mini-boss <b>${pools.enemies.some((enemy) => enemy.type === "miniboss") ? "Active" : "Clear"}</b></span>`,
+    `<span>Threat Mix <b>${new Set(pools.enemies.map((enemy) => enemy.type)).size || 0}</b></span>`,
     `<span>Achievements <b>${state.achievements.size}</b></span>`
   ].join("");
 }
@@ -1128,12 +1231,48 @@ function drawEnemies() {
   for (const enemy of pools.enemies) {
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
+    if (enemy.type === "charger" && enemy.state === "telegraph") {
+      ctx.save();
+      ctx.globalAlpha = 0.55 + Math.sin(state.time * 20) * 0.2;
+      ctx.strokeStyle = "#ffdf6e";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(enemy.chargeX * 120, enemy.chargeY * 120);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (enemy.type === "healer") {
+      ctx.save();
+      ctx.globalAlpha = 0.22 + Math.sin(state.time * 5 + enemy.phase) * 0.08;
+      ctx.strokeStyle = enemy.color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 120, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.fillStyle = enemy.hitFlash > 0 ? "#ffffff" : enemy.color;
     ctx.shadowColor = enemy.color;
-    ctx.shadowBlur = enemy.type === "boss" ? 34 : 16;
+    ctx.shadowBlur = enemy.type === "boss" || enemy.type === "miniboss" ? 34 : 16;
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+    if (enemy.type === "mine") {
+      ctx.moveTo(0, -enemy.radius);
+      for (let i = 1; i < 8; i += 1) {
+        const a = -Math.PI / 2 + i * Math.PI * 2 / 8;
+        const r = i % 2 ? enemy.radius * 0.58 : enemy.radius;
+        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+    } else {
+      ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+    }
     ctx.fill();
+    if (enemy.type === "boss" || enemy.type === "miniboss") {
+      ctx.strokeStyle = "rgba(255,255,255,0.68)";
+      ctx.lineWidth = enemy.type === "boss" ? 4 : 3;
+      ctx.stroke();
+    }
     ctx.shadowBlur = 0;
     ctx.fillStyle = "rgba(2,6,4,0.84)";
     ctx.beginPath();
@@ -1256,6 +1395,7 @@ function drawMinimap() {
   ctx.fill();
   ctx.fillStyle = "#ff7373";
   for (const enemy of pools.enemies.slice(0, 80)) {
+    ctx.fillStyle = enemy.type === "boss" ? "#ff7373" : enemy.type === "miniboss" ? "#ff8fd8" : enemy.type === "healer" ? "#ff8fd8" : enemy.type === "charger" ? "#ffdf6e" : "#ff7373";
     ctx.fillRect(x + enemy.x * sx - 1.5, y + enemy.y * sy - 1.5, 3, 3);
   }
   ctx.restore();
