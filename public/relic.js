@@ -19,6 +19,7 @@ const essenceCounter = document.getElementById("relicEssence");
 const metaUpgradeList = document.getElementById("relicMetaUpgrades");
 const upgradeModal = document.getElementById("relicUpgradeModal");
 const upgradeGrid = document.getElementById("relicUpgradeGrid");
+const fullscreenButton = document.getElementById("relicFullscreen");
 
 const hud = {
   wave: document.getElementById("hudWave"),
@@ -389,11 +390,13 @@ function resetRun(practice = false) {
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  const width = Math.max(320, Math.floor(rect.width));
+  const height = Math.max(180, Math.floor(rect.height || rect.width * 9 / 16));
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  VIEW.width = rect.width;
-  VIEW.height = rect.height;
+  VIEW.width = width;
+  VIEW.height = height;
 }
 
 function screenToWorld(event) {
@@ -1316,6 +1319,21 @@ metaUpgradeList.addEventListener("click", (event) => {
 });
 startButton.addEventListener("click", () => resetRun(false));
 practiceButton.addEventListener("click", () => resetRun(true));
+fullscreenButton.addEventListener("click", async () => {
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await document.querySelector(".relic-stage-wrap")?.requestFullscreen();
+    }
+    setTimeout(resizeCanvas, 80);
+  } catch {
+    announce("Fullscreen refused by the browser. Very official.", "#ffcf8a");
+  }
+});
+document.addEventListener("fullscreenchange", () => {
+  setTimeout(resizeCanvas, 80);
+});
 
 resizeCanvas();
 renderMetaUpgrades();
