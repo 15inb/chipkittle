@@ -59,18 +59,7 @@ const DEFAULT_CONFIG = {
   },
   cooldowns: {},
   publicSite: {
-    members: [
-      {
-        name: "Chipkittle",
-        role: "Artifact Keeper",
-        bio: "Guardian of the suit, the glow, and the strange little rituals."
-      },
-      {
-        name: "#CK Members",
-        role: "Round Table",
-        bio: "The people who keep the Discord moving and the bread economy unstable."
-      }
-    ],
+    members: [],
     games: {
       blockedLeaderboardWords: [],
       maxLeaderboardEntriesPerGame: 10,
@@ -85,7 +74,8 @@ const DEFAULT_CONFIG = {
     },
     profileEditor: {
       enabled: true,
-      allowedRoleIds: []
+      allowedRoleIds: [],
+      roleOrderIds: []
     }
   },
   ai: {
@@ -247,6 +237,9 @@ function mergeConfig(config = {}) {
         ...(config.publicSite?.profileEditor || {}),
         allowedRoleIds: Array.isArray(config.publicSite?.profileEditor?.allowedRoleIds)
           ? config.publicSite.profileEditor.allowedRoleIds
+          : [],
+        roleOrderIds: Array.isArray(config.publicSite?.profileEditor?.roleOrderIds)
+          ? config.publicSite.profileEditor.roleOrderIds
           : []
       }
     },
@@ -421,7 +414,10 @@ export class ConfigStore {
           ...(partialConfig.publicSite?.profileEditor || {}),
           allowedRoleIds: Array.isArray(partialConfig.publicSite?.profileEditor?.allowedRoleIds)
             ? partialConfig.publicSite.profileEditor.allowedRoleIds
-            : this.getGuild(guildId).publicSite.profileEditor.allowedRoleIds
+            : this.getGuild(guildId).publicSite.profileEditor.allowedRoleIds,
+          roleOrderIds: Array.isArray(partialConfig.publicSite?.profileEditor?.roleOrderIds)
+            ? partialConfig.publicSite.profileEditor.roleOrderIds
+            : this.getGuild(guildId).publicSite.profileEditor.roleOrderIds
         }
       },
       ai: {

@@ -164,6 +164,7 @@ export function profileFor(config = {}, userId, fallbackName = "") {
     favoriteArtifact: String(stored.favoriteArtifact || "").slice(0, 80),
     quote: String(stored.quote || "").slice(0, 140),
     publicVisible: Boolean(stored.publicVisible),
+    approvedRoleIds: Array.isArray(stored.approvedRoleIds) ? stored.approvedRoleIds.map((roleId) => String(roleId)).filter(Boolean).slice(0, 50) : [],
     vouches: Array.isArray(stored.vouches) ? stored.vouches.map((entry) => ({
       from: String(entry.from || ""),
       name: String(entry.name || "").slice(0, 80),

@@ -16,7 +16,6 @@ import {
   derivedAchievements,
   parseArtifactDirectory,
   profileFor,
-  publicMemberCards,
   topCommands,
   updateProfile,
 } from "./communityFeatures.js";
@@ -1347,6 +1346,49 @@ function memberDirectoryEditor(members = []) {
   `;
 }
 
+function roleOrderText(roleIds = [], roles = []) {
+  const roleById = new Map((roles || []).map((role) => [String(role.id), role]));
+  return (roleIds || [])
+    .map((roleId) => {
+      const role = roleById.get(String(roleId));
+      return role ? `${role.id} | ${role.name}` : String(roleId);
+    })
+    .join("\n");
+}
+
+function parseRoleOrder(value = "") {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim().split("|")[0].replace(/\D/g, ""))
+    .filter((roleId, index, all) => roleId && all.indexOf(roleId) === index)
+    .slice(0, 50);
+}
+
+function suggestedRoleOrderText(roles = []) {
+  return [...(roles || [])]
+    .filter((role) => role.name !== "@everyone")
+    .sort((a, b) => (b.position || 0) - (a.position || 0) || a.name.localeCompare(b.name))
+    .map((role) => `${role.id} | ${role.name}`)
+    .join("\n");
+}
+
+function profileRoleOrderSettings(config = {}, roles = []) {
+  const roleOrderIds = config.publicSite?.profileEditor?.roleOrderIds || [];
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Public Member Order</h2>
+        <p>Root controls the public member list order by role. Put the most important roles at the top; members are sorted by their highest matching role.</p>
+      </div>
+      <label>
+        Role order, highest first
+        <textarea name="profileEditorRoleOrderIds" rows="8" placeholder="${escapeHtml(suggestedRoleOrderText(roles))}">${escapeHtml(roleOrderText(roleOrderIds, roles))}</textarea>
+      </label>
+      <p class="field-help">Format: <code>role id | role name</code>, one per line. The name is just for readability; only the ID is saved.</p>
+    </section>
+  `;
+}
+
 function profileEditPreviewCard(userId, entry = {}, guildId = "") {
   const draft = entry.draft || {};
   return `
@@ -1443,11 +1485,27 @@ function profileEditorSettings(config = {}, roles = []) {
   `;
 }
 
-function publicMembersFromConfig(config = {}) {
-  const manualMembers = publicMemberCards(config).map((member) => ({
-    ...member,
-    source: member.source || "panel"
-  }));
+function profileSortRank(config = {}, guild = null, userId = "", storedProfile = {}) {
+  const configuredOrder = config.publicSite?.profileEditor?.roleOrderIds || [];
+  const guildOrder = guild
+    ? [...guild.roles.cache.values()]
+        .filter((role) => role.name !== "@everyone")
+        .sort((a, b) => (b.position || 0) - (a.position || 0))
+        .map((role) => role.id)
+    : [];
+  const roleOrderIds = configuredOrder.length ? configuredOrder : guildOrder;
+  const roleOrder = new Map(roleOrderIds.map((roleId, index) => [String(roleId), index]));
+  const member = guild?.members.cache.get(userId);
+  const roleIds = member
+    ? member.roles.cache.map((role) => role.id)
+    : Array.isArray(storedProfile.approvedRoleIds) ? storedProfile.approvedRoleIds.map(String) : [];
+  const ranks = roleIds
+    .map((roleId) => roleOrder.has(String(roleId)) ? roleOrder.get(String(roleId)) : null)
+    .filter((rank) => Number.isInteger(rank));
+  return ranks.length ? Math.min(...ranks) : Number.MAX_SAFE_INTEGER;
+}
+
+function publicMembersFromConfig(config = {}, guild = null) {
   const profileMembers = Object.entries(config.community?.profiles || {})
     .map(([userId, storedProfile]) => {
       const profile = profileFor(config, userId, storedProfile.displayName || userId);
@@ -1462,12 +1520,13 @@ function publicMembersFromConfig(config = {}) {
         quote: profile.quote,
         favoriteArtifact: profile.favoriteArtifact,
         badges: [...new Set([...(profile.badges || []), ...achievements.slice(0, 5)])].slice(0, 8),
+        sortRank: profileSortRank(config, guild, userId, storedProfile),
         source: "profile"
       };
     })
     .filter(Boolean)
-    .sort((a, b) => a.name.localeCompare(b.name));
-  return [...manualMembers, ...profileMembers].slice(0, 120);
+    .sort((a, b) => a.sortRank - b.sortRank || a.name.localeCompare(b.name));
+  return profileMembers.map(({ sortRank, ...member }) => member).slice(0, 120);
 }
 
 function writePublicMembersFile(members = []) {
@@ -2225,10 +2284,11 @@ function parseConfigForm(body, section = "general") {
     case "members":
       return {
         publicSite: {
-          members: parseMemberDirectory(body.publicMembers),
+          members: [],
           profileEditor: {
             enabled: body.profileEditorEnabled === "on",
-            allowedRoleIds: arrayFromFormValue(body.profileEditorAllowedRoleIds).map(String)
+            allowedRoleIds: arrayFromFormValue(body.profileEditorAllowedRoleIds).map(String),
+            roleOrderIds: parseRoleOrder(body.profileEditorRoleOrderIds)
           }
         }
       };
@@ -3341,8 +3401,8 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
         currentSection,
         currentMeta,
         `
-          ${memberDirectoryEditor(config.publicSite.members)}
           ${profileEditorSettings(config, guild.roles)}
+          ${profileRoleOrderSettings(config, guild.roles)}
           ${profileApprovalQueue(config, guild.id, panelUser)}
           ${profileDirectoryCards(config)}
         `
@@ -4417,6 +4477,15 @@ export function createPanel({
     return guildId || client.guilds.cache.first()?.id || Object.keys(store.data?.guilds || {})[0] || "";
   }
 
+  async function cachePublicProfileMembers(discordGuild, config = {}) {
+    if (!discordGuild) return;
+    const userIds = Object.entries(config.community?.profiles || {})
+      .filter(([, profile]) => profile?.publicVisible)
+      .map(([userId]) => userId)
+      .slice(0, 120);
+    await Promise.all(userIds.map((userId) => discordGuild.members.fetch(userId).catch(() => null)));
+  }
+
   function publicSuggestionThrottleKey(request) {
     return String(request.headers["x-forwarded-for"] || request.socket?.remoteAddress || request.ip || "unknown")
       .split(",")[0]
@@ -4511,11 +4580,13 @@ export function createPanel({
     response.sendStatus(204);
   });
 
-  app.get("/api/public/members", (_request, response) => {
+  app.get("/api/public/members", async (_request, response) => {
     setPublicApiHeaders(response);
     const config = getPublicGuildConfig();
+    const configuredGuild = guildId ? client.guilds.cache.get(guildId) : client.guilds.cache.first();
+    await cachePublicProfileMembers(configuredGuild, config).catch(() => {});
     response.json({
-      members: publicMembersFromConfig(config),
+      members: publicMembersFromConfig(config, configuredGuild),
       updatedAt: new Date().toISOString()
     });
   });
@@ -5008,7 +5079,8 @@ export function createPanel({
       const member = discordGuild.members.cache.get(targetUserId) || await discordGuild.members.fetch(targetUserId).catch(() => null);
       await updateProfile(store, targetGuildId, targetUserId, (profile) => ({
         ...profile,
-        ...pending.draft
+        ...pending.draft,
+        approvedRoleIds: member?.roles?.cache?.map((role) => role.id).filter(Boolean) || profile.approvedRoleIds || []
       }), member?.displayName || pending.draft.displayName || targetUserId);
       const nextConfig = store.getGuild(targetGuildId);
       const nextProfileEdits = { ...(nextConfig.community?.profileEdits || {}) };
@@ -5026,7 +5098,7 @@ export function createPanel({
         targetId: targetUserId,
         targetTag: pending.username || targetUserId
       }).catch(() => {});
-      writePublicMembersFile(publicMembersFromConfig(store.getGuild(targetGuildId)));
+      writePublicMembersFile(publicMembersFromConfig(store.getGuild(targetGuildId), discordGuild));
       response.redirect(`/guilds/${targetGuildId}?section=members&saved=1`);
     } catch (error) {
       next(error);
@@ -5515,7 +5587,7 @@ export function createPanel({
 
       const mergedConfig = await store.updateGuild(discordGuild.id, partial);
       if (partial.publicSite || partial.community?.artifacts || partial.community?.rituals) {
-        writePublicMembersFile(publicMembersFromConfig(mergedConfig));
+        writePublicMembersFile(publicMembersFromConfig(mergedConfig, discordGuild));
       }
       await addAuditLog(store, discordGuild.id, {
         type: "panel",
@@ -6378,7 +6450,7 @@ export function createPanel({
         };
       }
       const mergedConfig = await store.updateGuild(discordGuild.id, nextConfig);
-      writePublicMembersFile(publicMembersFromConfig(mergedConfig));
+      writePublicMembersFile(publicMembersFromConfig(mergedConfig, discordGuild));
       await addAuditLog(store, discordGuild.id, {
         type: "panel",
         label: "Panel settings saved",
