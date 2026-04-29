@@ -135,6 +135,7 @@ const DEFAULT_CONFIG = {
     },
     suggestions: [],
     questClaims: {},
+    questStreaks: {},
     staffNotes: {}
   }
 };

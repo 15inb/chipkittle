@@ -64,6 +64,7 @@ export const COMMUNITY_DEFAULTS = {
     nextTrial: ""
   },
   questClaims: {},
+  questStreaks: {},
   staffNotes: {}
 };
 
@@ -97,6 +98,7 @@ export function communityState(config = {}) {
       ...(community.rituals || {})
     },
     questClaims: { ...(community.questClaims || {}) },
+    questStreaks: { ...(community.questStreaks || {}) },
     staffNotes: { ...(community.staffNotes || {}) }
   };
 }
@@ -202,6 +204,10 @@ export function derivedAchievements(config = {}, userId, fallbackName = "") {
   if (profile.badges.length >= 3) achievements.push("Decorated Horn");
   if (profile.publicVisible) achievements.push("Directory Denizen");
   if (profile.favoriteArtifact) achievements.push("Artifact Opinion Haver");
+  const streak = Math.max(Number(config.community?.questStreaks?.[userId]?.daily) || 0, 0);
+  if (streak >= 3) achievements.push("Quest Streak");
+  if (streak >= 7) achievements.push("Weekly Ritualist");
+  if (streak >= 14) achievements.push("Unsettling Consistency");
 
   return [...new Set([...profile.manualAchievements, ...achievements])];
 }

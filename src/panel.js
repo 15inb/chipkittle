@@ -60,6 +60,7 @@ const PANEL_ROLE_TEMPLATE_LEVELS = {
 };
 const PANEL_SECTION_MIN_LEVEL = {
   dashboard: "round_table",
+  inbox: "round_table",
   audit: "round_table",
   commands: "round_table",
   moderation: "round_table",
@@ -79,26 +80,27 @@ const PANEL_SECTION_MIN_LEVEL = {
 };
 const SETTINGS_SECTIONS = [
   { id: "dashboard", label: "Dashboard", description: "At-a-glance stats, audit activity, and quick links." },
+  { id: "inbox", label: "Inbox", description: "Pending approvals, suggestions, applications, and economy items that need eyes." },
   { id: "audit", label: "Audit Log", description: "Searchable panel and moderation history for every access tier." },
   { id: "general", label: "General", description: "Slash commands, legacy prefix, welcome, and autorole." },
-  { id: "members", label: "Members", description: "Edit the public member directory and review community profiles." },
+  { id: "members", label: "Members", description: "Approve profile edits, tune public role order, and manage profile badges." },
   { id: "public", label: "Public Site", description: "Quick links, exports, and live public-facing content summaries." },
   { id: "moderation", label: "Moderation", description: "Automod rules and moderation logging." },
   { id: "suggestions", label: "Suggestions", description: "Review public and Discord suggestions." },
   { id: "ai", label: "AI", description: "Chipkittle AI channels, model, cooldowns, and personality." },
-  { id: "economy", label: "Economy", description: "Bread payouts, cooldowns, interest, and upgrade pricing." },
+  { id: "economy", label: "Economy", description: "Bread balances, debt risk, payouts, cooldowns, interest, and upgrade pricing." },
   { id: "applications", label: "Applications", description: "DM questions, review threads, roles, and cooldowns." },
   { id: "games", label: "Games", description: "Leaderboard moderation, claim limits, and public game tools." },
   { id: "community", label: "Community", description: "Artifacts, rituals, public directory extras, and archive data." },
   { id: "permissions", label: "Permissions", description: "Command role access overrides." },
   { id: "access", label: "Panel Access", description: "Revoke panel users and review access tiers." },
   { id: "backups", label: "Backups", description: "Restore exported configuration, moderation, application, or public site data." },
-  { id: "commands", label: "Commands", description: "Browse the command catalog." },
+  { id: "commands", label: "Commands", description: "Browse, search, and prune the command catalog." },
   { id: "server", label: "Server", description: "Pull GitHub changes and restart the VPS bot." }
 ];
 
 const SETTINGS_NAV_GROUPS = [
-  { label: "Daily Ops", description: "What staff touches most", sections: ["dashboard", "audit", "moderation", "applications", "suggestions"] },
+  { label: "Daily Ops", description: "What staff touches most", sections: ["dashboard", "inbox", "audit", "moderation", "applications", "suggestions"] },
   { label: "Bot Setup", description: "Bot behavior and command access", sections: ["general", "ai", "commands", "permissions"] },
   { label: "Site & Games", description: "Public pages, members, and game controls", sections: ["public", "members", "community", "games"] },
   { label: "Root Tools", description: "Economy, access, backups, and runtime", sections: ["economy", "access", "backups", "server"] }
@@ -106,6 +108,7 @@ const SETTINGS_NAV_GROUPS = [
 
 const SETTINGS_NAV_MARKS = {
   dashboard: "OV",
+  inbox: "IN",
   audit: "AU",
   moderation: "MO",
   applications: "AP",
@@ -1268,6 +1271,45 @@ function dashboardCards(guild, config = {}) {
   `;
 }
 
+function actionInboxWorkspace(guild, config = {}, panelUser = null, commandList = []) {
+  const pendingProfiles = Object.entries(config.community?.profileEdits || {}).filter(([, entry]) => entry?.status === "pending");
+  const suggestions = (config.community?.suggestions || []).filter((entry) => ["submitted", "under_consideration"].includes(String(entry.status || "submitted"))).slice(0, 8);
+  const appTickets = Object.entries(config.applications?.tickets || {}).filter(([, ticket]) => !ticket?.completed).slice(0, 8);
+  const loans = Object.entries(config.economy?.loans || {})
+    .filter(([, loan]) => loan && loan.status !== "paid" && Number(loan.owed || 0) > 0)
+    .sort((a, b) => Number(b[1].owed || 0) - Number(a[1].owed || 0))
+    .slice(0, 8);
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Action Inbox</h2>
+        <p>The stuff most likely to need a decision, all in one place.</p>
+      </div>
+      <div class="stats-grid">
+        <article class="stat-card"><strong>${pendingProfiles.length}</strong><span>Profile approvals</span></article>
+        <article class="stat-card"><strong>${suggestions.length}</strong><span>Open suggestions</span></article>
+        <article class="stat-card"><strong>${appTickets.length}</strong><span>Open apps</span></article>
+        <article class="stat-card"><strong>${loans.length}</strong><span>Active loans</span></article>
+      </div>
+    </section>
+    <div class="dashboard-grid">
+      ${profileApprovalQueue(config, guild.id, panelUser)}
+      <section class="panel-section">
+        <div class="section-heading"><h2>Suggestions</h2><p>Fresh public and Discord suggestions.</p></div>
+        ${suggestions.length ? `<div class="stack-list">${suggestions.map((entry) => `<div class="list-row"><strong>${escapeHtml(entry.title || "Suggestion")}</strong><span>${escapeHtml(entry.status || "submitted")}</span></div>`).join("")}</div><a class="secondary-button" href="/guilds/${guild.id}?section=suggestions">Open suggestions</a>` : '<p class="muted">No open suggestions.</p>'}
+      </section>
+      <section class="panel-section">
+        <div class="section-heading"><h2>Applications</h2><p>Applicants still in the DM/thread flow.</p></div>
+        ${appTickets.length ? `<div class="stack-list">${appTickets.map(([userId, ticket]) => `<div class="list-row"><strong>${escapeHtml(userId)}</strong><span>Q${escapeHtml((ticket.questionIndex || 0) + 1)}</span></div>`).join("")}</div><a class="secondary-button" href="/guilds/${guild.id}?section=applications">Open applications</a>` : '<p class="muted">No active applications.</p>'}
+      </section>
+      <section class="panel-section">
+        <div class="section-heading"><h2>Economy Flags</h2><p>Loans and debt risk.</p></div>
+        ${loans.length ? `<div class="stack-list">${loans.map(([userId, loan]) => `<div class="list-row"><strong>${escapeHtml(userId)}</strong><span>${escapeHtml(Number(loan.owed || 0).toLocaleString())} bread owed</span></div>`).join("")}</div><a class="secondary-button" href="/guilds/${guild.id}?section=economy">Open economy</a>` : '<p class="muted">No active loan risk.</p>'}
+      </section>
+    </div>
+  `;
+}
+
 function auditEntryKey(entry = {}, index = 0) {
   return String(entry.id || `legacy-${index}`);
 }
@@ -1507,7 +1549,8 @@ function profileApprovalQueue(config = {}, guildId = "", panelUser = null) {
   `;
 }
 
-function profileDirectoryCards(config = {}) {
+function profileDirectoryCards(config = {}, guildId = "", panelUser = null) {
+  const canEditBadges = panelAccessAtLeast(panelUser?.level || "", "root");
   const profiles = Object.entries(config.community?.profiles || {})
     .map(([userId, profile]) => ({
       userId,
@@ -1528,7 +1571,7 @@ function profileDirectoryCards(config = {}) {
       </div>
       ${
         profiles.length
-          ? `<div class="member-chip-grid">${profiles.map((profile) => `<article class="member-mini-card"><strong>${escapeHtml(profile.displayName)}</strong><small>${escapeHtml(profile.title)}</small><p>${escapeHtml(profile.bio || "No profile bio set.")}</p><div class="mini-stats"><span>${escapeHtml(profile.reputation)} rep</span><span>${escapeHtml(profile.vouches.length)} vouches</span><span>${escapeHtml(profile.badges.length)} badges</span></div></article>`).join("")}</div>`
+          ? `<div class="member-chip-grid">${profiles.map((profile) => `<article class="member-mini-card" data-action-scope><strong>${escapeHtml(profile.displayName)}</strong><small>${escapeHtml(profile.title)}</small><p>${escapeHtml(profile.bio || "No profile bio set.")}</p><div class="mini-stats"><span>${escapeHtml(profile.reputation)} rep</span><span>${escapeHtml(profile.vouches.length)} vouches</span><span>${escapeHtml(profile.badges.length)} badges</span></div>${canEditBadges ? `<label class="compact-label">Featured badges<input data-badge-input value="${escapeHtml(profile.badges.join(", "))}" placeholder="badge, badge, badge"></label><button type="button" class="secondary-button compact-button" data-post-action="/guilds/${encodeURIComponent(guildId)}/profiles/${encodeURIComponent(profile.userId)}/badges" data-post-source="[data-badge-input]" data-post-field="badges">Save badges</button>` : ""}</article>`).join("")}</div>`
           : '<p class="muted">No profile activity has been recorded yet.</p>'
       }
     </section>
@@ -1579,17 +1622,39 @@ function profileSortRank(config = {}, guild = null, userId = "", storedProfile =
   return ranks.length ? Math.min(...ranks) : Number.MAX_SAFE_INTEGER;
 }
 
+function publicProfileRoleLabel(config = {}, guild = null, userId = "", storedProfile = {}, profile = {}) {
+  const configuredOrder = config.publicSite?.profileEditor?.roleOrderIds || [];
+  const guildOrder = guild
+    ? [...guild.roles.cache.values()]
+        .filter((role) => role.name !== "@everyone")
+        .sort((a, b) => (b.position || 0) - (a.position || 0))
+        .map((role) => role.id)
+    : [];
+  const roleOrderIds = configuredOrder.length ? configuredOrder : guildOrder;
+  const member = guild?.members.cache.get(userId);
+  const roleIds = member
+    ? member.roles.cache.map((role) => role.id)
+    : Array.isArray(storedProfile.approvedRoleIds) ? storedProfile.approvedRoleIds.map(String) : [];
+  for (const roleId of roleOrderIds) {
+    if (!roleIds.includes(String(roleId))) continue;
+    const role = guild?.roles.cache.get(String(roleId));
+    return role?.name || "Member";
+  }
+  return "Member";
+}
+
 function publicMembersFromConfig(config = {}, guild = null) {
   const profileMembers = Object.entries(config.community?.profiles || {})
     .map(([userId, storedProfile]) => {
       const profile = profileFor(config, userId, storedProfile.displayName || userId);
       if (!profile.publicVisible) return null;
       const achievements = derivedAchievements(config, userId, profile.displayName);
+      const profileTitle = [profile.title, profile.pronouns].filter(Boolean).join(" - ");
       return {
         id: userId,
         name: profile.displayName,
-        role: profile.title || "Member",
-        title: profile.pronouns || "",
+        role: publicProfileRoleLabel(config, guild, userId, storedProfile, profile),
+        title: profileTitle,
         bio: profile.bio,
         quote: profile.quote,
         favoriteArtifact: profile.favoriteArtifact,
@@ -1781,6 +1846,54 @@ function parseEconomySettings(body = {}) {
     maxBankInterest: Math.floor(clampPanelNumber(body.maxBankInterest, DEFAULT_ECONOMY_SETTINGS.maxBankInterest, 0, 1000000)),
     upgradeCosts
   };
+}
+
+function economyBalanceDashboard(config = {}) {
+  const economy = config.economy || {};
+  const balances = economy.balances || {};
+  const bankBalances = economy.bankBalances || {};
+  const loans = economy.loans || {};
+  const users = new Set([...Object.keys(balances), ...Object.keys(bankBalances), ...Object.keys(loans)]);
+  const richest = [...users]
+    .map((userId) => ({
+      userId,
+      wallet: Math.max(Math.floor(Number(balances[userId]) || 0), 0),
+      bank: Math.max(Math.floor(Number(bankBalances[userId]) || 0), 0),
+      loan: loans[userId] && loans[userId].status !== "paid" ? Math.max(Math.floor(Number(loans[userId].owed) || 0), 0) : 0
+    }))
+    .map((entry) => ({ ...entry, net: entry.wallet + entry.bank - entry.loan }))
+    .sort((a, b) => b.net - a.net)
+    .slice(0, 8);
+  const activeLoans = Object.entries(loans).filter(([, loan]) => loan && loan.status !== "paid" && Number(loan.owed || 0) > 0);
+  const totalDebt = activeLoans.reduce((sum, [, loan]) => sum + Math.max(Math.floor(Number(loan.owed) || 0), 0), 0);
+  const cappedLoans = activeLoans.filter(([, loan]) => {
+    const principal = Math.max(Math.floor(Number(loan.principal || loan.amount || 0) || 0), 1);
+    const owed = Math.max(Math.floor(Number(loan.owed) || 0), 0);
+    return owed >= principal * 5;
+  });
+  const transactions = Array.isArray(economy.transactions) ? economy.transactions : [];
+  const recentOutflow = transactions
+    .slice(0, 50)
+    .reduce((sum, entry) => sum + Math.max(Math.floor(Number(entry.amount) || 0), 0), 0);
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Economy Balance</h2>
+        <p>Quick risk readout for bread hoards, active loan debt, and recent transaction pressure.</p>
+      </div>
+      <div class="stat-grid compact-stat-grid">
+        <div><span>Active loans</span><strong>${activeLoans.length.toLocaleString()}</strong></div>
+        <div><span>Total debt</span><strong>${totalDebt.toLocaleString()}</strong></div>
+        <div><span>Debt capped</span><strong>${cappedLoans.length.toLocaleString()}</strong></div>
+        <div><span>Recent flow</span><strong>${recentOutflow.toLocaleString()}</strong></div>
+      </div>
+      <div class="stack-list">
+        ${richest.length
+          ? richest.map((entry) => `<div class="list-row"><strong>${escapeHtml(entry.userId)}</strong><span>${escapeHtml(entry.net.toLocaleString())} net bread</span></div>`).join("")
+          : '<p class="muted">No economy users have been tracked yet.</p>'}
+      </div>
+    </section>
+  `;
 }
 
 function economySettingsWorkspace(config = {}) {
@@ -2126,6 +2239,23 @@ async function sendSuggestionAuthorStatusDm(client, suggestion = {}, previousSta
   if (!user) return null;
   return user.send({
     embeds: [buildSuggestionStatusEmbed(suggestion, previousStatus)],
+    allowedMentions: { parse: [], roles: [], users: [] }
+  }).catch(() => null);
+}
+
+async function sendProfileStatusDm(client, userId = "", status = "approved", reason = "") {
+  const user = await client.users.fetch(String(userId || "")).catch(() => null);
+  if (!user) return null;
+  const approved = status === "approved";
+  return user.send({
+    embeds: [buildPrettyEmbed({
+      title: approved ? "Profile Approved" : "Profile Rejected",
+      description: approved
+        ? "Your Chipkittle member profile was approved and is now allowed to appear on the public member directory."
+        : `Your Chipkittle member profile edit was rejected.${reason ? `\n\nReason: ${reason}` : ""}`,
+      color: approved ? 0x22c55e : 0xef4444,
+      footer: "Chipkittle profile review"
+    })],
     allowedMentions: { parse: [], roles: [], users: [] }
   }).catch(() => null);
 }
@@ -2622,7 +2752,9 @@ function layout({ title, body, user, flash = "" }) {
     (() => {
       const filter = document.querySelector("[data-nav-filter]");
       const links = [...document.querySelectorAll("[data-nav-link]")];
-      if (!filter || !links.length) return;
+      const results = [...document.querySelectorAll("[data-nav-result]")];
+      const resultBox = document.querySelector("[data-nav-results]");
+      if (!filter || (!links.length && !results.length)) return;
       const groups = [...document.querySelectorAll("[data-nav-group]")];
       filter.addEventListener("input", () => {
         const query = filter.value.trim().toLowerCase();
@@ -2630,10 +2762,16 @@ function layout({ title, body, user, flash = "" }) {
           const haystack = String(link.dataset.navText || link.textContent || "").toLowerCase();
           link.hidden = Boolean(query) && !haystack.includes(query);
         });
+        results.forEach((link) => {
+          const haystack = String(link.dataset.navText || link.textContent || "").toLowerCase();
+          link.hidden = !query || !haystack.includes(query);
+        });
+        if (resultBox) resultBox.hidden = !query;
         groups.forEach((group) => {
           group.hidden = !group.querySelector("[data-nav-link]:not([hidden])");
         });
       });
+      if (resultBox) resultBox.hidden = true;
     })();
   </script>
 </body>
@@ -2939,6 +3077,52 @@ function commandCatalog(commandList, prefix) {
         </details>`
     )
     .join("");
+}
+
+function commandCleanupSuggestions(commandList = [], config = {}) {
+  const usage = config.community?.analytics?.commands || {};
+  const disabled = config.commandRoles?.disabled || {};
+  const aliases = new Map();
+  for (const command of commandList) {
+    for (const alias of command.aliases || []) {
+      aliases.set(alias, [...(aliases.get(alias) || []), command.name]);
+    }
+  }
+  const duplicateAliases = [...aliases.entries()]
+    .filter(([, commands]) => commands.length > 1)
+    .map(([alias, commands]) => `Alias "${alias}" is shared by ${commands.join(", ")}`);
+  const staleCommands = commandList
+    .filter((command) => !usage[command.name] && !disabled[command.name])
+    .slice(0, 12)
+    .map((command) => `${command.name} has no tracked usage`);
+  const disabledCommands = Object.keys(disabled).filter((name) => disabled[name]).map((name) => `${name} is disabled`);
+  return [...duplicateAliases, ...disabledCommands, ...staleCommands].slice(0, 20);
+}
+
+function commandCleanupWorkspace(commandList = [], config = {}) {
+  const suggestions = commandCleanupSuggestions(commandList, config);
+  const usage = config.community?.analytics?.commands || {};
+  const leastUsed = commandList
+    .map((command) => ({ name: command.name, count: Math.max(Number(usage[command.name]) || 0, 0), category: command.category || "Other" }))
+    .sort((a, b) => a.count - b.count || a.name.localeCompare(b.name))
+    .slice(0, 16);
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Command Cleanup</h2>
+        <p>Use this as a pruning list before disabling or removing old commands.</p>
+      </div>
+      ${suggestions.length ? `<div class="stack-list">${suggestions.map((item) => `<div class="list-row"><strong>${escapeHtml(item)}</strong><span>review</span></div>`).join("")}</div>` : '<p class="muted">No obvious cleanup issues found.</p>'}
+    </section>
+    ${economyBalanceDashboard(config)}
+    <section class="panel-section">
+      <div class="section-heading">
+        <h2>Least Used Commands</h2>
+        <p>Low usage does not always mean bad, but it is a good place to look.</p>
+      </div>
+      <div class="stack-list">${leastUsed.map((item) => `<div class="list-row"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.count)} uses · ${escapeHtml(item.category)}</span></div>`).join("")}</div>
+    </section>
+  `;
 }
 
 function commandCategories(commandList) {
@@ -3309,6 +3493,43 @@ function panelAccessDenied(response, message = "You do not have permission to ma
   response.status(403).send(layout({ title: "Forbidden", user: true, body: `<p class="empty">${escapeHtml(message)}</p>` }));
 }
 
+function globalSearchItems(guild, config = {}, accessLevel = "root") {
+  const items = SETTINGS_SECTIONS
+    .filter((section) => canAccessPanelSection(accessLevel, section.id))
+    .map((section) => ({
+      label: section.label,
+      type: "Panel section",
+      href: `/guilds/${guild.id}?section=${section.id}`,
+      search: `${section.label} ${section.description}`
+    }));
+  for (const [userId, profile] of Object.entries(config.community?.profiles || {}).slice(0, 80)) {
+    items.push({
+      label: profile.displayName || userId,
+      type: "Member profile",
+      href: `/guilds/${guild.id}?section=members`,
+      search: `${profile.displayName || ""} ${profile.title || ""} ${profile.bio || ""} ${userId}`
+    });
+  }
+  for (const suggestion of (config.community?.suggestions || []).slice(0, 60)) {
+    items.push({
+      label: suggestion.title || "Suggestion",
+      type: `Suggestion · ${suggestion.status || "submitted"}`,
+      href: `/guilds/${guild.id}?section=suggestions`,
+      search: `${suggestion.title || ""} ${suggestion.body || ""} ${suggestion.authorName || ""}`
+    });
+  }
+  for (const [userId, loan] of Object.entries(config.economy?.loans || {}).slice(0, 60)) {
+    if (!loan || loan.status === "paid") continue;
+    items.push({
+      label: `${userId} loan`,
+      type: "Economy",
+      href: `/guilds/${guild.id}?section=economy&economyUser=${userId}`,
+      search: `${userId} loan debt bread economy`
+    });
+  }
+  return items;
+}
+
 function settingsNav(guild, config, activeSection, currentMeta, panelUser = null) {
   const community = communitySnapshot(config);
   const accessLevel = panelUser?.level || "root";
@@ -3324,6 +3545,7 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
     .filter((sectionId) => canAccessPanelSection(accessLevel, sectionId))
     .map((sectionId) => SETTINGS_SECTIONS.find((entry) => entry.id === sectionId))
     .filter(Boolean);
+  const searchItems = globalSearchItems(guild, config, accessLevel).slice(0, 40);
   return `
     <aside class="panel-sidebar" aria-label="Panel navigation">
       <div class="panel-sidebar-head">
@@ -3340,6 +3562,9 @@ function settingsNav(guild, config, activeSection, currentMeta, panelUser = null
       </label>
       <div class="panel-quick-links" aria-label="Common sections">
         ${quickLinks.map((section) => `<a class="${section.id === activeSection ? "active" : ""}" href="/guilds/${guild.id}?section=${section.id}">${escapeHtml(section.label)}</a>`).join("")}
+      </div>
+      <div class="panel-search-results" data-nav-results>
+        ${searchItems.map((item) => `<a href="${escapeHtml(item.href)}" data-nav-result data-nav-text="${escapeHtml(item.search)}"><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.type)}</span></a>`).join("")}
       </div>
       <nav class="panel-nav-accordion" aria-label="Panel sections">
         ${visibleGroups.map((group) => {
@@ -3420,6 +3645,8 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
   switch (currentSection) {
     case "dashboard":
       return dashboardCards(guild, config);
+    case "inbox":
+      return actionInboxWorkspace(guild, config, panelUser, commandList);
     case "audit":
       return auditLogWorkspace(guild.id, config, panelUser);
     case "general":
@@ -3475,7 +3702,7 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
           ${profileEditorSettings(config, guild.roles)}
           ${profileRoleOrderSettings(config, guild.roles)}
           ${profileApprovalQueue(config, guild.id, panelUser)}
-          ${profileDirectoryCards(config)}
+          ${profileDirectoryCards(config, guild.id, panelUser)}
         `
       );
     case "public":
@@ -3846,6 +4073,7 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
           </div>
           ${commandCatalog(commandList, config.prefix)}
         </section>
+        ${commandCleanupWorkspace(commandList, config)}
       `;
     case "server":
       return updateControls(guild.id);
@@ -3869,6 +4097,19 @@ function guildPage({ guild, config, commandList, defaultAiModel, ai, flash, acti
             const form = document.createElement("form");
             form.method = "post";
             form.action = button.getAttribute("data-post-action");
+            const sourceSelector = button.getAttribute("data-post-source");
+            const sourceName = button.getAttribute("data-post-field") || "value";
+            if (sourceSelector) {
+              const scope = button.closest("[data-action-scope]") || document;
+              const source = scope.querySelector(sourceSelector);
+              if (source) {
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = sourceName;
+                input.value = source.value || source.textContent || "";
+                form.appendChild(input);
+              }
+            }
             form.style.display = "none";
             document.body.appendChild(form);
             form.submit();
@@ -5155,6 +5396,7 @@ export function createPanel({
         targetId: targetUserId,
         targetTag: pending.username || targetUserId
       }).catch(() => {});
+      await sendProfileStatusDm(client, targetUserId, "approved").catch(() => null);
       writePublicMembersFile(publicMembersFromConfig(store.getGuild(targetGuildId), discordGuild));
       response.redirect(`/guilds/${targetGuildId}?section=members&saved=1`);
     } catch (error) {
@@ -5183,6 +5425,40 @@ export function createPanel({
         targetId: targetUserId,
         targetTag: pending?.username || targetUserId
       }).catch(() => {});
+      await sendProfileStatusDm(client, targetUserId, "rejected").catch(() => null);
+      response.redirect(`/guilds/${targetGuildId}?section=members&saved=1`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/guilds/:guildId/profiles/:userId/badges", requireAuth, requirePanelLevel("root"), async (request, response, next) => {
+    try {
+      const targetGuildId = String(request.params.guildId || "");
+      const targetUserId = String(request.params.userId || "");
+      const discordGuild = client.guilds.cache.get(targetGuildId);
+      if (!discordGuild) {
+        response.status(404).send("Server not found.");
+        return;
+      }
+      const badges = String(request.body?.badges || "")
+        .split(",")
+        .map((badge) => badge.trim())
+        .filter((badge, index, all) => badge && all.indexOf(badge) === index)
+        .slice(0, 8);
+      await updateProfile(store, targetGuildId, targetUserId, (profile) => ({
+        ...profile,
+        badges
+      }), targetUserId);
+      await addAuditLog(store, targetGuildId, {
+        type: "profile",
+        label: "Profile badges updated",
+        details: `${currentPanelUser(request, targetGuildId)?.username || "Panel"} updated public badges for ${targetUserId}.`,
+        actor: currentPanelUser(request, targetGuildId)?.username || "Panel",
+        targetId: targetUserId,
+        targetTag: targetUserId
+      }).catch(() => {});
+      writePublicMembersFile(publicMembersFromConfig(store.getGuild(targetGuildId), discordGuild));
       response.redirect(`/guilds/${targetGuildId}?section=members&saved=1`);
     } catch (error) {
       next(error);

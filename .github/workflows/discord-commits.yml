@@ -76,13 +76,27 @@ jobs:
                       break
               return "\n".join(output) or "+ No details provided"
 
+          def humanize_change_line(value):
+              cleaned = str(value or "").strip()
+              if not cleaned:
+                  return ""
+              cleaned = cleaned.replace("\\n", " ").replace("\t", " ")
+              cleaned = cleaned.strip("`").strip()
+              if cleaned.startswith("@@") or cleaned.startswith("diff --git") or cleaned.startswith("index "):
+                  return ""
+              cleaned = cleaned.lstrip("+-* ").strip()
+              if not cleaned:
+                  return ""
+              if len(cleaned) > 170:
+                  cleaned = cleaned[:167].rstrip() + "..."
+              return cleaned
+
           def bullet_lines(lines, max_chars=900, max_lines=8):
               cleaned_lines = []
               for line in lines:
-                  cleaned = str(line or "").strip()
+                  cleaned = humanize_change_line(line)
                   if not cleaned:
                       continue
-                  cleaned = cleaned.lstrip("+").strip()
                   cleaned_lines.append(f"- {cleaned}")
               text = shorten_lines(cleaned_lines, max_chars=max_chars, max_lines=max_lines)
               return text.replace("+ ...more on the public commit page", "- More on the public commit page").replace("+ No details provided", "- No details provided")
@@ -140,9 +154,9 @@ jobs:
               commit_lines.append(f"{title} ({commit_sha} by {commit_author})")
 
               for line in body_lines:
-                  cleaned = line.strip().lstrip("-* ").strip()
+                  cleaned = humanize_change_line(line)
                   if cleaned:
-                      changelog_lines.append(cleaned[:150])
+                      changelog_lines.append(cleaned)
 
               added.update(commit.get("added") or [])
               modified.update(commit.get("modified") or [])
@@ -152,7 +166,14 @@ jobs:
               commit_lines = [f"{head_message} ({short_sha} by {author})"]
 
           if not changelog_lines:
-              changelog_lines = commit_lines[:6]
+              generated = []
+              if added:
+                  generated.append(f"Added {len(added)} file{'s' if len(added) != 1 else ''}")
+              if modified:
+                  generated.append(f"Updated {len(modified)} file{'s' if len(modified) != 1 else ''}")
+              if removed:
+                  generated.append(f"Removed {len(removed)} file{'s' if len(removed) != 1 else ''}")
+              changelog_lines = generated or commit_lines[:6]
 
           file_sections = []
           if added:

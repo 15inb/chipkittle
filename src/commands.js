@@ -589,6 +589,19 @@ function questClaimKey(quest) {
 }
 
 async function markQuestClaims(ctx, userId, quests = []) {
+  const today = currentQuestPeriods().day;
+  const existingStreak = ctx.config.community?.questStreaks?.[userId] || {};
+  const previousDaily = String(existingStreak.lastDailyClaimedAt || "");
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const claimedDaily = quests.some((quest) => quest.type === "daily");
+  const dailyStreak = claimedDaily
+    ? previousDaily === yesterday
+      ? Math.max(Number(existingStreak.daily) || 0, 0) + 1
+      : previousDaily === today
+        ? Math.max(Number(existingStreak.daily) || 0, 0)
+        : 1
+    : Math.max(Number(existingStreak.daily) || 0, 0);
+  const bestDaily = Math.max(Math.max(Number(existingStreak.bestDaily) || 0, 0), dailyStreak);
   const claimEntries = Object.fromEntries(
     quests.map((quest) => [
       questClaimKey(quest),
@@ -608,9 +621,19 @@ async function markQuestClaims(ctx, userId, quests = []) {
           ...(ctx.config.community?.questClaims?.[userId] || {}),
           ...claimEntries
         }
+      },
+      questStreaks: {
+        ...(ctx.config.community?.questStreaks || {}),
+        [userId]: {
+          ...existingStreak,
+          daily: dailyStreak,
+          bestDaily,
+          lastDailyClaimedAt: claimedDaily ? today : existingStreak.lastDailyClaimedAt || ""
+        }
       }
     }
   });
+  return { daily: dailyStreak, bestDaily };
 }
 
 function profileEmbedFor(ctx, member) {
@@ -6497,6 +6520,7 @@ define({
     const weekly = questFor(ctx.config, ctx.message.author.id, "weekly");
     await ctx.message.reply([
       "**Chipkittle Quests**",
+      `Daily streak: **${ctx.config.community?.questStreaks?.[ctx.message.author.id]?.daily || 0}**`,
       "",
       "**Daily**",
       formatQuest({ ...daily, reward: 250 }),
@@ -6539,7 +6563,7 @@ define({
       return { balance: nextBalance };
     });
 
-    await markQuestClaims(ctx, ctx.message.author.id, claimable);
+    const streak = await markQuestClaims(ctx, ctx.message.author.id, claimable);
     await updateProfile(ctx.store, ctx.message.guild.id, ctx.message.author.id, (profile) => ({
       ...profile,
       displayName: ctx.message.member.displayName,
@@ -6557,6 +6581,7 @@ define({
     await ctx.message.reply([
       `Claimed **${totalReward} bread**.`,
       `New wallet balance: **${result.balance} bread**.`,
+      `Daily quest streak: **${streak.daily}** day${streak.daily === 1 ? "" : "s"} (best **${streak.bestDaily}**).`,
       "",
       claimable.map((quest) => `- ${quest.title}`).join("\n")
     ].join("\n"));
