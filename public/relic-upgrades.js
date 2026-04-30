@@ -13,6 +13,21 @@ const essence = document.getElementById("relicUpgradeEssence");
 const shop = document.getElementById("relicUpgradeShop");
 const status = document.getElementById("relicUpgradeStatus");
 const resetButton = document.getElementById("relicResetMeta");
+const codex = document.getElementById("relicBuildCodex");
+
+const buildCodex = [
+  { name: "Thorn SMG", type: "Weapon", rarity: "common", detail: "Fast pressure. Low damage, high tempo, strong with crits and chain effects." },
+  { name: "Rail Horn", type: "Weapon", rarity: "rare", detail: "Slow precision shots that pierce lines. High-skill aim build." },
+  { name: "Crumb Shotgun", type: "Weapon", rarity: "rare", detail: "Close-range cone damage with knockback. Strong if you kite tightly." },
+  { name: "Loaf Launcher", type: "Weapon", rarity: "epic", detail: "Explosive area control with burn. Best for packs and boss adds." },
+  { name: "Spore Sprayer", type: "Weapon", rarity: "epic", detail: "Poison and slow control. Wins by turning fast enemies into paperwork." },
+  { name: "Storm Relic", type: "Weapon", rarity: "legendary", detail: "Chain lightning weapon. Scales hard with shock, status, and crit synergies." },
+  { name: "Stone Yak Plate", type: "Armor", rarity: "rare", detail: "Tank armor. High HP and armor, slower movement and weaker escapes." },
+  { name: "Glassrunner Pelt", type: "Armor", rarity: "rare", detail: "Mobility armor. Fast and dash-heavy, but fragile." },
+  { name: "Keeper Reactor", type: "Armor", rarity: "epic", detail: "Reactive shield armor. Shield breaks retaliate with shockwaves." },
+  { name: "Ember Molt", type: "Armor", rarity: "epic", detail: "Regeneration armor that strengthens burn-oriented survival." },
+  { name: "Void Husk", type: "Armor", rarity: "legendary", detail: "Risk shield armor. Huge shield and speed, low health buffer." }
+];
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -68,6 +83,16 @@ function render() {
       </article>
     `;
   }).join("");
+  if (codex) {
+    codex.innerHTML = buildCodex.map((item) => `
+      <article class="relic-upgrade-shop-card rarity-${item.rarity}">
+        <div>
+          <strong>${item.name}</strong>
+          <small>${item.type} · ${item.detail}</small>
+        </div>
+      </article>
+    `).join("");
+  }
 }
 
 shop.addEventListener("click", (event) => {

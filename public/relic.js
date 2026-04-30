@@ -137,6 +137,8 @@ const state = {
   comboTimer: 0,
   kills: 0,
   upgrades: [],
+  weaponLevels: {},
+  armorLevels: {},
   flags: new Set(),
   achievements: new Set(),
   milestones: new Set(),
@@ -165,6 +167,7 @@ const player = {
   dashCooldown: 0,
   invulnerable: 0,
   damage: 18,
+  damageBonus: 0,
   fireRate: 0.16,
   projectileSpeed: 820,
   multiShot: 1,
@@ -174,10 +177,111 @@ const player = {
   crit: 0.08,
   regen: 0,
   shield: 0,
-  overcharge: 0
+  overcharge: 0,
+  statusPower: 1,
+  explosionRadius: 86,
+  chainTargets: 1,
+  weapon: "thorn-smg",
+  armorSuit: "ritual-fleece"
 };
 
+const weaponCatalog = {
+  "thorn-smg": { id: "thorn-smg", name: "Thorn SMG", rarity: "common", role: "Fast pressure", tags: ["rapid", "crit"], fireRate: 0.09, damage: 12, projectileSpeed: 880, multiShot: 1, spread: 0.045, life: 0.7, radius: 5, pierce: 0, recoil: 0.045, color: "#dcffd4", description: "Very fast, low-damage needles. Loves crits, chains, and close-range panic." },
+  "rail-horn": { id: "rail-horn", name: "Rail Horn", rarity: "rare", role: "Precision burst", tags: ["rail", "pierce", "crit"], fireRate: 0.56, damage: 74, projectileSpeed: 1380, multiShot: 1, spread: 0, life: 0.52, radius: 8, pierce: 3, recoil: 0.13, color: "#fff29b", description: "Slow, surgical shots that punch through lines. Misses feel bad. Hits feel illegal." },
+  "crumb-shotgun": { id: "crumb-shotgun", name: "Crumb Shotgun", rarity: "rare", role: "Close burst", tags: ["spread", "knockback"], fireRate: 0.42, damage: 16, projectileSpeed: 760, multiShot: 7, spread: 0.12, life: 0.42, radius: 5, pierce: 0, recoil: 0.18, color: "#ffcf8a", description: "Huge cone, short range, heavy knockback. Rewards brave nonsense." },
+  "loaf-launcher": { id: "loaf-launcher", name: "Loaf Launcher", rarity: "epic", role: "Area control", tags: ["explosive", "burn"], fireRate: 0.68, damage: 46, projectileSpeed: 560, multiShot: 1, spread: 0.015, life: 1.05, radius: 10, pierce: 0, recoil: 0.2, explosionRadius: 110, color: "#ff9b5c", description: "Slow bread grenades that explode and ignite packs. Terrible for subtle people." },
+  "spore-sprayer": { id: "spore-sprayer", name: "Spore Sprayer", rarity: "epic", role: "Status control", tags: ["poison", "slow", "rapid"], fireRate: 0.14, damage: 9, projectileSpeed: 720, multiShot: 2, spread: 0.08, life: 0.76, radius: 6, pierce: 0, recoil: 0.055, color: "#b7ff4f", description: "Low-impact shots that poison and slow enemies. Wins by making the room miserable." },
+  "storm-relic": { id: "storm-relic", name: "Storm Relic", rarity: "legendary", role: "Chain lightning", tags: ["chain", "shock"], fireRate: 0.24, damage: 28, projectileSpeed: 940, multiShot: 1, spread: 0.025, life: 0.72, radius: 7, pierce: 0, recoil: 0.09, color: "#85ffd2", description: "Reliable shots that arc between enemies. Gets disgusting with status and crit builds." }
+};
+
+const armorCatalog = {
+  "ritual-fleece": { id: "ritual-fleece", name: "Ritual Fleece", rarity: "common", role: "Balanced", maxHealth: 0, armor: 0, speed: 1, dash: 1, regen: 0, shield: 0, description: "No tradeoff. The default ceremonial fuzz." },
+  "stone-yak-plate": { id: "stone-yak-plate", name: "Stone Yak Plate", rarity: "rare", role: "Tank", maxHealth: 85, armor: 8, speed: 0.84, dash: 0.82, regen: 0.4, shield: 20, description: "Much harder to kill, but slower and less able to escape bad rooms." },
+  "glassrunner-pelt": { id: "glassrunner-pelt", name: "Glassrunner Pelt", rarity: "rare", role: "Mobility", maxHealth: -20, armor: -1, speed: 1.22, dash: 1.35, regen: 0, shield: 0, description: "Fragile, fast, dash-heavy. Built for players who do not plan to get touched." },
+  "keeper-reactor": { id: "keeper-reactor", name: "Keeper Reactor", rarity: "epic", role: "Reactive shield", maxHealth: 25, armor: 3, speed: 0.96, dash: 1, regen: 0.25, shield: 45, flag: "reactive-armor", description: "Starts shielded and retaliates when the shield breaks." },
+  "ember-molt": { id: "ember-molt", name: "Ember Molt", rarity: "epic", role: "Sustain burn", maxHealth: 35, armor: 1, speed: 1.04, dash: 1, regen: 1.8, shield: 0, flag: "ember-armor", description: "Regenerates and improves burn builds, but offers modest direct protection." },
+  "void-husk": { id: "void-husk", name: "Void Husk", rarity: "legendary", role: "Risk shield", maxHealth: -45, armor: 5, speed: 1.08, dash: 1.18, regen: 0, shield: 90, flag: "void-husk", description: "Huge shield and speed, low health. Perfect until it suddenly is not." }
+};
+
+function currentWeapon() {
+  return weaponCatalog[player.weapon] || weaponCatalog["thorn-smg"];
+}
+
+function currentArmor() {
+  return armorCatalog[player.armorSuit] || armorCatalog["ritual-fleece"];
+}
+
+function equipWeapon(weaponId) {
+  const weapon = weaponCatalog[weaponId];
+  if (!weapon) return;
+  player.weapon = weapon.id;
+  const level = state.weaponLevels[weapon.id] || 0;
+  player.damage = weapon.damage + (player.damageBonus || 0) + level * Math.max(4, Math.round(weapon.damage * 0.12));
+  player.fireRate = Math.max(0.045, weapon.fireRate * (1 - level * 0.035));
+  player.projectileSpeed = weapon.projectileSpeed;
+  player.multiShot = weapon.multiShot;
+  showToast("Weapon equipped", `${weapon.name}: ${weapon.role}`, weapon.rarity);
+  for (let i = 0; i < 24; i += 1) particle(player.x, player.y, rand(-220, 220), rand(-220, 220), rand(0.2, 0.55), weapon.color, rand(2, 5));
+}
+
+function equipArmor(armorId) {
+  const armor = armorCatalog[armorId];
+  if (!armor) return;
+  const previousArmor = currentArmor();
+  const previousMaxHealth = player.maxHealth;
+  const previousLevel = state.armorLevels[previousArmor.id] || 0;
+  const level = state.armorLevels[armor.id] || 0;
+  player.armorSuit = armor.id;
+  player.maxHealth = Math.max(70, player.maxHealth - previousArmor.maxHealth - previousLevel * 18 + armor.maxHealth + level * 18);
+  player.health = Math.min(player.maxHealth, Math.max(30, player.health + player.maxHealth - previousMaxHealth));
+  player.armor = Math.round(Math.max(-2, armor.armor + level * 2));
+  player.speed = player.speed / (previousArmor.speed || 1) * armor.speed;
+  player.dash = player.dash / (previousArmor.dash || 1) * armor.dash;
+  player.regen += armor.regen + level * 0.2 - previousArmor.regen - previousLevel * 0.2;
+  player.shield = Math.max(player.shield, armor.shield + level * 12);
+  for (const suit of Object.values(armorCatalog)) {
+    if (suit.flag) state.flags.delete(suit.flag);
+  }
+  if (armor.flag) state.flags.add(armor.flag);
+  showToast("Armor equipped", `${armor.name}: ${armor.role}`, armor.rarity);
+  for (let i = 0; i < 22; i += 1) particle(player.x, player.y, rand(-170, 170), rand(-170, 170), rand(0.26, 0.66), armor.rarity === "legendary" ? "#fff29b" : "#85ffd2", rand(2, 5));
+}
+
+function upgradeCurrentArmor() {
+  const armor = currentArmor();
+  state.armorLevels[armor.id] = (state.armorLevels[armor.id] || 0) + 1;
+  player.maxHealth += 18;
+  player.health = Math.min(player.maxHealth, player.health + 18);
+  player.armor += armor.id === "glassrunner-pelt" ? 0 : 2;
+  player.shield += armor.id === "keeper-reactor" || armor.id === "void-husk" ? 26 : 10;
+  if (armor.id === "glassrunner-pelt") {
+    player.speed += 22;
+    player.dash += 0.12;
+  }
+  if (armor.id === "ember-molt") player.regen += 0.8;
+}
+
 const upgrades = [
+  ...Object.values(weaponCatalog).filter((weapon) => weapon.id !== "thorn-smg").map((weapon) => ({
+    id: `weapon-${weapon.id}`,
+    name: weapon.name,
+    rarity: weapon.rarity,
+    type: "Weapon",
+    description: `${weapon.role}: ${weapon.description}`,
+    apply() {
+      equipWeapon(weapon.id);
+    }
+  })),
+  ...Object.values(armorCatalog).filter((armor) => armor.id !== "ritual-fleece").map((armor) => ({
+    id: `armor-${armor.id}`,
+    name: armor.name,
+    rarity: armor.rarity,
+    type: "Armor",
+    description: `${armor.role}: ${armor.description}`,
+    apply() {
+      equipArmor(armor.id);
+    }
+  })),
   {
     id: "horns",
     name: "Hollow Horn Voltage",
@@ -204,6 +308,71 @@ const upgrades = [
     description: "Normal shots pierce one extra enemy.",
     apply() {
       state.flags.add("piercing-shots");
+    }
+  },
+  {
+    id: "weapon-tuning",
+    name: "Weapon Tuning Fork",
+    rarity: "rare",
+    type: "Weapon upgrade",
+    description: "Your current weapon gains damage, faster handling, and stronger recoil personality.",
+    apply() {
+      const weapon = currentWeapon();
+      state.weaponLevels[weapon.id] = (state.weaponLevels[weapon.id] || 0) + 1;
+      equipWeapon(weapon.id);
+    }
+  },
+  {
+    id: "status-engine",
+    name: "Status Engine",
+    rarity: "epic",
+    type: "Synergy",
+    description: "Poison, burn, slow, and shock effects last longer and hit harder.",
+    apply() {
+      player.statusPower += 0.45;
+      state.flags.add("status-engine");
+    }
+  },
+  {
+    id: "combustion-logic",
+    name: "Combustion Logic",
+    rarity: "legendary",
+    type: "Synergy",
+    description: "Burning enemies sometimes explode when hit. Loaf Launcher becomes deeply impolite.",
+    apply() {
+      player.explosionRadius += 34;
+      state.flags.add("burn-explodes");
+    }
+  },
+  {
+    id: "storm-bridge",
+    name: "Storm Bridge",
+    rarity: "epic",
+    type: "Synergy",
+    description: "Chain and shock effects jump to more enemies. Crits add extra arcs.",
+    apply() {
+      player.chainTargets += 2;
+      state.flags.add("storm-bridge");
+    }
+  },
+  {
+    id: "armor-reinforce",
+    name: "Armor Rite",
+    rarity: "rare",
+    type: "Armor upgrade",
+    description: "Improve your current armor identity: tanks block, scouts move, reactors shield.",
+    apply() {
+      upgradeCurrentArmor();
+    }
+  },
+  {
+    id: "danger-dividend",
+    name: "Danger Dividend",
+    rarity: "epic",
+    type: "Economy",
+    description: "Wave clears pay more bread and essence, but messy waves cost extra.",
+    apply() {
+      state.flags.add("danger-dividend");
     }
   },
   {
@@ -514,7 +683,8 @@ function applyMetaUpgrades() {
   const levels = meta.upgrades || {};
   player.maxHealth += (levels.vitality || 0) * 18;
   player.health = player.maxHealth;
-  player.damage += (levels.damage || 0) * 3;
+  player.damageBonus = (levels.damage || 0) * 3;
+  player.damage += player.damageBonus;
   player.speed += (levels.speed || 0) * 14;
   player.magnet += (levels.magnet || 0) * 22;
   player.relicMax = Math.max(62, player.relicMax - (levels.relic || 0) * 4);
@@ -544,6 +714,8 @@ function resetRun(practice = false) {
     comboTimer: 0,
     kills: 0,
     upgrades: [],
+    weaponLevels: {},
+    armorLevels: {},
     flags: new Set(),
     achievements: new Set(),
     milestones: new Set(),
@@ -569,6 +741,7 @@ function resetRun(practice = false) {
     dashCooldown: 0,
     invulnerable: 1.2,
     damage: 18,
+    damageBonus: 0,
     fireRate: 0.16,
     projectileSpeed: 820,
     multiShot: 1,
@@ -578,8 +751,15 @@ function resetRun(practice = false) {
     crit: 0.08,
     regen: 0,
     shield: 0,
-    overcharge: 0
+    overcharge: 0,
+    statusPower: 1,
+    explosionRadius: 86,
+    chainTargets: 1,
+    weapon: "thorn-smg",
+    armorSuit: "ritual-fleece"
   });
+  equipWeapon("thorn-smg");
+  equipArmor("ritual-fleece");
   applyMetaUpgrades();
   for (const list of Object.values(pools)) list.length = 0;
   for (let i = 0; i < 30; i += 1) spawnPickup(rand(240, WORLD.width - 240), rand(220, WORLD.height - 220), "bread", 1);
@@ -708,30 +888,35 @@ function spawnHazard() {
 
 function fireProjectile() {
   if (state.fireCooldown > 0 || state.mode !== "playing") return;
+  const weapon = currentWeapon();
   const dx = pointer.worldX - player.x;
   const dy = pointer.worldY - player.y;
   const angle = Math.atan2(dy, dx);
   const count = player.multiShot;
-  const spread = count === 1 ? 0 : 0.12 + count * 0.018;
+  const spread = count === 1 ? weapon.spread : weapon.spread + count * 0.012;
   const damageMultiplier = player.overcharge > 0 ? 1.45 : 1;
   for (let i = 0; i < count; i += 1) {
     const offset = (i - (count - 1) / 2) * spread;
-    const a = angle + offset;
+    const a = angle + offset + rand(-weapon.spread, weapon.spread) * 0.22;
     const crit = Math.random() < player.crit;
     pools.projectiles.push({
       x: player.x + Math.cos(a) * 34,
       y: player.y + Math.sin(a) * 34,
       vx: Math.cos(a) * player.projectileSpeed,
       vy: Math.sin(a) * player.projectileSpeed,
-      radius: crit ? 9 : 7,
+      radius: weapon.radius + (crit ? 2 : 0),
       damage: player.damage * damageMultiplier * (crit ? 2.15 : 1),
-      life: 0.82,
+      life: weapon.life,
       crit,
-      pierce: (crit ? 1 : 0) + (state.flags.has("piercing-shots") ? 1 : 0)
+      pierce: (weapon.pierce || 0) + (crit ? 1 : 0) + (state.flags.has("piercing-shots") ? 1 : 0),
+      tags: weapon.tags,
+      color: weapon.color,
+      explosionRadius: weapon.explosionRadius || player.explosionRadius,
+      knockback: weapon.tags.includes("knockback") ? 1.9 : 1
     });
   }
   state.fireCooldown = Math.max(0.06, player.fireRate);
-  camera.trauma = Math.max(camera.trauma, 0.06);
+  camera.trauma = Math.max(camera.trauma, weapon.recoil);
   audio.shoot();
 }
 
@@ -814,11 +999,14 @@ function showEvent(kicker, title, tone = "rare") {
 function chooseUpgradeOptions() {
   const rarityScore = { common: 1, rare: 2, epic: 3, legendary: 4 };
   return [...upgrades]
+    .filter((upgrade) => !upgrade.id.startsWith("weapon-") || upgrade.id !== `weapon-${player.weapon}`)
+    .filter((upgrade) => !upgrade.id.startsWith("armor-") || upgrade.id !== `armor-${player.armorSuit}`)
     .sort(() => Math.random() - 0.5)
     .map((upgrade) => {
       const rarity = rarityScore[upgrade.rarity] || 1;
       const lateWaveLift = Math.min(0.72, state.wave / 22);
-      return { upgrade, roll: Math.random() + lateWaveLift * (rarity - 1) * 0.24 };
+      const buildMatch = upgrade.type === "Synergy" ? 0.14 : upgrade.type === "Weapon upgrade" || upgrade.type === "Armor upgrade" ? 0.08 : 0;
+      return { upgrade, roll: Math.random() + buildMatch + lateWaveLift * (rarity - 1) * 0.24 };
     })
     .sort((a, b) => b.roll - a.roll)
     .slice(0, 3)
@@ -832,7 +1020,7 @@ function openUpgradeModal() {
   const options = chooseUpgradeOptions();
   upgradeGrid.innerHTML = options.map((upgrade, index) => `
     <button type="button" class="rarity-${upgrade.rarity || "common"}" data-upgrade="${upgrade.id}" value="${index}">
-      <span>${rarityLabel(upgrade.rarity)}</span>
+      <span>${safeName(upgrade.type || "Relic")} · ${rarityLabel(upgrade.rarity)}</span>
       <b>${upgrade.name}</b>
       <small>${upgrade.description}</small>
     </button>
@@ -1048,8 +1236,8 @@ function updateWave(dt) {
   }
   if (state.waveClearing && pools.enemies.length === 0) {
     if (state.waveDamageTaken <= 0) {
-      const bonusBread = Math.max(3, Math.floor(state.wave * 1.5));
-      const bonusScore = Math.floor((350 + state.wave * 90) * profile.scoreMultiplier);
+      const bonusBread = Math.max(3, Math.floor(state.wave * (state.flags.has("danger-dividend") ? 2.2 : 1.5)));
+      const bonusScore = Math.floor((350 + state.wave * (state.flags.has("danger-dividend") ? 130 : 90)) * profile.scoreMultiplier);
       state.bread += bonusBread;
       state.score += bonusScore;
       unlockAchievement("Untouched Fur", "Cleared a wave without taking damage.");
@@ -1057,7 +1245,7 @@ function updateWave(dt) {
       showToast("Perfect wave", `+${bonusBread} bread and +${bonusScore.toLocaleString()} score`, "legendary");
     }
     if (state.wave >= 9 && state.waveDamageTaken > 0) {
-      const penalty = Math.min(state.bread, Math.floor(state.waveDamageTaken / 22));
+      const penalty = Math.min(state.bread, Math.floor(state.waveDamageTaken / (state.flags.has("danger-dividend") ? 15 : 22)));
       if (penalty > 0) {
         state.bread -= penalty;
         showToast("Messy wave penalty", `-${penalty} bread for taking ${Math.ceil(state.waveDamageTaken)} damage`, "epic");
@@ -1111,14 +1299,29 @@ function checkMilestones() {
 function updateEnemies(dt) {
   for (let i = pools.enemies.length - 1; i >= 0; i -= 1) {
     const enemy = pools.enemies[i];
+    if (enemy.status) {
+      if (enemy.status.poison > 0) {
+        enemy.hp -= (7 + state.wave * 0.45) * player.statusPower * dt;
+        enemy.status.poison -= dt;
+        if (Math.random() < dt * 8) particle(enemy.x, enemy.y, rand(-45, 45), rand(-80, -15), 0.38, "#b7ff4f", 3);
+      }
+      if (enemy.status.burn > 0) {
+        enemy.hp -= (11 + state.wave * 0.35) * player.statusPower * dt;
+        enemy.status.burn -= dt;
+        if (Math.random() < dt * 10) particle(enemy.x, enemy.y, rand(-55, 55), rand(-90, -20), 0.34, "#ff9b5c", 4);
+      }
+      if (enemy.status.slow > 0) enemy.status.slow -= dt;
+      if (enemy.status.shock > 0) enemy.status.shock -= dt;
+    }
     const dx = player.x - enemy.x;
     const dy = player.y - enemy.y;
     const dist = Math.hypot(dx, dy) || 1;
     const wobble = Math.sin(state.time * 3 + enemy.phase) * (enemy.type === "wisp" ? 0.65 : 0.18);
     const nx = dx / dist;
     const ny = dy / dist;
-    enemy.vx += (nx * enemy.speed - ny * enemy.speed * wobble - enemy.vx) * Math.min(1, dt * 2.8);
-    enemy.vy += (ny * enemy.speed + nx * enemy.speed * wobble - enemy.vy) * Math.min(1, dt * 2.8);
+    const statusSpeed = enemy.status?.slow > 0 ? 0.56 : 1;
+    enemy.vx += (nx * enemy.speed * statusSpeed - ny * enemy.speed * wobble - enemy.vx) * Math.min(1, dt * 2.8);
+    enemy.vy += (ny * enemy.speed * statusSpeed + nx * enemy.speed * wobble - enemy.vy) * Math.min(1, dt * 2.8);
     enemy.x += enemy.vx * dt;
     enemy.y += enemy.vy * dt;
     enemy.hitFlash -= dt;
@@ -1186,10 +1389,12 @@ function updateEnemies(dt) {
       let damage = Math.max(2, enemy.damage - player.armor);
       if (state.flags.has("glass-contract")) damage *= 1.22;
       if (player.shield > 0) {
+        const shieldBefore = player.shield;
         const blocked = Math.min(player.shield, damage);
         player.shield -= blocked;
         damage -= blocked;
         floatingText(player.x, player.y - 54, `BLOCK ${Math.round(blocked)}`, "#85ffd2");
+        if (shieldBefore > 0 && player.shield <= 0 && state.flags.has("reactive-armor")) shockwave(player.x, player.y, 185, 42 + state.wave * 2);
       }
       player.health -= damage;
       state.waveDamageTaken += damage;
@@ -1333,6 +1538,61 @@ function shockwave(x, y, radius, damage) {
   }
 }
 
+function applyStatus(enemy, type, amount) {
+  enemy.status ??= {};
+  enemy.status[type] = Math.max(enemy.status[type] || 0, amount * player.statusPower);
+}
+
+function explodeAt(x, y, radius, damage, color = "#ff9b5c") {
+  for (const enemy of pools.enemies) {
+    const d = Math.sqrt(distanceSq({ x, y }, enemy));
+    if (d <= radius) {
+      const falloff = 1 - d / Math.max(1, radius);
+      enemy.hp -= damage * (0.35 + falloff * 0.65);
+      enemy.hitFlash = 0.16;
+      if (state.flags.has("ember-armor")) applyStatus(enemy, "burn", 1.8);
+    }
+  }
+  for (let i = 0; i < 26; i += 1) {
+    const angle = rand(0, Math.PI * 2);
+    particle(x, y, Math.cos(angle) * rand(80, 360), Math.sin(angle) * rand(80, 360), rand(0.22, 0.62), color, rand(3, 7));
+  }
+  camera.trauma = Math.max(camera.trauma, 0.16);
+}
+
+function chainFrom(source, damage, jumps, color = "#85ffd2") {
+  let origin = source;
+  const hit = new Set([source]);
+  for (let jump = 0; jump < jumps; jump += 1) {
+    const target = pools.enemies
+      .filter((enemy) => !hit.has(enemy) && enemy.hp > 0 && distanceSq(origin, enemy) < 260 ** 2)
+      .sort((a, b) => distanceSq(origin, a) - distanceSq(origin, b))[0];
+    if (!target) return;
+    target.hp -= damage * (0.72 - jump * 0.08);
+    target.hitFlash = 0.14;
+    applyStatus(target, "shock", 1.2);
+    particle(origin.x, origin.y, (target.x - origin.x) * 4, (target.y - origin.y) * 4, 0.16, color, 5);
+    hit.add(target);
+    origin = target;
+  }
+}
+
+function applyShotEffects(shot, enemy) {
+  const tags = shot.tags || [];
+  if (tags.includes("poison")) applyStatus(enemy, "poison", 3.2);
+  if (tags.includes("slow")) applyStatus(enemy, "slow", 2.4);
+  if (tags.includes("burn")) applyStatus(enemy, "burn", 2.7);
+  if (tags.includes("shock") || tags.includes("chain")) {
+    chainFrom(enemy, shot.damage * 0.55, player.chainTargets + (shot.crit ? 1 : 0), shot.color);
+  }
+  if (tags.includes("explosive")) {
+    explodeAt(enemy.x, enemy.y, shot.explosionRadius || player.explosionRadius, shot.damage * 0.82, shot.color);
+  }
+  if (state.flags.has("burn-explodes") && enemy.status?.burn > 0 && Math.random() < 0.22) {
+    explodeAt(enemy.x, enemy.y, player.explosionRadius * 0.72, shot.damage * 0.48, "#ffcf8a");
+  }
+}
+
 function updateProjectiles(dt) {
   for (let i = pools.projectiles.length - 1; i >= 0; i -= 1) {
     const shot = pools.projectiles[i];
@@ -1344,16 +1604,20 @@ function updateProjectiles(dt) {
       if (distanceSq(shot, enemy) < (shot.radius + enemy.radius) ** 2) {
         enemy.hp -= shot.damage;
         enemy.hitFlash = 0.12;
-        enemy.vx += shot.vx * 0.055;
-        enemy.vy += shot.vy * 0.055;
+        enemy.vx += shot.vx * 0.055 * (shot.knockback || 1);
+        enemy.vy += shot.vy * 0.055 * (shot.knockback || 1);
+        applyShotEffects(shot, enemy);
         floatingText(enemy.x, enemy.y - enemy.radius, shot.crit ? "CRIT" : Math.round(shot.damage), shot.crit ? "#fff29b" : "#f3fff1");
-        for (let p = 0; p < 8; p += 1) particle(shot.x, shot.y, rand(-160, 160), rand(-160, 160), rand(0.18, 0.38), shot.crit ? "#fff29b" : "#caffb8", rand(2, 4));
+        for (let p = 0; p < 8; p += 1) particle(shot.x, shot.y, rand(-160, 160), rand(-160, 160), rand(0.18, 0.38), shot.crit ? "#fff29b" : shot.color || "#caffb8", rand(2, 4));
         if (shot.pierce > 0) shot.pierce -= 1;
         else remove = true;
         break;
       }
     }
-    if (remove) pools.projectiles.splice(i, 1);
+    if (remove) {
+      if (shot.tags?.includes("explosive") && shot.life <= 0) explodeAt(shot.x, shot.y, shot.explosionRadius || player.explosionRadius, shot.damage * 0.72, shot.color);
+      pools.projectiles.splice(i, 1);
+    }
   }
 }
 
@@ -1367,13 +1631,15 @@ function updateEnemyShots(dt) {
     if (!remove && distanceSq(shot, player) < (shot.radius + player.radius) ** 2) {
       if (player.invulnerable <= 0) {
         let damage = Math.max(2, shot.damage - player.armor * 0.6);
-        if (state.flags.has("glass-contract")) damage *= 1.22;
-        if (player.shield > 0) {
-          const blocked = Math.min(player.shield, damage);
-          player.shield -= blocked;
-          damage -= blocked;
-          floatingText(player.x, player.y - 54, `BLOCK ${Math.round(blocked)}`, "#85ffd2");
-        }
+      if (state.flags.has("glass-contract")) damage *= 1.22;
+      if (player.shield > 0) {
+        const shieldBefore = player.shield;
+        const blocked = Math.min(player.shield, damage);
+        player.shield -= blocked;
+        damage -= blocked;
+        floatingText(player.x, player.y - 54, `BLOCK ${Math.round(blocked)}`, "#85ffd2");
+        if (shieldBefore > 0 && player.shield <= 0 && state.flags.has("reactive-armor")) shockwave(player.x, player.y, 185, 42 + state.wave * 2);
+      }
         player.health -= damage;
         state.waveDamageTaken += damage;
         player.invulnerable = 0.22;
@@ -1484,9 +1750,14 @@ function updateHud() {
 }
 
 function updateSidebar() {
-  loadout.innerHTML = state.upgrades.length
-    ? state.upgrades.slice(-10).map((item) => `<span>${safeName(item)}</span>`).join("")
-    : "<span>No relics equipped yet.</span>";
+  const weapon = currentWeapon();
+  const armor = currentArmor();
+  const loadoutItems = [
+    `${weapon.name} · ${weapon.role}`,
+    `${armor.name} · ${armor.role}`,
+    ...state.upgrades.slice(-8)
+  ];
+  loadout.innerHTML = loadoutItems.map((item) => `<span>${safeName(item)}</span>`).join("");
   objectives.innerHTML = [
     state.waveClearing ? `Clear the remaining wave ${state.wave} enemies.` : `Survive wave ${state.wave}.`,
     state.waveClearing ? "Spawner paused. Upgrade appears when the arena is clean." : `${Math.max(0, Math.ceil((22 + Math.min(28, state.wave * 3)) - state.waveTimer))} seconds until the wave starts clearing.`,
@@ -1502,6 +1773,8 @@ function updateSidebar() {
     `<span>Kills <b>${state.kills}</b></span>`,
     `<span>Shield <b>${Math.ceil(player.shield)}</b></span>`,
     `<span>Overcharge <b>${player.overcharge > 0 ? `${player.overcharge.toFixed(1)}s` : "None"}</b></span>`,
+    `<span>Weapon <b>${safeName(weapon.name)}</b></span>`,
+    `<span>Armor <b>${safeName(armor.name)}</b></span>`,
     `<span>Boss <b>${boss ? `${Math.ceil(Math.max(0, boss.hp))} HP` : "Dormant"}</b></span>`,
     `<span>Mini-boss <b>${pools.enemies.some((enemy) => enemy.type === "miniboss") ? "Active" : "Clear"}</b></span>`,
     `<span>Threat Mix <b>${new Set(pools.enemies.map((enemy) => enemy.type)).size || 0}</b></span>`,
@@ -1513,7 +1786,7 @@ function endRun() {
   state.gameOverHandled = true;
   state.mode = "gameover";
   const bread = Math.floor(state.bread * (state.practice ? 0.4 : 1));
-  const essenceEarned = Math.max(4, Math.floor(state.score / 650) + state.wave * 3 + Math.floor(state.kills / 12));
+  const essenceEarned = Math.max(4, Math.floor(state.score / (state.flags.has("danger-dividend") ? 560 : 650)) + state.wave * 3 + Math.floor(state.kills / 12));
   if (!state.practice) {
     meta.essence += essenceEarned;
     saveMetaProgress();
@@ -1764,11 +2037,24 @@ function drawEnemies() {
 function drawProjectiles() {
   for (const shot of pools.projectiles) {
     ctx.save();
-    ctx.fillStyle = shot.crit ? "#fff29b" : "#dcffd4";
-    ctx.shadowColor = shot.crit ? "#fff29b" : "#7fff75";
+    const color = shot.crit ? "#fff29b" : shot.color || "#dcffd4";
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = Math.max(2, shot.radius * 0.6);
+    ctx.beginPath();
+    ctx.moveTo(shot.x, shot.y);
+    ctx.lineTo(shot.x - shot.vx * 0.035, shot.y - shot.vy * 0.035);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
     ctx.shadowBlur = shot.crit ? 20 : 14;
     ctx.beginPath();
-    ctx.arc(shot.x, shot.y, shot.radius, 0, Math.PI * 2);
+    if (shot.tags?.includes("rail")) {
+      ctx.ellipse(shot.x, shot.y, shot.radius * 1.8, shot.radius * 0.72, Math.atan2(shot.vy, shot.vx), 0, Math.PI * 2);
+    } else {
+      ctx.arc(shot.x, shot.y, shot.radius, 0, Math.PI * 2);
+    }
     ctx.fill();
     ctx.restore();
   }

@@ -841,6 +841,10 @@
   align-self: start;
 }
 
+.relic-build-codex {
+  grid-column: 1 / -1;
+}
+
 .relic-upgrade-hero h1 {
   margin: 0;
   font-size: clamp(44px, 6vw, 80px);
