@@ -7935,6 +7935,18 @@ export function createCommandHandler(options) {
       return true;
     }
 
+    if ((command.category || "").toLowerCase() === "gambling" && !isPanelRootUser(config, message.author.id)) {
+      const payload = toEmbedPayload(
+        "Only root panel users can use economy commands.",
+        commandEmbedMeta({ command, config, message })
+      );
+      const sent = await message.reply(payload).then(() => true).catch(() => false);
+      if (!sent && message.channel?.send) {
+        await message.channel.send(payload).catch(() => {});
+      }
+      return true;
+    }
+
     const commandMessage = PLAIN_OUTPUT_COMMANDS.has(command.name)
       ? message
       : createEmbedMessageProxy(message, commandEmbedMeta({ command, config, message }));
