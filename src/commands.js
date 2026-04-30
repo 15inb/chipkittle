@@ -913,6 +913,95 @@ async function sendAiResult(ctx, aiResult) {
   await ctx.message.reply({ content: text, allowedMentions: NO_MENTIONS });
 }
 
+function parseThreatScanOptions(args = []) {
+  const numbers = args
+    .map((part) => Number(String(part || "").replace(/[^\d]/g, "")))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const requestedLimit = numbers[0] || 80;
+  const scope = args.some((part) => ["here", "channel", "current"].includes(String(part || "").toLowerCase()))
+    ? "here"
+    : "server";
+  return {
+    limit: Math.max(20, Math.min(100, Math.floor(requestedLimit))),
+    scope
+  };
+}
+
+function canReadMessageHistory(channel, member) {
+  if (!channel?.isTextBased?.() || !channel.messages?.fetch || !member) return false;
+  const permissions = channel.permissionsFor?.(member);
+  if (!permissions) return false;
+  return permissions.has(PermissionsBitField.Flags.ViewChannel) &&
+    permissions.has(PermissionsBitField.Flags.ReadMessageHistory);
+}
+
+function threatScanExcerpt(message) {
+  const content = cleanText(message.content || "", 420);
+  const attachmentNote = message.attachments?.size ? ` [${message.attachments.size} attachment${message.attachments.size === 1 ? "" : "s"}]` : "";
+  const stickerNote = message.stickers?.size ? ` [${message.stickers.size} sticker${message.stickers.size === 1 ? "" : "s"}]` : "";
+  return `${content}${attachmentNote}${stickerNote}`.trim();
+}
+
+async function collectThreatScanMessages(ctx, member, { limit = 80, scope = "server" } = {}) {
+  const botMember = ctx.message.guild.members.me || await ctx.message.guild.members.fetchMe().catch(() => null);
+  const channels = [];
+  const seen = new Set();
+
+  function addChannel(channel) {
+    if (!channel?.id || seen.has(channel.id) || !canReadMessageHistory(channel, botMember)) return;
+    seen.add(channel.id);
+    channels.push(channel);
+  }
+
+  addChannel(ctx.message.channel);
+  if (scope !== "here") {
+    const guildChannels = [...ctx.message.guild.channels.cache.values()]
+      .filter((channel) =>
+        [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.PublicThread, ChannelType.PrivateThread].includes(channel.type)
+      )
+      .sort((a, b) => {
+        const left = a.id === ctx.message.channel.id ? -1 : 0;
+        const right = b.id === ctx.message.channel.id ? -1 : 0;
+        return left - right || String(a.name || "").localeCompare(String(b.name || ""));
+      });
+    for (const channel of guildChannels) addChannel(channel);
+  }
+
+  const collected = [];
+  let scannedChannels = 0;
+  for (const channel of channels.slice(0, scope === "here" ? 1 : 18)) {
+    if (collected.length >= limit) break;
+    const batch = await channel.messages.fetch({ limit: Math.min(100, Math.max(35, limit)) }).catch(() => null);
+    if (!batch) continue;
+    scannedChannels += 1;
+    for (const message of batch.values()) {
+      if (message.author?.id !== member.id) continue;
+      const content = threatScanExcerpt(message);
+      if (!content) continue;
+      collected.push({
+        channelId: channel.id,
+        channelName: channel.name || channel.id,
+        messageId: message.id,
+        createdAt: message.createdAt?.toISOString?.() || "",
+        content
+      });
+      if (collected.length >= limit) break;
+    }
+  }
+
+  collected.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  return { messages: collected.slice(-limit), scannedChannels };
+}
+
+function threatLevelColor(level = "") {
+  const normalized = String(level).toLowerCase();
+  if (normalized === "critical") return 0x991b1b;
+  if (normalized === "high") return 0xef4444;
+  if (normalized === "medium") return 0xf59e0b;
+  if (normalized === "low") return 0x65d6ad;
+  return 0x94a3b8;
+}
+
 function isApplicationStaff(ctx) {
   return canUseApplicationCommand(ctx.message.member, ctx.config, ctx.command.name, hasCommandRoleOverride);
 }
@@ -7406,6 +7495,113 @@ define({
       "",
       punishments.length ? punishments.map((entry) => `- ${entry.label || entry.action || "Moderation action"} - ${entry.details || "No details"}`).join("\n") : "No recent punishments."
     ].join("\n"));
+  }
+});
+
+define({
+  name: "threatscan",
+  aliases: ["riskscan", "threatlevel", "risklevel"],
+  category: "Moderation",
+  description: "Use AI to review recent visible messages and estimate a moderation threat level.",
+  usage: "threatscan @user [20-100] [here]",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageMessages)) return;
+    const member = ctx.message.mentions.members.first();
+    if (!member) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+
+    if (!ctx.config.ai.enabled) {
+      await ctx.message.reply("Chipkittle AI is disabled in the panel.");
+      return;
+    }
+
+    if (!ctx.ai.enabled) {
+      await ctx.message.reply("AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");
+      return;
+    }
+
+    const budget = aiBudgetStatus(ctx.config);
+    if (budget.exceeded) {
+      await ctx.message.reply("Chipkittle AI has reached the monthly usage budget.");
+      return;
+    }
+
+    const rateLimit = checkAiRateLimit({
+      guildId: ctx.message.guild.id,
+      userId: ctx.message.author.id,
+      cooldownSeconds: ctx.config.ai.apiCooldownSeconds,
+      bucket: "threatscan"
+    });
+
+    if (rateLimit.limited) {
+      await ctx.message.reply({
+        content: `The moderation artifact is cooling down. Try again in ${rateLimit.retryAfterSeconds}s.`,
+        allowedMentions: NO_MENTIONS
+      });
+      return;
+    }
+
+    const options = parseThreatScanOptions(ctx.args.slice(1));
+    await ctx.message.channel.sendTyping();
+    const { messages, scannedChannels } = await collectThreatScanMessages(ctx, member, options);
+    if (!messages.length) {
+      await ctx.message.reply(`I could not find readable recent messages from ${member} in ${options.scope === "here" ? "this channel" : "the scanned channels"}.`);
+      return;
+    }
+
+    const assessment = await ctx.ai.threatAssessment(ctx.message, ctx.config, {
+      targetTag: member.user.tag,
+      messages
+    });
+    await recordAiUsage(ctx.store, ctx.message.guild.id, ctx.config, assessment.usage);
+    await incrementMetric(ctx.store, ctx.message.guild.id, "aiReplies", 1).catch(() => {});
+
+    if (assessment.error) {
+      await ctx.message.reply(assessment.error);
+      return;
+    }
+
+    const level = cleanText(assessment.level || "unknown", 24).toUpperCase();
+    const signals = assessment.signals?.length ? assessment.signals.map((item) => `• ${cleanText(item, 90)}`).join("\n") : "None detected.";
+    const evidence = assessment.evidence?.length ? assessment.evidence.map((item) => `• ${cleanText(item, 180)}`).join("\n") : "No specific evidence returned.";
+    const embed = buildPrettyEmbed({
+      title: `Threat Scan: ${member.user.tag}`,
+      color: threatLevelColor(assessment.level),
+      description: [
+        `**Review-only result:** ${level} (**${assessment.score}/100**)`,
+        `**Confidence:** ${cleanText(assessment.confidence || "low", 40)}`,
+        `**Scope:** ${options.scope === "here" ? "current channel" : `${scannedChannels} channel${scannedChannels === 1 ? "" : "s"}`} / ${messages.length} message${messages.length === 1 ? "" : "s"}`,
+        "",
+        "**Summary**",
+        cleanText(assessment.summary, 700),
+        "",
+        "**Signals**",
+        signals,
+        "",
+        "**Evidence**",
+        evidence,
+        "",
+        "**Recommendation**",
+        cleanText(assessment.recommendation, 300),
+        "",
+        "_This is an AI moderation aid, not a punishment decision. Staff should verify context before acting._"
+      ].join("\n"),
+      footer: `Requested by ${ctx.message.author.tag}`
+    });
+
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+    await sendModerationLog(ctx, `Threat scan for ${member.user.tag}: ${level} (${assessment.score}/100), confidence ${assessment.confidence}. ${messages.length} messages sampled.`);
+    await addAuditLog(ctx.store, ctx.message.guild.id, {
+      type: "moderation",
+      action: "threatscan",
+      label: "Threat scan run",
+      details: `${ctx.message.author.tag} ran a threat scan for ${member.user.tag}: ${level} (${assessment.score}/100).`,
+      actor: ctx.message.author.tag,
+      targetId: member.id,
+      targetName: member.user.tag
+    }).catch(() => {});
   }
 });
 
