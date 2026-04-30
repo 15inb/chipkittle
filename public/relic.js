@@ -1,4 +1,4 @@
-import { clamp, createGameServices, distanceSq, rand, safeName } from "./game-common.js";
+import { clamp, createGameServices, distanceSq, rand, safeName, escapeHtml } from "./game-common.js";
 
 const canvas = document.getElementById("relicCanvas");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -846,7 +846,7 @@ function renderMetaUpgrades() {
       <div class="relic-meta-row">
         <span>
           <strong>${item.name} ${level}/${item.max}</strong>
-          <small>${item.description}</small>
+          <small>${escapeHtml(item.description)}</small>
         </span>
         <button type="button" data-meta-upgrade="${item.id}" ${maxed || !affordable ? "disabled" : ""}>${maxed ? "Maxed" : `${cost} essence`}</button>
       </div>
@@ -887,10 +887,10 @@ function renderLoadoutPicker() {
     const selectedClass = selected === id ? " is-selected" : "";
     const lockedText = locked ? `Requires ${permanentPowerCatalog.find((power) => power.id === item.requiresPower)?.name || "a permanent power"}` : item.description;
     return `
-      <button type="button" class="relic-loadout-card rarity-${item.rarity || "common"}${selectedClass}" data-loadout-kind="${activeLoadoutTab}" data-loadout-id="${id}" ${locked ? "disabled" : ""}>
+      <button type="button" class="relic-loadout-card rarity-${item.rarity || "common"}${selectedClass}" data-loadout-kind="${activeLoadoutTab}" data-loadout-id="${id}" title="${escapeHtml(lockedText)}" ${locked ? "disabled" : ""}>
         <span>${safeName(item.role || item.type || "Loadout")}</span>
         <strong>${safeName(item.name)}</strong>
-        <small>${safeName(lockedText)}</small>
+        <small>${escapeHtml(lockedText)}</small>
       </button>
     `;
   }).join("");
@@ -902,7 +902,7 @@ function renderLoadoutPicker() {
   const unlocked = permanentPowerCatalog.filter((power) => hasPermanentPower(power.id));
   if (permanentPowers) {
     permanentPowers.innerHTML = unlocked.length
-      ? unlocked.map((power) => `<span class="rarity-${power.rarity}"><b>${safeName(power.name)}</b> ${safeName(power.description)}</span>`).join("")
+      ? unlocked.map((power) => `<span class="rarity-${power.rarity}"><b>${safeName(power.name)}</b> ${escapeHtml(power.description)}</span>`).join("")
       : "Reach round 10 to awaken the first permanent power.";
   }
 }
@@ -1241,7 +1241,7 @@ function showToast(title, detail, tone = "common") {
   if (!toastLayer) return;
   const toast = document.createElement("div");
   toast.className = `relic-toast rarity-${tone}`;
-  toast.innerHTML = `<strong>${safeName(title)}</strong><span>${safeName(detail)}</span>`;
+  toast.innerHTML = `<strong>${safeName(title)}</strong><span>${escapeHtml(detail)}</span>`;
   toastLayer.appendChild(toast);
   window.setTimeout(() => {
     toast.classList.add("is-leaving");
@@ -1287,7 +1287,7 @@ function openUpgradeModal() {
     <button type="button" class="rarity-${upgrade.rarity || "common"}" data-upgrade="${upgrade.id}" value="${index}">
       <span>${safeName(upgrade.type || "Relic")} · ${rarityLabel(upgrade.rarity)}</span>
       <b>${upgrade.name}</b>
-      <small>${upgrade.description}</small>
+      <small>${escapeHtml(upgrade.description)}</small>
     </button>
   `).join("");
   showEvent("Choose a relic", "The den offers three bad ideas", "epic");
