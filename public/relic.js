@@ -47,6 +47,7 @@ const WORLD = { width: 3200, height: 2200 };
 const VIEW = { width: 1280, height: 720 };
 const META_KEY = "chipkittle-relic-meta";
 const keys = new Set();
+const GAMEPLAY_KEYS = new Set(["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", " ", "shift", "q", "p", "escape", "m"]);
 const pointer = { x: VIEW.width / 2, y: VIEW.height / 2, down: false, worldX: 0, worldY: 0 };
 const camera = { x: 0, y: 0, shake: 0, trauma: 0 };
 const pools = {
@@ -69,6 +70,19 @@ const metaUpgradeCatalog = [
 ];
 
 let meta = loadMetaProgress();
+
+function normalizeKey(key = "") {
+  return String(key || "").toLowerCase();
+}
+
+function isTextInputTarget(target) {
+  const tagName = target?.tagName?.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || tagName === "select" || Boolean(target?.isContentEditable);
+}
+
+function focusGameCanvas() {
+  canvas.focus?.({ preventScroll: true });
+}
 
 const audio = {
   context: null,
@@ -508,6 +522,8 @@ function applyMetaUpgrades() {
 }
 
 function resetRun(practice = false) {
+  keys.clear();
+  focusGameCanvas();
   Object.assign(state, {
     mode: "playing",
     practice,
@@ -848,7 +864,7 @@ function applyUpgrade(upgradeId) {
 }
 
 function update(dt) {
-  if (keys.has("m") || keys.has("M")) {
+  if (keys.has("m")) {
     if (!state.muteLatch) {
       audio.enabled = !audio.enabled;
       state.muteLatch = true;
@@ -858,7 +874,7 @@ function update(dt) {
     state.muteLatch = false;
   }
 
-  if (keys.has("p") || keys.has("P") || keys.has("Escape")) {
+  if (keys.has("p") || keys.has("escape")) {
     if (!state.pauseLatch && state.mode === "playing") {
       state.mode = "paused";
       overlay.classList.remove("is-hidden");
@@ -912,10 +928,10 @@ function updatePlayer(dt) {
   let ax = 0;
   let ay = 0;
   let padDash = false;
-  if (keys.has("w") || keys.has("ArrowUp")) ay -= 1;
-  if (keys.has("s") || keys.has("ArrowDown")) ay += 1;
-  if (keys.has("a") || keys.has("ArrowLeft")) ax -= 1;
-  if (keys.has("d") || keys.has("ArrowRight")) ax += 1;
+  if (keys.has("w") || keys.has("arrowup")) ay -= 1;
+  if (keys.has("s") || keys.has("arrowdown")) ay += 1;
+  if (keys.has("a") || keys.has("arrowleft")) ax -= 1;
+  if (keys.has("d") || keys.has("arrowright")) ax += 1;
   const pad = navigator.getGamepads?.()[0];
   if (pad) {
     const gx = Math.abs(pad.axes[0] || 0) > 0.18 ? pad.axes[0] : 0;
@@ -938,7 +954,7 @@ function updatePlayer(dt) {
   ax /= length;
   ay /= length;
 
-  if ((keys.has(" ") || keys.has("Shift") || padDash) && player.dashCooldown <= 0 && (ax || ay)) {
+  if ((keys.has(" ") || keys.has("shift") || padDash) && player.dashCooldown <= 0 && (ax || ay)) {
     player.vx += ax * 880;
     player.vy += ay * 880;
     player.invulnerable = 0.24;
@@ -955,7 +971,7 @@ function updatePlayer(dt) {
   player.y = clamp(player.y + player.vy * dt, 70, WORLD.height - 70);
 
   if (pointer.down) fireProjectile();
-  if (keys.has("q") || keys.has("Q")) relicBurst();
+  if (keys.has("q")) relicBurst();
 }
 
 function updateWave(dt) {
@@ -1925,12 +1941,19 @@ function loop(now) {
 
 window.addEventListener("resize", resizeCanvas);
 window.addEventListener("keydown", (event) => {
-  keys.add(event.key);
-  if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) event.preventDefault();
+  const key = normalizeKey(event.key);
+  if (isTextInputTarget(event.target)) return;
+  keys.add(key);
+  if (GAMEPLAY_KEYS.has(key)) event.preventDefault();
 });
-window.addEventListener("keyup", (event) => keys.delete(event.key));
+window.addEventListener("keyup", (event) => keys.delete(normalizeKey(event.key)));
+window.addEventListener("blur", () => keys.clear());
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) keys.clear();
+});
 canvas.addEventListener("pointermove", screenToWorld);
 canvas.addEventListener("pointerdown", (event) => {
+  focusGameCanvas();
   pointer.down = true;
   screenToWorld(event);
   canvas.setPointerCapture?.(event.pointerId);
