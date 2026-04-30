@@ -63,7 +63,7 @@ const DEFAULT_CONFIG = {
     games: {
       blockedLeaderboardWords: [],
       maxLeaderboardEntriesPerGame: 10,
-      maxLeaderboardScore: 100000,
+      maxLeaderboardScore: Number.MAX_SAFE_INTEGER,
       maxLeaderboardBread: 100000,
       maxClaimBreadPerRun: 100000,
       recordAlertChannelId: ""

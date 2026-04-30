@@ -215,7 +215,7 @@ class FileSessionStore extends session.Store {
 const DEFAULT_PUBLIC_GAME_SETTINGS = {
   blockedLeaderboardWords: [],
   maxLeaderboardEntriesPerGame: 10,
-  maxLeaderboardScore: 100000,
+  maxLeaderboardScore: Number.MAX_SAFE_INTEGER,
   maxLeaderboardBread: 100000,
   maxClaimBreadPerRun: 100000,
   recordAlertChannelId: ""
@@ -1834,7 +1834,7 @@ function publicGameSettings(config = {}) {
   return {
     blockedLeaderboardWords,
     maxLeaderboardEntriesPerGame: Math.min(Math.max(Number(games.maxLeaderboardEntriesPerGame) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardEntriesPerGame, 1), 50),
-    maxLeaderboardScore: Math.min(Math.max(Number(games.maxLeaderboardScore) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardScore, 1), 1000000),
+    maxLeaderboardScore: Number.MAX_SAFE_INTEGER,
     maxLeaderboardBread: Math.min(Math.max(Number(games.maxLeaderboardBread) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardBread, 0), 1000000),
     maxClaimBreadPerRun: Math.min(Math.max(Number(games.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000),
     recordAlertChannelId: String(games.recordAlertChannelId || "")
@@ -1845,6 +1845,12 @@ function clampPanelNumber(value, fallback, min, max) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.min(Math.max(numeric, min), max);
+}
+
+function safeLeaderboardScore(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.min(Math.floor(numeric), Number.MAX_SAFE_INTEGER);
 }
 
 function economyPanelSettings(config = {}) {
@@ -2378,7 +2384,7 @@ function allPublicLeaderboardEntries(entries = []) {
     .map((entry) => ({
       game: cleanGameId(entry.game),
       name: cleanLeaderboardName(entry.name),
-      score: Math.max(Math.floor(Number(entry.score) || 0), 0),
+      score: safeLeaderboardScore(entry.score),
       bread: Math.max(Math.floor(Number(entry.bread) || 0), 0),
       createdAt: String(entry.createdAt || "")
     }))
@@ -2611,7 +2617,7 @@ function parseConfigForm(body, section = "general") {
           games: {
             blockedLeaderboardWords: normalizeBlockedWordList(body.blockedLeaderboardWords),
             maxLeaderboardEntriesPerGame: Math.min(Math.max(Number(body.maxLeaderboardEntriesPerGame) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardEntriesPerGame, 1), 50),
-            maxLeaderboardScore: Math.min(Math.max(Number(body.maxLeaderboardScore) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardScore, 1), 1000000),
+            maxLeaderboardScore: Number.MAX_SAFE_INTEGER,
             maxLeaderboardBread: Math.min(Math.max(Number(body.maxLeaderboardBread) || DEFAULT_PUBLIC_GAME_SETTINGS.maxLeaderboardBread, 0), 1000000),
             maxClaimBreadPerRun: Math.min(Math.max(Number(body.maxClaimBreadPerRun) || DEFAULT_PUBLIC_GAME_SETTINGS.maxClaimBreadPerRun, 0), 1000000),
             recordAlertChannelId: String(body.recordAlertChannelId || "")
@@ -3999,7 +4005,7 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
                 </label>
                 <label>
                   Max saved score per run
-                  <input type="number" name="maxLeaderboardScore" min="1" max="1000000" value="${escapeHtml(gameSettings.maxLeaderboardScore)}">
+                  <input type="text" value="Unlimited" disabled>
                 </label>
                 <label>
                   Max saved bread per run
@@ -5187,7 +5193,7 @@ export function createPanel({
     const entry = {
       game: cleanGameId(request.body?.game),
       name: cleanLeaderboardName(request.body?.name),
-      score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), settings.maxLeaderboardScore),
+      score: safeLeaderboardScore(request.body?.score),
       bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), settings.maxLeaderboardBread),
       createdAt: new Date().toISOString()
     };
@@ -5220,7 +5226,7 @@ export function createPanel({
     const entry = {
       game: cleanGameId(request.body?.game),
       name: cleanLeaderboardName(request.body?.name),
-      score: Math.min(Math.max(Math.floor(Number(request.body?.score) || 0), 0), settings.maxLeaderboardScore),
+      score: safeLeaderboardScore(request.body?.score),
       bread: Math.min(Math.max(Math.floor(Number(request.body?.bread) || 0), 0), settings.maxClaimBreadPerRun)
     };
 

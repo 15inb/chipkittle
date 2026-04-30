@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const CLAIM_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_CLAIM_BREAD = 100000;
 
 function claimStorePath() {
   return path.join(process.cwd(), "data", "dash-claims.json");
@@ -53,7 +54,8 @@ function pruneClaims(store, now = Date.now()) {
 }
 
 export function createDashClaim({ name = "", score = 0, bread = 0 } = {}) {
-  const amount = Math.min(Math.max(Math.floor(Number(bread) || 0), 0), 100000);
+  const amount = Math.min(Math.max(Math.floor(Number(bread) || 0), 0), MAX_CLAIM_BREAD);
+  const safeScore = Math.min(Math.max(Math.floor(Number(score) || 0), 0), Number.MAX_SAFE_INTEGER);
   if (amount <= 0) return null;
 
   const store = readClaimStore();
@@ -62,7 +64,7 @@ export function createDashClaim({ name = "", score = 0, bread = 0 } = {}) {
   const code = makeClaimCode(store.claims);
   store.claims[code] = {
     name: String(name || "").slice(0, 24),
-    score: Math.min(Math.max(Math.floor(Number(score) || 0), 0), 100000),
+    score: safeScore,
     bread: amount,
     createdAt: new Date().toISOString()
   };

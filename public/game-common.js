@@ -47,6 +47,19 @@ function saveLocalLeaderboard(storageKey, scores) {
   localStorage.setItem(storageKey, JSON.stringify(scores.slice(0, 10)));
 }
 
+function finiteScore(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.min(Math.floor(numeric), Number.MAX_SAFE_INTEGER);
+}
+
+function formatLargeNumber(value) {
+  const numeric = finiteScore(value);
+  if (numeric >= 1_000_000_000) return `${(numeric / 1_000_000_000).toFixed(numeric >= 10_000_000_000 ? 1 : 2).replace(/\.0+$/, "")}B`;
+  if (numeric >= 1_000_000) return `${(numeric / 1_000_000).toFixed(numeric >= 10_000_000 ? 1 : 2).replace(/\.0+$/, "")}M`;
+  return numeric.toLocaleString();
+}
+
 export function createBackgroundCache(canvas, renderer) {
   let cacheCanvas = null;
   let cacheKey = null;
@@ -212,10 +225,10 @@ export function createGameServices(gameId, options) {
       return;
     }
 
-    leaderboardList.innerHTML = scores.slice(0, 10).map((entry) => `
+    leaderboardList.innerHTML = scores.slice(0, 10).map((entry, index) => `
       <li>
-        <span>${escapeHtml(safeName(entry.name))}</span>
-        <strong>${Number(entry.score) || 0}</strong>
+        <span>#${index + 1} ${escapeHtml(safeName(entry.name))}</span>
+        <strong title="${finiteScore(entry.score).toLocaleString()}">${formatLargeNumber(entry.score)}</strong>
       </li>
     `).join("");
   }
@@ -240,13 +253,13 @@ export function createGameServices(gameId, options) {
     const entry = {
       game: gameId,
       name,
-      score: Math.floor(score),
+      score: finiteScore(score),
       bread: Math.floor(bread),
       createdAt: new Date().toISOString()
     };
 
     const localScores = [...loadLocalLeaderboard(leaderboardKey), entry]
-      .sort((a, b) => (b.score - a.score) || (b.bread - a.bread))
+      .sort((a, b) => (finiteScore(b.score) - finiteScore(a.score)) || (b.bread - a.bread))
       .slice(0, 10);
     saveLocalLeaderboard(leaderboardKey, localScores);
     renderLeaderboard(localScores);
@@ -287,7 +300,7 @@ export function createGameServices(gameId, options) {
         body: JSON.stringify({
           game: gameId,
           name: persistPlayerName({ allowAnonymous: true }),
-          score: Math.floor(score),
+          score: finiteScore(score),
           bread: Math.floor(bread)
         })
       });
