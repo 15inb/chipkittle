@@ -7146,10 +7146,10 @@ define({
   name: "breadset",
   aliases: ["setbread", "balanceset"],
   category: "Gambling",
-  description: "Staff-only bread balance setter.",
+  description: "Root-only bread balance setter.",
   usage: "breadset @user 5000",
   async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePanelRoot(ctx)) return;
     const member = ctx.message.mentions.members.first();
     const amount = Math.max(Math.floor(Number(ctx.args.find((arg) => !arg.includes("<@")))), 0);
     if (!member || Number.isNaN(amount)) {
