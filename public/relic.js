@@ -265,6 +265,11 @@ const enemyTypes = {
   boss: { hp: 720, speed: 64, radius: 54, damage: 26, value: 480, color: "#ff7373" }
 };
 
+function lateWavePressure(wave = state.wave) {
+  if (wave <= 6) return 0;
+  return Math.min(3.4, ((wave - 6) / 5) ** 1.25);
+}
+
 function loadMetaProgress() {
   try {
     const parsed = JSON.parse(localStorage.getItem(META_KEY) || "{}");
@@ -423,6 +428,10 @@ function screenToWorld(event) {
 
 function spawnEnemy(type = "mite") {
   const spec = enemyTypes[type] || enemyTypes.mite;
+  const pressure = lateWavePressure();
+  const healthScale = (1 + state.wave * 0.12 + pressure * 0.18) * state.difficulty;
+  const speedScale = 1 + state.wave * 0.018 + pressure * 0.045;
+  const damageScale = 1 + Math.max(0, state.wave - 8) * 0.025;
   const side = Math.floor(rand(0, 4));
   let x = 0;
   let y = 0;
@@ -445,11 +454,11 @@ function spawnEnemy(type = "mite") {
     y,
     vx: 0,
     vy: 0,
-    hp: spec.hp * (1 + state.wave * 0.12) * state.difficulty,
-    maxHp: spec.hp * (1 + state.wave * 0.12) * state.difficulty,
-    speed: spec.speed * (1 + state.wave * 0.018),
+    hp: spec.hp * healthScale,
+    maxHp: spec.hp * healthScale,
+    speed: spec.speed * speedScale,
     radius: spec.radius,
-    damage: spec.damage,
+    damage: spec.damage * damageScale,
     value: spec.value,
     color: spec.color,
     hitFlash: 0,
@@ -724,6 +733,7 @@ function updatePlayer(dt) {
 }
 
 function updateWave(dt) {
+  const pressure = lateWavePressure();
   const waveLength = 22 + Math.min(28, state.wave * 3);
   state.biome = state.wave > 8 ? "Broken Archive" : state.wave > 4 ? "Green Furnace" : "Outer Den";
   if (!state.waveClearing && state.waveTimer >= waveLength) {
@@ -731,7 +741,7 @@ function updateWave(dt) {
     state.spawnTimer = 999;
     announce(`Wave ${state.wave} clearing: finish the leftovers.`, "#d7ff91");
   }
-  const enemyCap = 24 + Math.min(28, state.wave * 3);
+  const enemyCap = 24 + Math.min(34, state.wave * 3) + Math.floor(pressure * 6);
   if (!state.waveClearing && state.spawnTimer <= 0 && pools.enemies.length < enemyCap) {
     const roll = Math.random();
     let type = "mite";
@@ -743,11 +753,15 @@ function updateWave(dt) {
     if (state.wave > 5 && roll > 0.31 && roll < 0.41) type = "splitter";
     if (state.wave > 7 && roll > 0.16 && roll < 0.23) type = "healer";
     if (state.wave > 8 && roll > 0.68 && roll < 0.76) type = "mine";
+    if (state.wave > 10 && roll > 0.76 && roll < 0.86) type = Math.random() < 0.5 ? "guardian" : "charger";
+    if (state.wave > 12 && roll < 0.18) type = Math.random() < 0.55 ? "healer" : "spitter";
     spawnEnemy(type);
-    if (state.wave > 4 && Math.random() < 0.18) spawnEnemy("mite");
-    state.spawnTimer = Math.max(0.22, 1.05 - state.wave * 0.055) / state.difficulty;
+    if (state.wave > 4 && Math.random() < 0.18 + pressure * 0.04) spawnEnemy(state.wave > 11 && Math.random() < 0.4 ? "wisp" : "mite");
+    if (state.wave > 14 && Math.random() < 0.12 + pressure * 0.035) spawnEnemy(Math.random() < 0.5 ? "charger" : "splitter");
+    state.spawnTimer = Math.max(0.12, 1.05 - state.wave * 0.055 - pressure * 0.08) / state.difficulty;
   }
-  if (state.wave > 2 && Math.random() < dt * 0.035) spawnHazard();
+  if (state.wave > 2 && Math.random() < dt * (0.035 + pressure * 0.028)) spawnHazard();
+  if (state.wave > 13 && Math.random() < dt * pressure * 0.025) spawnHazard();
   if (state.wave > 3 && state.wave % 3 === 0 && state.wave % 4 !== 0 && !state.bossSpawned && state.waveTimer > 7) {
     spawnEnemy("miniboss");
     state.bossSpawned = true;
@@ -821,29 +835,29 @@ function updateEnemies(dt) {
     if (enemy.type === "spitter" && enemy.specialCooldown <= 0 && dist < 760) {
       const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
       spawnEnemyShot(enemy.x, enemy.y, angle, 390 + state.wave * 8, enemy.damage, enemy.color, 8);
-      enemy.specialCooldown = rand(1.4, 2.5);
+      enemy.specialCooldown = rand(1.4, 2.5) / (1 + lateWavePressure() * 0.08);
       enemy.vx -= nx * 120;
       enemy.vy -= ny * 120;
     }
 
     if (enemy.type === "guardian" && enemy.specialCooldown <= 0) {
-      shockwave(enemy.x, enemy.y, 118, 24);
-      enemy.specialCooldown = rand(4.2, 5.8);
+      shockwave(enemy.x, enemy.y, 118 + lateWavePressure() * 12, 24 + lateWavePressure() * 6);
+      enemy.specialCooldown = rand(4.2, 5.8) / (1 + lateWavePressure() * 0.1);
     }
 
     if (enemy.type === "healer" && enemy.specialCooldown <= 0) {
       healNearbyEnemies(enemy);
-      enemy.specialCooldown = rand(3.2, 4.8);
+      enemy.specialCooldown = rand(3.2, 4.8) / (1 + lateWavePressure() * 0.1);
     }
 
     if (enemy.type === "miniboss" && enemy.specialCooldown <= 0) {
       miniBossPattern(enemy);
-      enemy.specialCooldown = rand(2.4, 3.6);
+      enemy.specialCooldown = rand(2.4, 3.6) / (1 + lateWavePressure() * 0.12);
     }
 
     if (enemy.type === "boss" && enemy.specialCooldown <= 0) {
       bossPattern(enemy);
-      enemy.specialCooldown = Math.max(1.3, 3.4 - state.wave * 0.08);
+      enemy.specialCooldown = Math.max(0.82, 3.4 - state.wave * 0.08 - lateWavePressure() * 0.18);
     }
 
     if (dist < enemy.radius + player.radius && enemy.attackCooldown <= 0 && player.invulnerable <= 0) {
@@ -871,41 +885,48 @@ function updateEnemies(dt) {
 
 function bossPattern(enemy) {
   const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-  const count = 10 + Math.min(10, state.wave);
+  const pressure = lateWavePressure();
+  const count = 10 + Math.min(14, state.wave) + Math.floor(pressure * 4);
   for (let i = 0; i < count; i += 1) {
-    const angle = base + (i - count / 2) * 0.18;
-    spawnEnemyShot(enemy.x, enemy.y, angle, 285 + state.wave * 9, enemy.damage * 0.7, "#ff8f8f", 10);
+    const angle = base + (i - count / 2) * (0.18 - Math.min(0.05, pressure * 0.01));
+    spawnEnemyShot(enemy.x, enemy.y, angle, 285 + state.wave * 9 + pressure * 28, enemy.damage * 0.72, "#ff8f8f", 10 + pressure * 0.8);
   }
-  if (Math.random() < 0.55) {
+  if (Math.random() < Math.min(0.82, 0.55 + pressure * 0.07)) {
     pools.hazards.push({
       x: clamp(player.x + rand(-160, 160), 180, WORLD.width - 180),
       y: clamp(player.y + rand(-160, 160), 180, WORLD.height - 180),
-      radius: rand(74, 112),
-      life: rand(4.2, 6.2),
+      radius: rand(74, 112 + pressure * 14),
+      life: rand(4.2, 6.2 + pressure * 0.7),
       pulse: rand(0, Math.PI * 2)
     });
+  }
+  if (!state.waveClearing && pressure > 1.1 && Math.random() < 0.38) {
+    spawnEnemy(Math.random() < 0.5 ? "healer" : "charger");
   }
   camera.trauma = Math.max(camera.trauma, 0.16);
 }
 
 function miniBossPattern(enemy) {
   const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-  for (let i = 0; i < 7; i += 1) {
-    const angle = base + (i - 3) * 0.26;
-    spawnEnemyShot(enemy.x, enemy.y, angle, 330 + state.wave * 6, enemy.damage * 0.72, "#ff8fd8", 9);
+  const pressure = lateWavePressure();
+  const count = 7 + Math.floor(pressure * 2);
+  for (let i = 0; i < count; i += 1) {
+    const angle = base + (i - (count - 1) / 2) * 0.24;
+    spawnEnemyShot(enemy.x, enemy.y, angle, 330 + state.wave * 6 + pressure * 22, enemy.damage * 0.74, "#ff8fd8", 9 + pressure * 0.5);
   }
-  if (!state.waveClearing && Math.random() < 0.5) {
-    spawnEnemy(Math.random() < 0.5 ? "charger" : "spitter");
+  if (!state.waveClearing && Math.random() < 0.5 + pressure * 0.08) {
+    spawnEnemy(Math.random() < 0.45 ? "charger" : Math.random() < 0.65 ? "spitter" : "splitter");
   }
   camera.trauma = Math.max(camera.trauma, 0.14);
 }
 
 function healNearbyEnemies(source) {
   let healed = 0;
+  const pressure = lateWavePressure();
   for (const enemy of pools.enemies) {
     if (enemy === source || enemy.hp <= 0 || enemy.hp >= enemy.maxHp) continue;
-    if (distanceSq(source, enemy) > 240 ** 2) continue;
-    enemy.hp = Math.min(enemy.maxHp, enemy.hp + 34 + state.wave * 3);
+    if (distanceSq(source, enemy) > (240 + pressure * 18) ** 2) continue;
+    enemy.hp = Math.min(enemy.maxHp, enemy.hp + 34 + state.wave * 3 + pressure * 12);
     enemy.hitFlash = 0.1;
     healed += 1;
     particle(enemy.x, enemy.y, rand(-50, 50), rand(-90, -20), 0.55, "#ff8fd8", 4);
@@ -1143,8 +1164,10 @@ function updateSidebar() {
     player.relic >= player.relicMax ? "Relic burst ready. Press Q." : "Charge relic burst with kills and shards."
   ].map((item) => `<li>${item}</li>`).join("");
   const boss = pools.enemies.find((enemy) => enemy.type === "boss");
+  const pressure = lateWavePressure();
   intel.innerHTML = [
     `<span>Biome <b>${safeName(state.biome)}</b></span>`,
+    `<span>Late Pressure <b>${pressure > 0 ? `${pressure.toFixed(1)}x` : "Calm"}</b></span>`,
     `<span>Kills <b>${state.kills}</b></span>`,
     `<span>Shield <b>${Math.ceil(player.shield)}</b></span>`,
     `<span>Overcharge <b>${player.overcharge > 0 ? `${player.overcharge.toFixed(1)}s` : "None"}</b></span>`,
