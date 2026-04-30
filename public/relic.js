@@ -660,18 +660,25 @@ const upgrades = [
 ];
 
 const enemyTypes = {
-  mite: { hp: 32, speed: 135, radius: 18, damage: 9, value: 22, color: "#9cf66f" },
-  brute: { hp: 92, speed: 82, radius: 30, damage: 18, value: 56, color: "#f1c964" },
-  wisp: { hp: 22, speed: 190, radius: 14, damage: 7, value: 30, color: "#79eaff" },
-  spitter: { hp: 48, speed: 112, radius: 20, damage: 10, value: 46, color: "#c68cff" },
-  guardian: { hp: 150, speed: 58, radius: 35, damage: 20, value: 82, color: "#85ffd2" },
-  charger: { hp: 76, speed: 118, radius: 23, damage: 18, value: 62, color: "#ffb35c" },
-  splitter: { hp: 64, speed: 105, radius: 24, damage: 12, value: 58, color: "#b7ff4f" },
-  healer: { hp: 70, speed: 92, radius: 22, damage: 8, value: 72, color: "#ff8fd8" },
-  mine: { hp: 30, speed: 42, radius: 18, damage: 28, value: 38, color: "#ffdf6e" },
-  fragment: { hp: 18, speed: 155, radius: 14, damage: 5, value: 10, color: "#d7ff91" },
-  miniboss: { hp: 340, speed: 72, radius: 44, damage: 24, value: 220, color: "#ff6fb4" },
-  boss: { hp: 720, speed: 64, radius: 54, damage: 26, value: 480, color: "#ff7373" }
+  mite: { hp: 32, speed: 135, radius: 18, damage: 9, value: 22, color: "#9cf66f", role: "baseline chaser" },
+  brute: { hp: 92, speed: 82, radius: 30, damage: 18, value: 56, color: "#f1c964", role: "health check" },
+  wisp: { hp: 22, speed: 190, radius: 14, damage: 7, value: 30, color: "#79eaff", role: "mobility check" },
+  spitter: { hp: 48, speed: 112, radius: 20, damage: 10, value: 46, color: "#c68cff", role: "ranged pressure" },
+  guardian: { hp: 150, speed: 58, radius: 35, damage: 20, value: 82, color: "#85ffd2", role: "area pulse" },
+  charger: { hp: 76, speed: 118, radius: 23, damage: 18, value: 62, color: "#ffb35c", role: "telegraphed dash" },
+  splitter: { hp: 64, speed: 105, radius: 24, damage: 12, value: 58, color: "#b7ff4f", role: "target priority" },
+  healer: { hp: 70, speed: 92, radius: 22, damage: 8, value: 72, color: "#ff8fd8", role: "support heal" },
+  mine: { hp: 30, speed: 42, radius: 18, damage: 28, value: 38, color: "#ffdf6e", role: "area denial" },
+  skitter: { hp: 20, speed: 250, radius: 12, damage: 6, value: 32, color: "#d7ff91", role: "fast swarm" },
+  bulwark: { hp: 118, speed: 74, radius: 28, damage: 16, value: 88, color: "#a6ffd9", shield: 72, role: "shield wall" },
+  sniper: { hp: 42, speed: 82, radius: 17, damage: 15, value: 78, color: "#ffef9b", role: "line shot" },
+  buffer: { hp: 86, speed: 88, radius: 24, damage: 7, value: 92, color: "#ffb3f3", role: "support rage" },
+  bombardier: { hp: 96, speed: 68, radius: 25, damage: 17, value: 102, color: "#ff9b5c", role: "lobbed hazards" },
+  leech: { hp: 68, speed: 146, radius: 21, damage: 10, value: 84, color: "#b06cff", role: "sustain counter" },
+  phantom: { hp: 46, speed: 168, radius: 19, damage: 11, value: 96, color: "#b7c8ff", role: "evasive phase" },
+  fragment: { hp: 18, speed: 155, radius: 14, damage: 5, value: 10, color: "#d7ff91", role: "split add" },
+  miniboss: { hp: 340, speed: 72, radius: 44, damage: 24, value: 220, color: "#ff6fb4", role: "mid-wave spike" },
+  boss: { hp: 720, speed: 64, radius: 54, damage: 26, value: 480, color: "#ff7373", role: "boss phase" }
 };
 
 const DIFFICULTY_MODEL = {
@@ -679,13 +686,19 @@ const DIFFICULTY_MODEL = {
   layeredStartWave: 6,
   surgeStartWave: 12,
   endlessStartWave: 18,
-  spawnFloor: 0.1,
+  doomStartWave: 26,
+  spawnFloor: 0.075,
   baseWaveSeconds: 22,
-  maxWaveSeconds: 48,
   baseEnemyCap: 22,
-  enemyCapLimit: 88,
-  maxTelegraphCompression: 0.62,
-  maxSpecialCooldownCompression: 0.58
+  enemyCapPower: 1.16,
+  healthPower: 1.18,
+  surgePower: 1.34,
+  doomPower: 1.55,
+  maxDrawMinimapEnemies: 140,
+  maxParticles: 620,
+  maxFloatingTexts: 150,
+  telegraphFloor: 0.42,
+  specialCooldownFloor: 0.34
 };
 
 const ROUND_MODIFIERS = [
@@ -747,8 +760,8 @@ const ROUND_MODIFIERS = [
 ];
 
 function lateWavePressure(wave = state.wave) {
-  if (wave <= 6) return 0;
-  return ((wave - 6) / 5) ** 1.25;
+  if (wave <= DIFFICULTY_MODEL.layeredStartWave) return 0;
+  return ((wave - DIFFICULTY_MODEL.layeredStartWave) / 5) ** 1.28;
 }
 
 function roundModifierFor(wave = state.wave) {
@@ -761,46 +774,58 @@ function difficultyProfile(wave = state.wave) {
   const layered = Math.max(0, wave - DIFFICULTY_MODEL.layeredStartWave);
   const surge = Math.max(0, wave - DIFFICULTY_MODEL.surgeStartWave);
   const endless = Math.max(0, wave - DIFFICULTY_MODEL.endlessStartWave);
+  const doom = Math.max(0, wave - DIFFICULTY_MODEL.doomStartWave);
   const modifier = roundModifierFor(wave);
-  const layeredCurve = layered ** 1.18;
-  const surgeCurve = surge ** 1.32;
-  const endlessCurve = Math.log2(endless + 1);
+  const smoothCurve = wave ** DIFFICULTY_MODEL.healthPower;
+  const layeredCurve = layered ** 1.22;
+  const surgeCurve = surge ** DIFFICULTY_MODEL.surgePower;
+  const endlessCurve = endless ** 1.18;
+  const doomCurve = doom ** DIFFICULTY_MODEL.doomPower;
+  const chaos = 1 + layeredCurve * 0.018 + surgeCurve * 0.024 + doomCurve * 0.018;
 
-  const threat = 1 + soft * 0.075 + layeredCurve * 0.035 + surgeCurve * 0.028 + endlessCurve * 0.18;
+  const threat = 1 + smoothCurve * 0.045 + layeredCurve * 0.032 + surgeCurve * 0.038 + endlessCurve * 0.028 + doomCurve * 0.026;
   const telegraphMultiplier = Math.max(
-    DIFFICULTY_MODEL.maxTelegraphCompression,
-    1 - layered * 0.018 - surge * 0.012
+    DIFFICULTY_MODEL.telegraphFloor,
+    1 - layered * 0.018 - surge * 0.011 - doom * 0.006
   );
   const specialCooldownMultiplier = Math.max(
-    DIFFICULTY_MODEL.maxSpecialCooldownCompression,
-    1 - layered * 0.022 - surge * 0.014
+    DIFFICULTY_MODEL.specialCooldownFloor,
+    1 - layered * 0.022 - surge * 0.014 - doom * 0.008
+  );
+  const enemyCap = Math.max(
+    14,
+    Math.floor(DIFFICULTY_MODEL.baseEnemyCap + soft * 1.7 + layeredCurve * 0.9 + surgeCurve * 0.42 + doomCurve * 0.18 + modifier.enemyCap)
   );
 
   return {
     wave,
     modifier,
+    chaos,
+    doom,
     threat,
-    healthScale: (1 + soft * 0.08 + layeredCurve * 0.045 + surgeCurve * 0.035 + endlessCurve * 0.18) * modifier.health,
-    speedScale: (1 + soft * 0.012 + layered * 0.012 + surge * 0.01 + endlessCurve * 0.045) * modifier.speed,
-    damageScale: 1 + Math.max(0, wave - 7) * 0.026 + surge * 0.012,
+    healthScale: (1 + smoothCurve * 0.052 + layeredCurve * 0.04 + surgeCurve * 0.034 + endlessCurve * 0.033 + doomCurve * 0.024) * modifier.health,
+    speedScale: (1 + soft * 0.013 + layeredCurve * 0.009 + surgeCurve * 0.0075 + doomCurve * 0.0038) * modifier.speed,
+    damageScale: 1 + Math.max(0, wave - 7) * 0.026 + surgeCurve * 0.007 + doomCurve * 0.006,
     spawnInterval: Math.max(
       DIFFICULTY_MODEL.spawnFloor,
-      (1.1 - soft * 0.035 - layered * 0.018 - surge * 0.011) * modifier.spawn
+      (1.08 / (1 + soft * 0.055 + layeredCurve * 0.025 + surgeCurve * 0.021 + doomCurve * 0.014)) * modifier.spawn
     ),
-    enemyCap: Math.min(
-      DIFFICULTY_MODEL.enemyCapLimit,
-      Math.max(14, DIFFICULTY_MODEL.baseEnemyCap + Math.floor(soft * 2.4 + layeredCurve * 1.25 + surge * 1.45 + modifier.enemyCap))
-    ),
-    hazardRate: (0.02 + soft * 0.004 + layered * 0.006 + surge * 0.007) * modifier.hazards,
-    extraSpawnChance: Math.min(0.62, 0.08 + layered * 0.025 + surge * 0.021),
-    supportChance: Math.min(0.48, Math.max(0, (wave - 7) * 0.032)),
-    eliteChance: Math.min(0.4, Math.max(0, (wave - 9) * 0.022)),
+    enemyCap,
+    burstCount: Math.max(1, Math.floor(1 + layered / 8 + surgeCurve * 0.035 + doomCurve * 0.025)),
+    hazardRate: (0.018 + soft * 0.004 + layeredCurve * 0.0037 + surgeCurve * 0.0032 + doomCurve * 0.0028) * modifier.hazards,
+    extraSpawnChance: 0.08 + layered * 0.025 + surgeCurve * 0.009 + doomCurve * 0.006,
+    supportChance: Math.max(0, (wave - 7) * 0.025 + surgeCurve * 0.006 + doomCurve * 0.004),
+    eliteChance: Math.max(0, (wave - 9) * 0.018 + surgeCurve * 0.006 + doomCurve * 0.004),
+    incomingDamageMultiplier: 1 + Math.max(0, wave - 16) * 0.012 + doomCurve * 0.01,
+    sustainMultiplier: Math.max(0.32, 1 - Math.max(0, wave - 18) * 0.012 - doomCurve * 0.004),
+    bossCount: Math.max(1, Math.floor(1 + Math.max(0, wave - 16) / 12 + doom / 8)),
+    minibossCount: Math.max(1, Math.floor(1 + Math.max(0, wave - 9) / 9 + doom / 7)),
     telegraphMultiplier,
     specialCooldownMultiplier,
-    projectileSpeedScale: 1 + soft * 0.01 + layered * 0.014 + surge * 0.012,
-    bossPatternScale: 1 + layered * 0.045 + surge * 0.055,
-    scoreMultiplier: (1 + soft * 0.035 + layered * 0.028 + surge * 0.026 + endlessCurve * 0.12) * modifier.score,
-    waveLength: Math.min(DIFFICULTY_MODEL.maxWaveSeconds, DIFFICULTY_MODEL.baseWaveSeconds + Math.min(20, wave * 2.3) + Math.min(6, surge * 0.35))
+    projectileSpeedScale: 1 + soft * 0.01 + layeredCurve * 0.008 + surgeCurve * 0.006 + doomCurve * 0.003,
+    bossPatternScale: 1 + layeredCurve * 0.035 + surgeCurve * 0.032 + doomCurve * 0.022,
+    scoreMultiplier: (1 + soft * 0.035 + layered * 0.028 + surgeCurve * 0.018 + endlessCurve * 0.026 + doomCurve * 0.02) * modifier.score,
+    waveLength: DIFFICULTY_MODEL.baseWaveSeconds + Math.sqrt(wave) * 4.2 + layeredCurve * 0.34 + surgeCurve * 0.16 + doomCurve * 0.08
   };
 }
 
@@ -1079,6 +1104,7 @@ function spawnEnemy(type = "mite") {
     y = rand(120, WORLD.height - 120);
   }
   const elite = !["fragment", "boss", "miniboss"].includes(type) && Math.random() < profile.eliteChance;
+  const shield = (spec.shield || 0) * healthScale * (elite ? 1.35 : 1);
   pools.enemies.push({
     type,
     elite,
@@ -1088,6 +1114,8 @@ function spawnEnemy(type = "mite") {
     vy: 0,
     hp: spec.hp * healthScale * (elite ? 1.7 : 1),
     maxHp: spec.hp * healthScale * (elite ? 1.7 : 1),
+    shield,
+    maxShield: shield,
     speed: spec.speed * speedScale * (elite ? 1.08 : 1),
     radius: spec.radius * (elite ? 1.12 : 1),
     damage: spec.damage * damageScale * (elite ? 1.18 : 1),
@@ -1096,6 +1124,7 @@ function spawnEnemy(type = "mite") {
     hitFlash: 0,
     attackCooldown: 0,
     specialCooldown: rand(1.2, 3.4) * profile.specialCooldownMultiplier,
+    beamCooldown: rand(1.8, 3.4) * profile.specialCooldownMultiplier,
     state: "idle",
     stateTimer: 0,
     chargeX: 0,
@@ -1143,7 +1172,7 @@ function spawnHazard() {
   pools.hazards.push({
     x: rand(260, WORLD.width - 260),
     y: rand(240, WORLD.height - 240),
-    radius: rand(48, 82 + Math.min(30, profile.threat * 4)),
+    radius: rand(48, 82 + profile.threat * 3.2),
     life: rand(6.2, 10.5),
     pulse: rand(0, Math.PI * 2)
   });
@@ -1198,8 +1227,7 @@ function relicBurst() {
     const d = Math.sqrt(distanceSq(player, enemy));
     if (d < radius) {
       const damage = 130 + state.wave * 16;
-      enemy.hp -= damage;
-      enemy.hitFlash = 0.2;
+      damageEnemy(enemy, damage);
       const push = (radius - d) / radius * 380;
       const nx = (enemy.x - player.x) / Math.max(1, d);
       const ny = (enemy.y - player.y) / Math.max(1, d);
@@ -1216,10 +1244,12 @@ function relicBurst() {
 }
 
 function particle(x, y, vx, vy, life, color, size = 3) {
+  if (pools.particles.length > DIFFICULTY_MODEL.maxParticles) pools.particles.splice(0, pools.particles.length - DIFFICULTY_MODEL.maxParticles);
   pools.particles.push({ x, y, vx, vy, life, maxLife: life, color, size });
 }
 
 function floatingText(x, y, text, color = "#f3fff1") {
+  if (pools.texts.length > DIFFICULTY_MODEL.maxFloatingTexts) pools.texts.splice(0, pools.texts.length - DIFFICULTY_MODEL.maxFloatingTexts);
   pools.texts.push({ x, y, text, color, life: 1.1, maxLife: 1.1 });
 }
 
@@ -1354,6 +1384,10 @@ function update(dt) {
   if (state.flags.has("greed-spiral") && player.shield > 0) {
     player.shield = Math.max(0, player.shield - dt * (2 + state.wave * 0.18));
   }
+  const profile = difficultyProfile();
+  if (profile.doom > 0 && player.shield > 0) {
+    player.shield = Math.max(0, player.shield - dt * profile.doom * 0.34);
+  }
   player.dashCooldown -= dt;
   player.invulnerable -= dt;
   if (player.regen > 0 && player.invulnerable <= 0 && player.health > 0) {
@@ -1427,6 +1461,36 @@ function updatePlayer(dt) {
   if (keys.has("q")) relicBurst();
 }
 
+function weightedEnemyType(profile = difficultyProfile()) {
+  const wave = profile.wave;
+  const pressure = lateWavePressure(wave);
+  const weights = [
+    ["mite", 28],
+    ["wisp", wave >= 2 ? 12 + pressure * 0.7 : 0],
+    ["brute", wave >= 3 ? 12 + wave * 0.35 : 0],
+    ["spitter", wave >= 4 ? 10 + pressure * 0.9 : 0],
+    ["charger", wave >= 5 ? 8 + pressure * 1.0 : 0],
+    ["splitter", wave >= 6 ? 7 + pressure * 0.7 : 0],
+    ["guardian", wave >= 7 ? 5 + pressure * 0.75 : 0],
+    ["healer", wave >= 8 ? 4 + pressure * 0.55 : 0],
+    ["mine", wave >= 9 ? 5 + pressure * 0.65 : 0],
+    ["skitter", wave >= 10 ? 12 + pressure * 1.2 : 0],
+    ["bulwark", wave >= 12 ? 5 + pressure * 0.7 : 0],
+    ["sniper", wave >= 13 ? 6 + pressure * 0.9 : 0],
+    ["buffer", wave >= 15 ? 4 + pressure * 0.65 : 0],
+    ["bombardier", wave >= 16 ? 5 + pressure * 0.75 : 0],
+    ["leech", wave >= 18 ? 5 + pressure * 0.65 : 0],
+    ["phantom", wave >= 20 ? 5 + pressure * 0.62 : 0]
+  ];
+  const total = weights.reduce((sum, [, weight]) => sum + Math.max(0, weight), 0);
+  let roll = Math.random() * total;
+  for (const [type, weight] of weights) {
+    roll -= Math.max(0, weight);
+    if (roll <= 0) return type;
+  }
+  return "mite";
+}
+
 function updateWave(dt) {
   const profile = difficultyProfile();
   const pressure = lateWavePressure();
@@ -1447,56 +1511,51 @@ function updateWave(dt) {
   }
   const enemyCap = profile.enemyCap;
   if (!state.waveClearing && state.spawnTimer <= 0 && pools.enemies.length < enemyCap) {
-    const roll = Math.random();
-    let type = "mite";
-    if (state.wave > 2 && roll > 0.72) type = "brute";
-    if (state.wave > 1 && roll < 0.22) type = "wisp";
-    if (state.wave > 3 && roll > 0.42 && roll < 0.58) type = "spitter";
-    if (state.wave > 6 && roll > 0.86) type = "guardian";
-    if (state.wave > 4 && roll > 0.58 && roll < 0.68) type = "charger";
-    if (state.wave > 5 && roll > 0.31 && roll < 0.41) type = "splitter";
-    if (state.wave > 7 && roll > 0.16 && roll < 0.23) type = "healer";
-    if (state.wave > 8 && roll > 0.68 && roll < 0.76) type = "mine";
-    if (state.wave > 10 && roll > 0.76 && roll < 0.86) type = Math.random() < 0.5 ? "guardian" : "charger";
-    if (state.wave > 12 && roll < 0.18) type = Math.random() < 0.55 ? "healer" : "spitter";
-    spawnEnemy(type);
-    if (state.wave > 4 && Math.random() < profile.extraSpawnChance) spawnEnemy(state.wave > 11 && Math.random() < 0.4 ? "wisp" : "mite");
-    if (state.wave > 8 && Math.random() < profile.supportChance) spawnEnemy(Math.random() < 0.5 ? "healer" : "spitter");
-    if (state.wave > 14 && Math.random() < 0.12 + Math.min(2.8, pressure) * 0.035) spawnEnemy(Math.random() < 0.5 ? "charger" : "splitter");
+    const burst = Math.min(profile.burstCount + (Math.random() < profile.extraSpawnChance ? 1 : 0), Math.max(1, enemyCap - pools.enemies.length));
+    for (let i = 0; i < burst; i += 1) spawnEnemy(weightedEnemyType(profile));
+    if (state.wave > 8 && Math.random() < profile.supportChance) spawnEnemy(Math.random() < 0.48 ? "healer" : Math.random() < 0.72 ? "buffer" : "spitter");
+    if (state.wave > 14 && Math.random() < 0.16 + pressure * 0.035) spawnEnemy(Math.random() < 0.45 ? "charger" : Math.random() < 0.72 ? "skitter" : "splitter");
+    if (state.wave > 22 && Math.random() < 0.08 + profile.doom * 0.012) spawnEnemy(Math.random() < 0.5 ? "phantom" : "leech");
     state.spawnTimer = profile.spawnInterval / Math.max(0.78, state.difficulty);
   }
   if (state.wave > 2 && Math.random() < dt * profile.hazardRate) spawnHazard();
-  if (state.wave > 13 && Math.random() < dt * Math.min(0.16, pressure * 0.025)) spawnHazard();
+  if (state.wave > 13 && Math.random() < dt * (pressure * 0.025 + profile.doom * 0.018)) spawnHazard();
   if (state.wave >= 9 && !state.waveClearing && state.waveTimer > waveLength * 0.52 && !state.milestones.has(`skill-check-${state.wave}`)) {
     state.milestones.add(`skill-check-${state.wave}`);
-    showEvent("Skill check", "Hazard burst incoming", state.wave >= 14 ? "legendary" : "epic");
+    showEvent("Skill check", state.wave >= 18 ? "Mixed elites incoming" : "Hazard burst incoming", state.wave >= 14 ? "legendary" : "epic");
     showToast("Skill check", "Move cleanly. Damage now costs bonus bread.", "epic");
-    for (let i = 0; i < Math.min(7, 2 + Math.floor(state.wave / 4)); i += 1) spawnHazard();
+    for (let i = 0; i < 2 + Math.floor(state.wave / 4) + Math.floor(profile.doom / 2); i += 1) spawnHazard();
+    if (state.wave >= 18) {
+      for (let i = 0; i < Math.max(2, Math.floor(profile.chaos)); i += 1) spawnEnemy(i % 2 ? "sniper" : "skitter");
+    }
     camera.trauma = Math.max(camera.trauma, 0.24);
     audio.wave();
   }
   if (state.wave > 3 && state.wave % 3 === 0 && state.wave % 4 !== 0 && !state.bossSpawned && state.waveTimer > 7) {
-    spawnEnemy("miniboss");
+    for (let i = 0; i < profile.minibossCount; i += 1) spawnEnemy("miniboss");
     state.bossSpawned = true;
     announce("Mini-boss entering the den. Horrible posture.", "#ff9bd6");
-    showEvent("Mini-boss", "Horrible posture detected", "epic");
-    showToast("Mini-boss entered", "Clear it for stronger drops and essence.", "epic");
+    showEvent(profile.minibossCount > 1 ? "Mini-boss pack" : "Mini-boss", "Horrible posture detected", "epic");
+    showToast("Mini-boss entered", profile.minibossCount > 1 ? `${profile.minibossCount} problems arrived together.` : "Clear it for stronger drops and essence.", "epic");
     audio.wave();
   }
   if (state.wave % 4 === 0 && !state.bossSpawned && state.waveTimer > 8) {
-    spawnEnemy("boss");
+    for (let i = 0; i < profile.bossCount; i += 1) spawnEnemy("boss");
+    if (state.wave >= 20) {
+      for (let i = 0; i < Math.floor(profile.bossCount / 2) + 1; i += 1) spawnEnemy("miniboss");
+    }
     state.bossSpawned = true;
     state.bossAttackTimer = 2;
     announce("Boss thing detected. Deeply rude.", "#ff9797");
-    showEvent("Boss wave", "Deeply rude thing detected", "legendary");
-    showToast("Boss thing detected", "Break it before the arena becomes a problem.", "legendary");
+    showEvent(profile.bossCount > 1 ? "Boss convergence" : "Boss wave", "Deeply rude thing detected", "legendary");
+    showToast("Boss thing detected", profile.bossCount > 1 ? `${profile.bossCount} boss things. The den made choices.` : "Break it before the arena becomes a problem.", "legendary");
     audio.wave();
   }
   if (state.wave >= 16 && state.bossSpawned && state.waveTimer > waveLength * 0.68 && state.escalationTimer <= 0 && pools.enemies.some((enemy) => enemy.type === "boss" || enemy.type === "miniboss")) {
     state.escalationTimer = 999;
     showEvent("Phase spike", "The boss called friends", "legendary");
-    const adds = Math.min(8, 2 + Math.floor(state.wave / 5));
-    for (let i = 0; i < adds; i += 1) spawnEnemy(i % 2 ? "charger" : "spitter");
+    const adds = 2 + Math.floor(state.wave / 5) + Math.floor(profile.doom / 2);
+    for (let i = 0; i < adds; i += 1) spawnEnemy(["charger", "spitter", "buffer", "bombardier", "skitter"][i % 5]);
     camera.trauma = Math.max(camera.trauma, 0.28);
   }
   if (state.waveClearing && pools.enemies.length === 0) {
@@ -1585,8 +1644,20 @@ function updateEnemies(dt) {
     const nx = dx / dist;
     const ny = dy / dist;
     const statusSpeed = enemy.status?.slow > 0 ? 0.56 : 1;
-    enemy.vx += (nx * enemy.speed * statusSpeed - ny * enemy.speed * wobble - enemy.vx) * Math.min(1, dt * 2.8);
-    enemy.vy += (ny * enemy.speed * statusSpeed + nx * enemy.speed * wobble - enemy.vy) * Math.min(1, dt * 2.8);
+    let desireX = nx;
+    let desireY = ny;
+    if ((enemy.type === "spitter" || enemy.type === "sniper" || enemy.type === "bombardier") && dist < 430) {
+      desireX = -nx;
+      desireY = -ny;
+    }
+    if (enemy.type === "phantom") {
+      desireX = nx * 0.72 + Math.cos(state.time * 2.6 + enemy.phase) * 0.7;
+      desireY = ny * 0.72 + Math.sin(state.time * 2.1 + enemy.phase) * 0.7;
+    }
+    if (enemy.enraged > 0) enemy.enraged -= dt;
+    const rageSpeed = enemy.enraged > 0 ? 1.22 : 1;
+    enemy.vx += (desireX * enemy.speed * statusSpeed * rageSpeed - ny * enemy.speed * wobble - enemy.vx) * Math.min(1, dt * 2.8);
+    enemy.vy += (desireY * enemy.speed * statusSpeed * rageSpeed + nx * enemy.speed * wobble - enemy.vy) * Math.min(1, dt * 2.8);
     enemy.x += enemy.vx * dt;
     enemy.y += enemy.vy * dt;
     enemy.hitFlash -= dt;
@@ -1629,9 +1700,41 @@ function updateEnemies(dt) {
       enemy.vy -= ny * 120;
     }
 
+    if (enemy.type === "sniper" && enemy.specialCooldown <= 0 && dist < 980) {
+      const profile = difficultyProfile();
+      enemy.state = "aiming";
+      enemy.stateTimer = 0.52 * profile.telegraphMultiplier;
+      enemy.chargeX = nx;
+      enemy.chargeY = ny;
+      enemy.specialCooldown = rand(2.2, 3.4) * profile.specialCooldownMultiplier;
+      floatingText(enemy.x, enemy.y - enemy.radius - 10, "LINE", "#ffef9b");
+    } else if (enemy.type === "sniper" && enemy.state === "aiming" && enemy.stateTimer <= 0) {
+      enemy.state = "idle";
+      const profile = difficultyProfile();
+      const angle = Math.atan2(enemy.chargeY, enemy.chargeX);
+      for (let s = -1; s <= 1; s += 1) {
+        if (s !== 0 && profile.chaos < 1.7) continue;
+        spawnEnemyShot(enemy.x, enemy.y, angle + s * 0.055, 720 * profile.projectileSpeedScale, enemy.damage * 1.12, enemy.color, 7);
+      }
+      camera.trauma = Math.max(camera.trauma, 0.1);
+    }
+
+    if (enemy.type === "bombardier" && enemy.specialCooldown <= 0 && dist < 900) {
+      const profile = difficultyProfile();
+      pools.hazards.push({
+        x: clamp(player.x + rand(-190, 190), 160, WORLD.width - 160),
+        y: clamp(player.y + rand(-190, 190), 160, WORLD.height - 160),
+        radius: rand(46, 74 + profile.doom * 2),
+        life: rand(3.8, 5.6),
+        pulse: rand(0, Math.PI * 2)
+      });
+      enemy.specialCooldown = rand(2.8, 4.1) * profile.specialCooldownMultiplier;
+      floatingText(enemy.x, enemy.y - enemy.radius - 10, "LOB", "#ff9b5c");
+    }
+
     if (enemy.type === "guardian" && enemy.specialCooldown <= 0) {
       const profile = difficultyProfile();
-      shockwave(enemy.x, enemy.y, 118 + Math.min(4, lateWavePressure()) * 12, 24 + Math.min(4, lateWavePressure()) * 6);
+      shockwave(enemy.x, enemy.y, 118 + lateWavePressure() * 7, 24 + lateWavePressure() * 4);
       enemy.specialCooldown = rand(4.2, 5.8) * profile.specialCooldownMultiplier;
     }
 
@@ -1639,6 +1742,29 @@ function updateEnemies(dt) {
       healNearbyEnemies(enemy);
       enemy.specialCooldown = rand(3.2, 4.8) * difficultyProfile().specialCooldownMultiplier;
     }
+
+    if (enemy.type === "buffer" && enemy.specialCooldown <= 0) {
+      enrageNearbyEnemies(enemy);
+      enemy.specialCooldown = rand(3.1, 4.6) * difficultyProfile().specialCooldownMultiplier;
+    }
+
+    if (enemy.type === "leech" && enemy.specialCooldown <= 0 && dist < 150) {
+      const drain = (8 + state.wave * 0.55) * difficultyProfile().incomingDamageMultiplier;
+      const shieldDrain = Math.min(player.shield, drain * 0.8);
+      player.shield -= shieldDrain;
+      player.health -= Math.max(0, drain - shieldDrain) * 0.28;
+      state.waveDamageTaken += Math.max(0, drain - shieldDrain) * 0.28;
+      enemy.hp = Math.min(enemy.maxHp, enemy.hp + drain * 1.1);
+      enemy.specialCooldown = rand(1.2, 2) * difficultyProfile().specialCooldownMultiplier;
+      floatingText(enemy.x, enemy.y - enemy.radius - 10, "LEECH", "#b06cff");
+    }
+
+    if (enemy.type === "phantom" && enemy.specialCooldown <= 0) {
+      enemy.phased = 0.82 * difficultyProfile().telegraphMultiplier;
+      enemy.specialCooldown = rand(3.4, 5.2) * difficultyProfile().specialCooldownMultiplier;
+      floatingText(enemy.x, enemy.y - enemy.radius - 10, "PHASE", "#b7c8ff");
+    }
+    if (enemy.phased > 0) enemy.phased -= dt;
 
     if (enemy.type === "miniboss" && enemy.specialCooldown <= 0) {
       miniBossPattern(enemy);
@@ -1651,7 +1777,7 @@ function updateEnemies(dt) {
     }
 
     if (dist < enemy.radius + player.radius && enemy.attackCooldown <= 0 && player.invulnerable <= 0) {
-      let damage = Math.max(2, enemy.damage - player.armor);
+      let damage = Math.max(2, enemy.damage * difficultyProfile().incomingDamageMultiplier - player.armor);
       if (state.flags.has("glass-contract")) damage *= 1.22;
       if (player.shield > 0) {
         const shieldBefore = player.shield;
@@ -1664,7 +1790,7 @@ function updateEnemies(dt) {
       player.health -= damage;
       state.waveDamageTaken += damage;
       player.invulnerable = 0.3;
-      enemy.attackCooldown = 0.62;
+      enemy.attackCooldown = Math.max(0.32, 0.62 * difficultyProfile().specialCooldownMultiplier);
       camera.trauma = Math.max(camera.trauma, 0.32);
       audio.hit();
       if (state.flags.has("hit-ward")) shockwave(player.x, player.y, 130, 18 + state.wave * 2);
@@ -1680,22 +1806,22 @@ function bossPattern(enemy) {
   const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
   const pressure = lateWavePressure();
   const profile = difficultyProfile();
-  const count = 10 + Math.min(14, state.wave) + Math.floor(Math.min(5, pressure) * 4 * profile.bossPatternScale);
+  const count = Math.floor(10 + state.wave * 0.72 + pressure * 3.2 * profile.bossPatternScale);
   for (let i = 0; i < count; i += 1) {
-    const angle = base + (i - count / 2) * (0.18 - Math.min(0.05, pressure * 0.01));
-    spawnEnemyShot(enemy.x, enemy.y, angle, (285 + state.wave * 9 + Math.min(5, pressure) * 28) * profile.projectileSpeedScale, enemy.damage * 0.72, "#ff8f8f", 10 + Math.min(5, pressure) * 0.8);
+    const angle = base + (i - count / 2) * Math.max(0.055, 0.18 - pressure * 0.006);
+    spawnEnemyShot(enemy.x, enemy.y, angle, (285 + state.wave * 9 + pressure * 18) * profile.projectileSpeedScale, enemy.damage * 0.72, "#ff8f8f", 10 + pressure * 0.35);
   }
-  if (Math.random() < Math.min(0.82, 0.55 + pressure * 0.07)) {
+  if (Math.random() < 0.55 + pressure * 0.045) {
     pools.hazards.push({
       x: clamp(player.x + rand(-160, 160), 180, WORLD.width - 180),
       y: clamp(player.y + rand(-160, 160), 180, WORLD.height - 180),
-      radius: rand(74, 112 + Math.min(5, pressure) * 14),
-      life: rand(4.2, 6.2 + Math.min(5, pressure) * 0.7),
+      radius: rand(74, 112 + pressure * 8),
+      life: rand(4.2, 6.2 + pressure * 0.35),
       pulse: rand(0, Math.PI * 2)
     });
   }
-  if (!state.waveClearing && pressure > 1.1 && Math.random() < 0.38) {
-    spawnEnemy(Math.random() < 0.5 ? "healer" : "charger");
+  if (!state.waveClearing && pressure > 1.1 && Math.random() < 0.38 + profile.doom * 0.018) {
+    spawnEnemy(["healer", "charger", "buffer", "sniper"][Math.floor(rand(0, 4))]);
   }
   camera.trauma = Math.max(camera.trauma, 0.16);
 }
@@ -1704,13 +1830,13 @@ function miniBossPattern(enemy) {
   const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
   const pressure = lateWavePressure();
   const profile = difficultyProfile();
-  const count = 7 + Math.floor(Math.min(5, pressure) * 2 * profile.bossPatternScale);
+  const count = 7 + Math.floor(pressure * 1.45 * profile.bossPatternScale);
   for (let i = 0; i < count; i += 1) {
     const angle = base + (i - (count - 1) / 2) * 0.24;
-    spawnEnemyShot(enemy.x, enemy.y, angle, (330 + state.wave * 6 + Math.min(5, pressure) * 22) * profile.projectileSpeedScale, enemy.damage * 0.74, "#ff8fd8", 9 + Math.min(5, pressure) * 0.5);
+    spawnEnemyShot(enemy.x, enemy.y, angle, (330 + state.wave * 6 + pressure * 14) * profile.projectileSpeedScale, enemy.damage * 0.74, "#ff8fd8", 9 + pressure * 0.24);
   }
   if (!state.waveClearing && Math.random() < 0.5 + pressure * 0.08) {
-    spawnEnemy(Math.random() < 0.45 ? "charger" : Math.random() < 0.65 ? "spitter" : "splitter");
+    spawnEnemy(Math.random() < 0.35 ? "charger" : Math.random() < 0.58 ? "spitter" : Math.random() < 0.78 ? "splitter" : "skitter");
   }
   camera.trauma = Math.max(camera.trauma, 0.14);
 }
@@ -1729,6 +1855,20 @@ function healNearbyEnemies(source) {
   if (healed) {
     floatingText(source.x, source.y - source.radius - 10, `HEAL x${healed}`, "#ff8fd8");
   }
+}
+
+function enrageNearbyEnemies(source) {
+  let buffed = 0;
+  const pressure = lateWavePressure();
+  for (const enemy of pools.enemies) {
+    if (enemy === source || enemy.hp <= 0) continue;
+    if (distanceSq(source, enemy) > (260 + pressure * 16) ** 2) continue;
+    enemy.enraged = Math.max(enemy.enraged || 0, 4.2 + pressure * 0.18);
+    enemy.hitFlash = 0.08;
+    buffed += 1;
+    particle(enemy.x, enemy.y, rand(-60, 60), rand(-90, -20), 0.5, "#ffb3f3", 4);
+  }
+  if (buffed) floatingText(source.x, source.y - source.radius - 10, `RAGE x${buffed}`, "#ffb3f3");
 }
 
 function killEnemy(enemy, index) {
@@ -1800,12 +1940,24 @@ function unlockAchievement(name, description) {
   }
 }
 
+function damageEnemy(enemy, amount) {
+  let damage = amount * (enemy.phased > 0 ? 0.28 : 1);
+  if (enemy.shield > 0) {
+    const blocked = Math.min(enemy.shield, damage);
+    enemy.shield -= blocked;
+    damage -= blocked;
+    if (blocked > 0 && Math.random() < 0.35) floatingText(enemy.x, enemy.y - enemy.radius - 10, "SHIELD", "#a6ffd9");
+  }
+  enemy.hp -= damage;
+  enemy.hitFlash = Math.max(enemy.hitFlash || 0, 0.12);
+  return damage;
+}
+
 function shockwave(x, y, radius, damage) {
   for (const enemy of pools.enemies) {
     const d = Math.sqrt(distanceSq({ x, y }, enemy));
     if (d < radius) {
-      enemy.hp -= damage;
-      enemy.hitFlash = 0.16;
+      damageEnemy(enemy, damage);
     }
   }
   for (let i = 0; i < 30; i += 1) {
@@ -1824,8 +1976,7 @@ function explodeAt(x, y, radius, damage, color = "#ff9b5c") {
     const d = Math.sqrt(distanceSq({ x, y }, enemy));
     if (d <= radius) {
       const falloff = 1 - d / Math.max(1, radius);
-      enemy.hp -= damage * (0.35 + falloff * 0.65);
-      enemy.hitFlash = 0.16;
+      damageEnemy(enemy, damage * (0.35 + falloff * 0.65));
       if (state.flags.has("ember-armor")) applyStatus(enemy, "burn", 1.8);
     }
   }
@@ -1850,8 +2001,7 @@ function chainFrom(source, damage, jumps, color = "#85ffd2") {
       .filter((enemy) => !hit.has(enemy) && enemy.hp > 0 && distanceSq(origin, enemy) < 260 ** 2)
       .sort((a, b) => distanceSq(origin, a) - distanceSq(origin, b))[0];
     if (!target) return;
-    target.hp -= damage * (0.72 - jump * 0.08);
-    target.hitFlash = 0.14;
+    damageEnemy(target, damage * (0.72 - jump * 0.08));
     applyStatus(target, "shock", 1.2);
     particle(origin.x, origin.y, (target.x - origin.x) * 4, (target.y - origin.y) * 4, 0.16, color, 5);
     hit.add(target);
@@ -1890,13 +2040,12 @@ function updateProjectiles(dt) {
     let remove = shot.life <= 0 || shot.x < -80 || shot.y < -80 || shot.x > WORLD.width + 80 || shot.y > WORLD.height + 80;
     for (const enemy of pools.enemies) {
       if (distanceSq(shot, enemy) < (shot.radius + enemy.radius) ** 2) {
-        enemy.hp -= shot.damage;
-        enemy.hitFlash = 0.12;
+        damageEnemy(enemy, shot.damage);
         enemy.vx += shot.vx * 0.055 * (shot.knockback || 1);
         enemy.vy += shot.vy * 0.055 * (shot.knockback || 1);
         applyShotEffects(shot, enemy);
         if (state.flags.has("weapon-lifesteal") || state.flags.has("meta-lifesteal")) {
-          const healRate = state.flags.has("weapon-lifesteal") ? 0.018 : 0.008;
+          const healRate = (state.flags.has("weapon-lifesteal") ? 0.018 : 0.008) * difficultyProfile().sustainMultiplier;
           player.health = Math.min(player.maxHealth, player.health + Math.max(0.25, shot.damage * healRate));
         }
         floatingText(enemy.x, enemy.y - enemy.radius, shot.crit ? "CRIT" : Math.round(shot.damage), shot.crit ? "#fff29b" : "#f3fff1");
@@ -1922,7 +2071,7 @@ function updateEnemyShots(dt) {
     let remove = shot.life <= 0 || shot.x < -100 || shot.y < -100 || shot.x > WORLD.width + 100 || shot.y > WORLD.height + 100;
     if (!remove && distanceSq(shot, player) < (shot.radius + player.radius) ** 2) {
       if (player.invulnerable <= 0) {
-        let damage = Math.max(2, shot.damage - player.armor * 0.6);
+        let damage = Math.max(2, shot.damage * difficultyProfile().incomingDamageMultiplier - player.armor * 0.6);
       if (state.flags.has("glass-contract")) damage *= 1.22;
       if (player.shield > 0) {
         const shieldBefore = player.shield;
@@ -1996,7 +2145,7 @@ function updateHazards(dt) {
     hazard.life -= dt;
     hazard.pulse += dt * 4;
     if (distanceSq(player, hazard) < hazard.radius ** 2 && player.invulnerable <= 0) {
-      const damage = Math.max(3, 12 - player.armor) * dt;
+      const damage = Math.max(3, 12 * difficultyProfile().incomingDamageMultiplier - player.armor) * dt;
       player.health -= damage;
       state.waveDamageTaken += damage;
     }
@@ -2054,7 +2203,7 @@ function updateSidebar() {
   loadout.innerHTML = loadoutItems.map((item) => `<span>${safeName(item)}</span>`).join("");
   objectives.innerHTML = [
     state.waveClearing ? `Clear the remaining wave ${state.wave} enemies.` : `Survive wave ${state.wave}.`,
-    state.waveClearing ? "Spawner paused. Upgrade appears when the arena is clean." : `${Math.max(0, Math.ceil((22 + Math.min(28, state.wave * 3)) - state.waveTimer))} seconds until the wave starts clearing.`,
+    state.waveClearing ? "Spawner paused. Upgrade appears when the arena is clean." : `${Math.max(0, Math.ceil(difficultyProfile().waveLength - state.waveTimer))} seconds until the wave starts clearing.`,
     `${pools.enemies.length} curse-things active.`,
     player.relic >= player.relicMax ? "Relic burst ready. Press Q." : "Charge relic burst with kills and shards."
   ].map((item) => `<li>${item}</li>`).join("");
@@ -2064,6 +2213,8 @@ function updateSidebar() {
     `<span>Biome <b>${safeName(state.biome)}</b></span>`,
     `<span>Modifier <b>${safeName(state.roundModifier)}</b></span>`,
     `<span>Late Pressure <b>${pressure > 0 ? `${pressure.toFixed(1)}x` : "Calm"}</b></span>`,
+    `<span>Enemy Cap <b>${difficultyProfile().enemyCap.toLocaleString()}</b></span>`,
+    `<span>Doom <b>${difficultyProfile().doom > 0 ? `${difficultyProfile().doom.toFixed(1)}x` : "Sleeping"}</b></span>`,
     `<span>Kills <b>${state.kills}</b></span>`,
     `<span>Shield <b>${Math.ceil(player.shield)}</b></span>`,
     `<span>Overcharge <b>${player.overcharge > 0 ? `${player.overcharge.toFixed(1)}s` : "None"}</b></span>`,
@@ -2277,7 +2428,18 @@ function drawEnemies() {
       ctx.stroke();
       ctx.restore();
     }
-    if (enemy.type === "healer") {
+    if (enemy.type === "sniper" && enemy.state === "aiming") {
+      ctx.save();
+      ctx.globalAlpha = 0.42 + Math.sin(state.time * 24) * 0.2;
+      ctx.strokeStyle = "#ffef9b";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(enemy.chargeX * 900, enemy.chargeY * 900);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (enemy.type === "healer" || enemy.type === "buffer") {
       ctx.save();
       ctx.globalAlpha = 0.22 + Math.sin(state.time * 5 + enemy.phase) * 0.08;
       ctx.strokeStyle = enemy.color;
@@ -2287,7 +2449,18 @@ function drawEnemies() {
       ctx.stroke();
       ctx.restore();
     }
+    if (enemy.enraged > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.34 + Math.sin(state.time * 18) * 0.12;
+      ctx.strokeStyle = "#ffb3f3";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, enemy.radius + 13, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.fillStyle = enemy.hitFlash > 0 ? "#ffffff" : enemy.color;
+    if (enemy.phased > 0) ctx.globalAlpha = 0.42 + Math.sin(state.time * 24) * 0.18;
     ctx.shadowColor = enemy.color;
     ctx.shadowBlur = enemy.type === "boss" || enemy.type === "miniboss" ? 34 : 16;
     ctx.beginPath();
@@ -2327,6 +2500,10 @@ function drawEnemies() {
     ctx.fillRect(-enemy.radius, enemy.radius + 8, enemy.radius * 2, 5);
     ctx.fillStyle = "#8cff75";
     ctx.fillRect(-enemy.radius, enemy.radius + 8, enemy.radius * 2 * clamp(enemy.hp / enemy.maxHp, 0, 1), 5);
+    if (enemy.maxShield > 0 && enemy.shield > 0) {
+      ctx.fillStyle = "#a6ffd9";
+      ctx.fillRect(-enemy.radius, enemy.radius + 15, enemy.radius * 2 * clamp(enemy.shield / enemy.maxShield, 0, 1), 4);
+    }
     ctx.restore();
   }
 }
@@ -2477,8 +2654,8 @@ function drawMinimap() {
   ctx.arc(x + player.x * sx, y + player.y * sy, 4, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = "#ff7373";
-  for (const enemy of pools.enemies.slice(0, 80)) {
-    ctx.fillStyle = enemy.type === "boss" ? "#ff7373" : enemy.type === "miniboss" ? "#ff8fd8" : enemy.type === "healer" ? "#ff8fd8" : enemy.type === "charger" ? "#ffdf6e" : "#ff7373";
+  for (const enemy of pools.enemies.slice(0, DIFFICULTY_MODEL.maxDrawMinimapEnemies)) {
+    ctx.fillStyle = enemy.type === "boss" ? "#ff7373" : enemy.type === "miniboss" ? "#ff8fd8" : enemy.type === "healer" || enemy.type === "buffer" ? "#ff8fd8" : enemy.type === "charger" || enemy.type === "sniper" ? "#ffdf6e" : enemy.type === "bulwark" ? "#a6ffd9" : "#ff7373";
     ctx.fillRect(x + enemy.x * sx - 1.5, y + enemy.y * sy - 1.5, 3, 3);
   }
   ctx.restore();
