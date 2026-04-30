@@ -1002,6 +1002,15 @@ function threatLevelColor(level = "") {
   return 0x94a3b8;
 }
 
+function chipkittleThreatColor(level = "") {
+  const normalized = String(level).toLowerCase();
+  if (normalized === "chipocalypse") return 0x7f1d1d;
+  if (normalized === "artifact-menace") return 0xf97316;
+  if (normalized === "concerning") return 0xfacc15;
+  if (normalized === "suspicious") return 0x84cc16;
+  return 0x65d6ad;
+}
+
 function isApplicationStaff(ctx) {
   return canUseApplicationCommand(ctx.message.member, ctx.config, ctx.command.name, hasCommandRoleOverride);
 }
@@ -7602,6 +7611,109 @@ define({
       targetId: member.id,
       targetName: member.user.tag
     }).catch(() => {});
+  }
+});
+
+define({
+  name: "chipthreat",
+  aliases: ["chipscan", "artifactthreat", "ckthreat", "threattochipkittle"],
+  category: "AI",
+  description: "Joke-scan whether someone is a fictional threat to Chipkittle.",
+  usage: "chipthreat @user [20-100] [here]",
+  async run(ctx) {
+    const mentionedMember = ctx.message.mentions.members.first();
+    const member = mentionedMember || ctx.message.member;
+
+    if (!ctx.config.ai.enabled) {
+      await ctx.message.reply("Chipkittle AI is disabled in the panel.");
+      return;
+    }
+
+    if (!ctx.ai.enabled) {
+      await ctx.message.reply("AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.");
+      return;
+    }
+
+    if (isAiChannelBlacklisted(ctx.config, ctx.message.channel.id)) {
+      await ctx.message.reply("Chipkittle AI is blacklisted in this channel.");
+      return;
+    }
+
+    if (!aiAllowedForMember(ctx.config, ctx.message.member)) {
+      await ctx.message.reply("Chipkittle AI is currently limited to configured AI roles.");
+      return;
+    }
+
+    const budget = aiBudgetStatus(ctx.config);
+    if (budget.exceeded) {
+      await ctx.message.reply("Chipkittle AI has reached the monthly usage budget.");
+      return;
+    }
+
+    const rateLimit = checkAiRateLimit({
+      guildId: ctx.message.guild.id,
+      userId: ctx.message.author.id,
+      cooldownSeconds: ctx.config.ai.apiCooldownSeconds,
+      bucket: "chat"
+    });
+
+    if (rateLimit.limited) {
+      await ctx.message.reply({
+        content: `The artifact is cooling down. Try again in ${rateLimit.retryAfterSeconds}s.`,
+        allowedMentions: NO_MENTIONS
+      });
+      return;
+    }
+
+    const options = parseThreatScanOptions(ctx.args.slice(mentionedMember ? 1 : 0));
+    await ctx.message.channel.sendTyping();
+    const { messages, scannedChannels } = await collectThreatScanMessages(ctx, member, options);
+    if (!messages.length) {
+      await ctx.message.reply(`The artifact found no readable recent messages from ${member}, which is honestly suspicious in its own way.`);
+      return;
+    }
+
+    const assessment = await ctx.ai.chipkittleThreatAssessment(ctx.message, ctx.config, {
+      targetTag: member.user.tag,
+      messages
+    });
+    await recordAiUsage(ctx.store, ctx.message.guild.id, ctx.config, assessment.usage);
+    await incrementMetric(ctx.store, ctx.message.guild.id, "aiReplies", 1).catch(() => {});
+
+    if (assessment.error) {
+      await ctx.message.reply(assessment.error);
+      return;
+    }
+
+    const level = cleanText(assessment.level || "suspicious", 32).toUpperCase();
+    const offenses = assessment.offenses?.length ? assessment.offenses.map((item) => `• ${cleanText(item, 90)}`).join("\n") : "• No official crumb crimes detected.";
+    const evidence = assessment.evidence?.length ? assessment.evidence.map((item) => `• ${cleanText(item, 150)}`).join("\n") : "• The artifact is pointing vaguely and refusing to explain.";
+    const embed = buildPrettyEmbed({
+      title: `Chipkittle Threat Scan: ${member.user.username}`,
+      color: chipkittleThreatColor(assessment.level),
+      description: [
+        `**Threat to Chipkittle:** ${level} (**${assessment.score}/100**)`,
+        `**Artifact confidence:** ${cleanText(assessment.confidence || "medium", 40)}`,
+        `**Scope:** ${options.scope === "here" ? "current channel" : `${scannedChannels} channel${scannedChannels === 1 ? "" : "s"}`} / ${messages.length} message${messages.length === 1 ? "" : "s"}`,
+        "",
+        "**Artifact Reading**",
+        cleanText(assessment.summary, 600),
+        "",
+        "**Alleged Chip-Crimes**",
+        offenses,
+        "",
+        "**Totally Serious Evidence**",
+        evidence,
+        "",
+        "**Ceremonial Sentence**",
+        cleanText(assessment.sentence, 240),
+        "",
+        "_This is a joke command. It is not a real moderation threat assessment._"
+      ].join("\n"),
+      footer: `Requested by ${ctx.message.author.tag}`
+    });
+
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
   }
 });
 

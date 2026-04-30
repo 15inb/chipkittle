@@ -1,6 +1,6 @@
 import { Collection, REST, Routes, SlashCommandBuilder } from "discord.js";
 
-const SLOW_COMMANDS = new Set(["ask", "chipify", "caption", "gif", "gifedit", "threatscan"]);
+const SLOW_COMMANDS = new Set(["ask", "chipify", "caption", "gif", "gifedit", "threatscan", "chipthreat"]);
 
 function slashDescription(command) {
   return String(command.description || "Run a Chipkittle command.").slice(0, 100);
