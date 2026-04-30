@@ -788,6 +788,19 @@ function requirePanelRoot(ctx) {
   return false;
 }
 
+const ROOT_ONLY_ECONOMY_COMMANDS = new Set([
+  "breadset",
+  "breadadd",
+  "breadtake",
+  "economyaudit",
+  "loancapsweep"
+]);
+
+function isRootOnlyEconomyCommand(command) {
+  if (!command || (command.category || "").toLowerCase() !== "gambling") return false;
+  return ROOT_ONLY_ECONOMY_COMMANDS.has(command.name);
+}
+
 function botModerationPermissionMessage(action, permissionName) {
   return `I cannot ${action} that member. Make sure my bot role is above their highest role and I have ${permissionName}.`;
 }
@@ -2525,7 +2538,7 @@ define({
   category: "Gambling",
   description: "Review economy totals, active loans, and debt-cap health.",
   async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePanelRoot(ctx)) return;
     const economy = normalizeEconomy(ctx.config.economy || {});
     const walletTotal = Object.values(economy.balances || {}).reduce((sum, amount) => sum + Math.max(Math.floor(Number(amount) || 0), 0), 0);
     const bankTotal = Object.values(economy.bankBalances || {}).reduce((sum, amount) => sum + Math.max(Math.floor(Number(amount) || 0), 0), 0);
@@ -7177,10 +7190,10 @@ define({
   name: "breadadd",
   aliases: ["addbread", "breadgrant"],
   category: "Gambling",
-  description: "Staff-only bread grant.",
+  description: "Root-only bread grant.",
   usage: "breadadd @user 500",
   async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePanelRoot(ctx)) return;
     const member = ctx.message.mentions.members.first();
     const amount = Math.max(Math.floor(Number(ctx.args.find((arg) => !arg.includes("<@")))), 0);
     if (!member || !amount) {
@@ -7209,10 +7222,10 @@ define({
   name: "breadtake",
   aliases: ["takebread", "breadremove"],
   category: "Gambling",
-  description: "Staff-only bread removal.",
+  description: "Root-only bread removal.",
   usage: "breadtake @user 500",
   async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageGuild)) return;
+    if (!requirePanelRoot(ctx)) return;
     const member = ctx.message.mentions.members.first();
     const amount = Math.max(Math.floor(Number(ctx.args.find((arg) => !arg.includes("<@")))), 0);
     if (!member || !amount) {
@@ -7935,9 +7948,9 @@ export function createCommandHandler(options) {
       return true;
     }
 
-    if ((command.category || "").toLowerCase() === "gambling" && !isPanelRootUser(config, message.author.id)) {
+    if (isRootOnlyEconomyCommand(command) && !isPanelRootUser(config, message.author.id)) {
       const payload = toEmbedPayload(
-        "Only root panel users can use economy commands.",
+        "Only root panel users can use that economy admin command.",
         commandEmbedMeta({ command, config, message })
       );
       const sent = await message.reply(payload).then(() => true).catch(() => false);
