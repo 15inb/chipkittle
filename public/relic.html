@@ -62,6 +62,10 @@
 
       <section class="relic-stage-wrap" aria-label="Chipkittle Relic Siege game">
         <canvas id="relicCanvas" width="1280" height="720"></canvas>
+        <div class="relic-event-banner" id="relicEventBanner" hidden>
+          <span id="relicEventKicker">Event</span>
+          <strong id="relicEventTitle">Wave started</strong>
+        </div>
         <div class="relic-hud" aria-live="polite">
           <div><span>Wave</span><b id="hudWave">1</b></div>
           <div><span>Health</span><b id="hudHealth">100</b></div>
@@ -78,6 +82,7 @@
             <span>Start a run, pick upgrades after waves, and cash out bread when the den finally catches fire.</span>
           </div>
         </div>
+        <div class="relic-toast-layer" id="relicToastLayer" aria-live="polite"></div>
       </section>
 
       <aside class="relic-panel relic-side">

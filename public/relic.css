@@ -289,7 +289,7 @@
   color: white;
   cursor: pointer;
   font-weight: 950;
-  transition: transform 140ms ease, filter 140ms ease;
+  transition: transform 140ms ease, filter 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 
 .relic-actions button:nth-of-type(2),
@@ -316,6 +316,24 @@
 .relic-upgrade-grid button:hover {
   filter: brightness(1.04);
   transform: translateY(-1px);
+}
+
+.relic-actions button:active,
+.relic-link-button:active,
+.relic-upgrade-grid button:active,
+.relic-meta-row button:active,
+.relic-upgrade-shop-card button:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.relic-actions button:focus-visible,
+.relic-link-button:focus-visible,
+.relic-upgrade-grid button:focus-visible,
+.relic-meta-row button:focus-visible,
+.relic-upgrade-shop-card button:focus-visible,
+.relic-claim button:focus-visible {
+  outline: 3px solid rgba(255, 242, 155, 0.72);
+  outline-offset: 3px;
 }
 
 .relic-stage-wrap {
@@ -375,6 +393,125 @@
   image-rendering: auto;
 }
 
+.relic-event-banner {
+  position: absolute;
+  z-index: 5;
+  top: 86px;
+  left: 50%;
+  width: min(520px, calc(100% - 32px));
+  transform: translateX(-50%);
+  border: 1px solid rgba(216, 255, 217, 0.22);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(7, 15, 10, 0.92), rgba(23, 37, 25, 0.78)),
+    radial-gradient(circle at 50% 0%, rgba(124, 255, 115, 0.26), transparent 58%);
+  color: #f4fff1;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  padding: 12px 18px;
+  text-align: center;
+  pointer-events: none;
+  animation: relicBannerIn 520ms cubic-bezier(.2,.9,.18,1) both;
+}
+
+.relic-event-banner span {
+  display: block;
+  color: #8cff75;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.relic-event-banner strong {
+  display: block;
+  margin-top: 3px;
+  font-size: clamp(18px, 2vw, 28px);
+  line-height: 1;
+}
+
+.relic-event-banner.rarity-epic {
+  border-color: rgba(198, 140, 255, 0.36);
+  background: linear-gradient(135deg, rgba(9, 8, 18, 0.94), rgba(42, 25, 59, 0.82));
+}
+
+.relic-event-banner.rarity-legendary {
+  border-color: rgba(255, 242, 155, 0.46);
+  background: linear-gradient(135deg, rgba(24, 17, 5, 0.95), rgba(69, 48, 10, 0.82));
+  box-shadow: 0 24px 80px rgba(255, 197, 64, 0.16), 0 24px 70px rgba(0, 0, 0, 0.38);
+}
+
+.relic-toast-layer {
+  position: absolute;
+  z-index: 6;
+  right: 16px;
+  bottom: 138px;
+  display: grid;
+  gap: 10px;
+  width: min(330px, calc(100% - 32px));
+  pointer-events: none;
+}
+
+.relic-toast {
+  border: 1px solid rgba(216, 255, 217, 0.18);
+  border-left-width: 5px;
+  border-left-color: #8cff75;
+  border-radius: 18px;
+  background: rgba(5, 11, 8, 0.82);
+  color: #f4fff1;
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(16px);
+  padding: 12px 14px;
+  animation: relicToastIn 360ms cubic-bezier(.2,.9,.18,1) both;
+}
+
+.relic-toast strong,
+.relic-toast span {
+  display: block;
+}
+
+.relic-toast strong {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.relic-toast span {
+  margin-top: 3px;
+  color: rgba(244, 255, 241, 0.72);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.relic-toast.is-leaving {
+  animation: relicToastOut 260ms ease forwards;
+}
+
+.rarity-common {
+  --rarity: #b8d6bd;
+  --rarity-soft: rgba(184, 214, 189, 0.18);
+}
+
+.rarity-rare {
+  --rarity: #8cff75;
+  --rarity-soft: rgba(140, 255, 117, 0.2);
+}
+
+.rarity-epic {
+  --rarity: #c68cff;
+  --rarity-soft: rgba(198, 140, 255, 0.22);
+}
+
+.rarity-legendary {
+  --rarity: #fff29b;
+  --rarity-soft: rgba(255, 242, 155, 0.24);
+}
+
+.relic-toast.rarity-common,
+.relic-toast.rarity-rare,
+.relic-toast.rarity-epic,
+.relic-toast.rarity-legendary {
+  border-left-color: var(--rarity);
+}
+
 .relic-hud {
   position: absolute;
   z-index: 3;
@@ -417,11 +554,14 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: radial-gradient(circle at center, rgba(70, 213, 76, 0.12), rgba(3, 8, 6, 0.72));
+  background:
+    radial-gradient(circle at center, rgba(70, 213, 76, 0.16), rgba(3, 8, 6, 0.76)),
+    linear-gradient(135deg, rgba(255, 242, 155, 0.06), transparent 48%);
   color: #f3fff1;
   text-align: center;
   padding: 24px;
   pointer-events: none;
+  backdrop-filter: blur(5px);
   transition: opacity 200ms ease;
 }
 
@@ -431,6 +571,7 @@
 
 .relic-overlay div {
   max-width: 620px;
+  animation: relicOverlayRise 540ms cubic-bezier(.2,.9,.18,1) both;
 }
 
 .relic-overlay p {
@@ -610,7 +751,9 @@
   width: min(calc(100vw - 28px), 820px);
   border: 1px solid rgba(216, 255, 217, 0.18);
   border-radius: 28px;
-  background: rgba(6, 13, 9, 0.94);
+  background:
+    radial-gradient(circle at 28% 0%, rgba(124, 255, 115, 0.14), transparent 36%),
+    rgba(6, 13, 9, 0.94);
   color: #f1fff0;
   box-shadow: 0 34px 120px rgba(0, 0, 0, 0.46);
   padding: 24px;
@@ -645,11 +788,32 @@
   display: grid;
   align-content: start;
   gap: 8px;
+  border-color: color-mix(in srgb, var(--rarity, #8cff75) 45%, rgba(216, 255, 217, 0.18));
   border-radius: 22px;
-  background: linear-gradient(160deg, rgba(82, 215, 101, 0.24), rgba(14, 26, 18, 0.92));
+  background:
+    radial-gradient(circle at 18% 0%, var(--rarity-soft, rgba(82, 215, 101, 0.24)), transparent 54%),
+    linear-gradient(160deg, rgba(82, 215, 101, 0.12), rgba(14, 26, 18, 0.94));
   color: #f1fff0;
   padding: 18px;
   text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.relic-upgrade-grid button:hover {
+  box-shadow: 0 18px 50px color-mix(in srgb, var(--rarity, #8cff75) 16%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.relic-upgrade-grid span {
+  width: fit-content;
+  border: 1px solid color-mix(in srgb, var(--rarity, #8cff75) 52%, transparent);
+  border-radius: 999px;
+  background: var(--rarity-soft, rgba(82, 215, 101, 0.18));
+  color: var(--rarity, #8cff75);
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .relic-upgrade-grid b {
@@ -725,6 +889,13 @@
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.5);
   padding: 16px;
+  transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.relic-upgrade-shop-card:hover {
+  border-color: rgba(82, 215, 101, 0.32);
+  box-shadow: 0 16px 48px rgba(26, 138, 56, 0.12);
+  transform: translateY(-1px);
 }
 
 :root[data-theme="dark"] .relic-upgrade-shop-card {
@@ -783,6 +954,46 @@
 .relic-upgrade-shop-card button:disabled {
   cursor: not-allowed;
   opacity: 0.46;
+}
+
+@keyframes relicBannerIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes relicToastIn {
+  from {
+    opacity: 0;
+    transform: translateX(22px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes relicToastOut {
+  to {
+    opacity: 0;
+    transform: translateX(18px) scale(0.98);
+  }
+}
+
+@keyframes relicOverlayRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @media (max-width: 1500px) {
@@ -888,10 +1099,30 @@
   .relic-hud b {
     font-size: 13px;
   }
+
+  .relic-event-banner {
+    top: 148px;
+  }
+
+  .relic-toast-layer {
+    right: 10px;
+    bottom: 118px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .relic-stage-wrap::after {
     display: none;
+  }
+
+  .relic-event-banner,
+  .relic-toast,
+  .relic-overlay div,
+  .relic-upgrade-shop-card,
+  .relic-actions button,
+  .relic-link-button,
+  .relic-upgrade-grid button {
+    animation: none;
+    transition: none;
   }
 }

@@ -20,6 +20,10 @@ const metaUpgradeList = document.getElementById("relicMetaUpgrades");
 const upgradeModal = document.getElementById("relicUpgradeModal");
 const upgradeGrid = document.getElementById("relicUpgradeGrid");
 const fullscreenButton = document.getElementById("relicFullscreen");
+const toastLayer = document.getElementById("relicToastLayer");
+const eventBanner = document.getElementById("relicEventBanner");
+const eventKicker = document.getElementById("relicEventKicker");
+const eventTitle = document.getElementById("relicEventTitle");
 
 const hud = {
   wave: document.getElementById("hudWave"),
@@ -94,7 +98,9 @@ const audio = {
   hit() { this.tone(150, 0.075, "sawtooth", 0.025); },
   pickup() { this.tone(620, 0.05, "sine", 0.022); },
   relic() { this.tone(110, 0.32, "sawtooth", 0.045); this.tone(660, 0.24, "triangle", 0.026); },
-  wave() { this.tone(250, 0.12, "triangle", 0.024); setTimeout(() => this.tone(420, 0.16, "triangle", 0.024), 80); }
+  wave() { this.tone(250, 0.12, "triangle", 0.024); setTimeout(() => this.tone(420, 0.16, "triangle", 0.024), 80); },
+  upgrade() { this.tone(520, 0.08, "triangle", 0.026); setTimeout(() => this.tone(760, 0.12, "sine", 0.024), 70); },
+  achievement() { this.tone(392, 0.12, "triangle", 0.03); setTimeout(() => this.tone(784, 0.18, "sine", 0.032), 90); }
 };
 
 const state = {
@@ -118,6 +124,7 @@ const state = {
   upgrades: [],
   flags: new Set(),
   achievements: new Set(),
+  milestones: new Set(),
   pauseLatch: false,
   fireCooldown: 0,
   relicCooldown: 0,
@@ -158,6 +165,7 @@ const upgrades = [
   {
     id: "horns",
     name: "Hollow Horn Voltage",
+    rarity: "rare",
     description: "Projectiles hit harder and have a higher crit chance.",
     apply() {
       player.damage += 8;
@@ -167,6 +175,7 @@ const upgrades = [
   {
     id: "regen",
     name: "Warm Den Ember",
+    rarity: "rare",
     description: "Slowly regenerate health while you avoid damage.",
     apply() {
       player.regen += 1.6;
@@ -175,6 +184,7 @@ const upgrades = [
   {
     id: "pierce",
     name: "Artifact Splintering",
+    rarity: "epic",
     description: "Normal shots pierce one extra enemy.",
     apply() {
       state.flags.add("piercing-shots");
@@ -183,6 +193,7 @@ const upgrades = [
   {
     id: "ward",
     name: "Keeper Ward",
+    rarity: "epic",
     description: "Taking a hit triggers a short knockback pulse.",
     apply() {
       state.flags.add("hit-ward");
@@ -191,6 +202,7 @@ const upgrades = [
   {
     id: "fur",
     name: "Dense Ritual Fur",
+    rarity: "common",
     description: "Gain armor and 35 maximum health.",
     apply() {
       player.armor += 3;
@@ -201,6 +213,7 @@ const upgrades = [
   {
     id: "paws",
     name: "Panic Paws",
+    rarity: "common",
     description: "Move faster and recharge dash sooner.",
     apply() {
       player.speed += 48;
@@ -210,6 +223,7 @@ const upgrades = [
   {
     id: "loaf",
     name: "Loaf Magnet",
+    rarity: "common",
     description: "Pull bread and relic shards from much farther away.",
     apply() {
       player.magnet += 90;
@@ -218,6 +232,7 @@ const upgrades = [
   {
     id: "burst",
     name: "Relic Overbite",
+    rarity: "epic",
     description: "Relic burst recharges faster and hits a larger area.",
     apply() {
       player.relicMax = Math.max(55, player.relicMax - 12);
@@ -226,6 +241,7 @@ const upgrades = [
   {
     id: "triple",
     name: "Three Bad Ideas",
+    rarity: "rare",
     description: "Fire an extra projectile in a spread.",
     apply() {
       player.multiShot = Math.min(5, player.multiShot + 1);
@@ -235,6 +251,7 @@ const upgrades = [
   {
     id: "bakery",
     name: "Questionable Bakery",
+    rarity: "rare",
     description: "Bread pickups heal you slightly.",
     apply() {
       state.flags.add("bakery-heal");
@@ -243,6 +260,7 @@ const upgrades = [
   {
     id: "echo",
     name: "Den Echo",
+    rarity: "legendary",
     description: "Kills have a chance to release a shock ring.",
     apply() {
       state.flags.add("death-echo");
@@ -327,7 +345,8 @@ function buyMetaUpgrade(upgradeId) {
   saveMetaProgress();
   renderMetaUpgrades();
   announce(`${item.name} upgraded. Permanent weirdness increased.`, "#fff29b");
-  audio.pickup();
+  showToast("Permanent upgrade", `${item.name} is now level ${meta.upgrades[item.id]}.`, "legendary");
+  audio.upgrade();
 }
 
 function applyMetaUpgrades() {
@@ -363,6 +382,7 @@ function resetRun(practice = false) {
     upgrades: [],
     flags: new Set(),
     achievements: new Set(),
+    milestones: new Set(),
     fireCooldown: 0,
     relicCooldown: 0,
     difficulty: practice ? 0.78 : 1,
@@ -402,6 +422,8 @@ function resetRun(practice = false) {
   services.resetClaimState("Finish this run to create a Discord bread claim.");
   updateSidebar();
   announce("Wave 1: keep the fur attached.", "#d7ff91");
+  showEvent("Wave 1", "Keep the fur attached", "rare");
+  showToast("Run started", practice ? "Practice bread is discounted. Shameful, but useful." : "Survive waves, pick relics, leave with bread.", "common");
   audio.ensure();
   audio.wave();
 }
@@ -551,6 +573,7 @@ function relicBurst() {
   state.relicCooldown = 1.2;
   state.flash = 0.38;
   camera.trauma = Math.max(camera.trauma, 0.42);
+  showEvent("Relic burst", "The creature objected loudly", "legendary");
   audio.relic();
   const radius = 260 + (100 - player.relicMax) * 3;
   for (const enemy of pools.enemies) {
@@ -587,9 +610,51 @@ function announce(text, color = "#f3fff1") {
   statusText.textContent = text;
 }
 
+function rarityLabel(rarity = "common") {
+  return {
+    common: "Common",
+    rare: "Rare",
+    epic: "Epic",
+    legendary: "Legendary"
+  }[rarity] || "Common";
+}
+
+function showToast(title, detail, tone = "common") {
+  if (!toastLayer) return;
+  const toast = document.createElement("div");
+  toast.className = `relic-toast rarity-${tone}`;
+  toast.innerHTML = `<strong>${safeName(title)}</strong><span>${safeName(detail)}</span>`;
+  toastLayer.appendChild(toast);
+  window.setTimeout(() => {
+    toast.classList.add("is-leaving");
+    window.setTimeout(() => toast.remove(), 260);
+  }, 3400);
+}
+
+function showEvent(kicker, title, tone = "rare") {
+  if (!eventBanner || !eventKicker || !eventTitle) return;
+  eventKicker.textContent = kicker;
+  eventTitle.textContent = title;
+  eventBanner.className = `relic-event-banner rarity-${tone}`;
+  eventBanner.hidden = false;
+  window.clearTimeout(showEvent.timer);
+  showEvent.timer = window.setTimeout(() => {
+    eventBanner.hidden = true;
+  }, 2200);
+}
+
 function chooseUpgradeOptions() {
-  const shuffled = [...upgrades].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 3);
+  const rarityScore = { common: 1, rare: 2, epic: 3, legendary: 4 };
+  return [...upgrades]
+    .sort(() => Math.random() - 0.5)
+    .map((upgrade) => {
+      const rarity = rarityScore[upgrade.rarity] || 1;
+      const lateWaveLift = Math.min(0.72, state.wave / 22);
+      return { upgrade, roll: Math.random() + lateWaveLift * (rarity - 1) * 0.24 };
+    })
+    .sort((a, b) => b.roll - a.roll)
+    .slice(0, 3)
+    .map((entry) => entry.upgrade);
 }
 
 function openUpgradeModal() {
@@ -598,11 +663,13 @@ function openUpgradeModal() {
   state.mode = "upgrade";
   const options = chooseUpgradeOptions();
   upgradeGrid.innerHTML = options.map((upgrade, index) => `
-    <button type="button" data-upgrade="${upgrade.id}" value="${index}">
+    <button type="button" class="rarity-${upgrade.rarity || "common"}" data-upgrade="${upgrade.id}" value="${index}">
+      <span>${rarityLabel(upgrade.rarity)}</span>
       <b>${upgrade.name}</b>
       <small>${upgrade.description}</small>
     </button>
   `).join("");
+  showEvent("Choose a relic", "The den offers three bad ideas", "epic");
   upgradeModal.showModal();
 }
 
@@ -622,7 +689,9 @@ function applyUpgrade(upgradeId) {
   upgradeModal.close();
   updateSidebar();
   announce(`Wave ${state.wave}: ${upgrade.name}`, "#d7ff91");
-  audio.wave();
+  showToast("Relic equipped", upgrade.name, upgrade.rarity || "rare");
+  showEvent(`Wave ${state.wave}`, upgrade.name, upgrade.rarity || "rare");
+  audio.upgrade();
 }
 
 function update(dt) {
@@ -676,6 +745,7 @@ function update(dt) {
   updatePickups(dt);
   updateHazards(dt);
   updateParticles(dt);
+  checkMilestones();
   updateCamera(dt);
   updateHud();
 
@@ -740,6 +810,7 @@ function updateWave(dt) {
     state.waveClearing = true;
     state.spawnTimer = 999;
     announce(`Wave ${state.wave} clearing: finish the leftovers.`, "#d7ff91");
+    showEvent("Wave clearing", `Finish ${pools.enemies.length} leftovers`, "rare");
   }
   const enemyCap = 24 + Math.min(34, state.wave * 3) + Math.floor(pressure * 6);
   if (!state.waveClearing && state.spawnTimer <= 0 && pools.enemies.length < enemyCap) {
@@ -766,6 +837,8 @@ function updateWave(dt) {
     spawnEnemy("miniboss");
     state.bossSpawned = true;
     announce("Mini-boss entering the den. Horrible posture.", "#ff9bd6");
+    showEvent("Mini-boss", "Horrible posture detected", "epic");
+    showToast("Mini-boss entered", "Clear it for stronger drops and essence.", "epic");
     audio.wave();
   }
   if (state.wave % 4 === 0 && !state.bossSpawned && state.waveTimer > 8) {
@@ -773,6 +846,8 @@ function updateWave(dt) {
     state.bossSpawned = true;
     state.bossAttackTimer = 2;
     announce("Boss thing detected. Deeply rude.", "#ff9797");
+    showEvent("Boss wave", "Deeply rude thing detected", "legendary");
+    showToast("Boss thing detected", "Break it before the arena becomes a problem.", "legendary");
     audio.wave();
   }
   if (state.waveClearing && pools.enemies.length === 0) {
@@ -783,8 +858,50 @@ function updateWave(dt) {
       state.score += bonusScore;
       unlockAchievement("Untouched Fur", "Cleared a wave without taking damage.");
       announce(`Perfect wave: +${bonusBread} bread`, "#fff29b");
+      showToast("Perfect wave", `+${bonusBread} bread and +${bonusScore.toLocaleString()} score`, "legendary");
     }
     openUpgradeModal();
+  }
+}
+
+function awardMilestone(id, title, detail, tone = "rare", apply = () => {}) {
+  if (state.milestones.has(id)) return;
+  state.milestones.add(id);
+  apply();
+  showToast(title, detail, tone);
+  showEvent(title, detail, tone);
+  audio.achievement();
+}
+
+function checkMilestones() {
+  if (state.wave >= 3) {
+    awardMilestone("wave-3", "Den warmed up", "+250 score for reaching wave 3", "rare", () => {
+      state.score += 250;
+    });
+  }
+  if (state.wave >= 6) {
+    awardMilestone("wave-6", "Green Furnace", "+3 bread and +600 score", "epic", () => {
+      state.bread += 3;
+      state.score += 600;
+    });
+  }
+  if (state.wave >= 10) {
+    awardMilestone("wave-10", "Archive breaker", "+8 bread, +1,200 score, relic overcharge", "legendary", () => {
+      state.bread += 8;
+      state.score += 1200;
+      player.overcharge = Math.max(player.overcharge, 5);
+      unlockAchievement("Archive Breaker", "Reached wave 10 in one run.");
+    });
+  }
+  if (state.kills >= 100) {
+    awardMilestone("kills-100", "One hundred problems", "+5 bread for cleaning the den", "epic", () => {
+      state.bread += 5;
+    });
+  }
+  if (state.score >= 10000) {
+    awardMilestone("score-10000", "Score ritual", "Overcharge triggered for big-number behavior", "legendary", () => {
+      player.overcharge = Math.max(player.overcharge, 8);
+    });
   }
 }
 
@@ -986,6 +1103,8 @@ function unlockAchievement(name, description) {
   state.achievements.add(name);
   state.score += 250;
   announce(`${name}: ${description}`, "#fff29b");
+  showToast("Achievement unlocked", `${name}: ${description}`, "legendary");
+  audio.achievement();
   for (let i = 0; i < 34; i += 1) {
     const angle = rand(0, Math.PI * 2);
     particle(player.x, player.y, Math.cos(angle) * rand(130, 360), Math.sin(angle) * rand(130, 360), rand(0.4, 0.9), "#fff29b", rand(2, 5));
@@ -1090,9 +1209,11 @@ function updatePickups(dt) {
       } else if (pickup.type === "shield") {
         player.shield = Math.min(90, player.shield + pickup.amount);
         floatingText(player.x, player.y - 44, `+${Math.round(pickup.amount)} SHIELD`, "#85ffd2");
+        showToast("Keeper ward", `+${Math.round(pickup.amount)} shield`, "rare");
       } else if (pickup.type === "overcharge") {
         player.overcharge = Math.max(player.overcharge, 7);
         floatingText(player.x, player.y - 44, "OVERCHARGE", "#fff29b");
+        showToast("Overcharge", "Damage boosted for a short ritual.", "legendary");
       }
       audio.pickup();
       pools.pickups.splice(i, 1);
