@@ -44,6 +44,22 @@
           Runner name
           <input id="relicPlayerName" maxlength="24" autocomplete="nickname" placeholder="Anonymous Chipkittle">
         </label>
+        <section class="relic-loadout-builder" aria-label="Pre-run loadout selection">
+          <div class="relic-section-head">
+            <h2>Pre-run Loadout</h2>
+            <span id="relicLoadoutStatus">Saved</span>
+          </div>
+          <div class="relic-loadout-tabs">
+            <button type="button" class="is-active" data-loadout-tab="weapon">Weapon</button>
+            <button type="button" data-loadout-tab="armor">Armor</button>
+            <button type="button" data-loadout-tab="perk">Perk</button>
+          </div>
+          <div class="relic-loadout-options" id="relicLoadoutOptions"></div>
+          <div class="relic-power-summary">
+            <strong>Permanent Power</strong>
+            <div id="relicPermanentPowers">Reach round 10 to awaken the first permanent power.</div>
+          </div>
+        </section>
         <div class="relic-actions">
           <button id="relicStart" type="button">Start Siege</button>
           <button id="relicPractice" type="button">Practice</button>

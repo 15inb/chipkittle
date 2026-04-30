@@ -224,6 +224,115 @@
   gap: 8px;
 }
 
+.relic-loadout-builder {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.relic-loadout-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.relic-loadout-tabs button,
+.relic-loadout-card {
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.relic-loadout-tabs button {
+  min-height: 36px;
+  border-radius: 999px;
+  background: rgba(82, 215, 101, 0.1);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.relic-loadout-tabs button.is-active {
+  border-color: rgba(82, 215, 101, 0.46);
+  background: rgba(82, 215, 101, 0.24);
+}
+
+.relic-loadout-options {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.relic-loadout-card {
+  display: grid;
+  gap: 5px;
+  border-color: color-mix(in srgb, var(--rarity, #8cff75) 38%, var(--line));
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0% 0%, var(--rarity-soft, rgba(82, 215, 101, 0.16)), transparent 58%),
+    rgba(255, 255, 255, 0.42);
+  padding: 12px;
+  text-align: left;
+}
+
+:root[data-theme="dark"] .relic-loadout-card {
+  background:
+    radial-gradient(circle at 0% 0%, var(--rarity-soft, rgba(82, 215, 101, 0.16)), transparent 58%),
+    rgba(10, 20, 15, 0.68);
+}
+
+.relic-loadout-card.is-selected {
+  border-color: var(--rarity, #8cff75);
+  box-shadow: 0 12px 34px color-mix(in srgb, var(--rarity, #8cff75) 16%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--rarity, #8cff75) 32%, transparent);
+}
+
+.relic-loadout-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.relic-loadout-card span {
+  color: var(--rarity, var(--green-dark));
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.relic-loadout-card strong {
+  font-size: 14px;
+}
+
+.relic-loadout-card small {
+  color: var(--quiet);
+  line-height: 1.35;
+}
+
+.relic-power-summary {
+  display: grid;
+  gap: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 18px;
+  padding: 12px;
+  color: var(--quiet);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.relic-power-summary strong {
+  color: var(--ink);
+}
+
+.relic-power-summary div {
+  display: grid;
+  gap: 6px;
+}
+
+.relic-power-summary span {
+  border-left: 3px solid var(--rarity, var(--green));
+  padding-left: 8px;
+}
+
 .relic-meta-row {
   display: grid;
   grid-template-columns: 1fr auto;

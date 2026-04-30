@@ -14,6 +14,8 @@ const shop = document.getElementById("relicUpgradeShop");
 const status = document.getElementById("relicUpgradeStatus");
 const resetButton = document.getElementById("relicResetMeta");
 const codex = document.getElementById("relicBuildCodex");
+const powerCodex = document.getElementById("relicPowerCodex");
+const powerStatus = document.getElementById("relicPowerStatus");
 
 const buildCodex = [
   { name: "Thorn SMG", type: "Weapon", rarity: "common", detail: "Fast pressure. Low damage, high tempo, strong with crits and chain effects." },
@@ -29,6 +31,15 @@ const buildCodex = [
   { name: "Void Husk", type: "Armor", rarity: "legendary", detail: "Risk shield armor. Huge shield and speed, low health buffer." }
 ];
 
+const powerCatalog = [
+  { id: "dash-core", name: "Dash Core", rarity: "rare", threshold: 10, detail: "Dash recovers faster and gives a longer invulnerability blink." },
+  { id: "keeper-oath", name: "Keeper Oath", rarity: "rare", threshold: 20, detail: "Unlocks Keeper's Advance and adds a small shield to every run." },
+  { id: "storm-memory", name: "Storm Memory", rarity: "epic", threshold: 30, detail: "Unlocks Storm Primer and adds one passive chain target." },
+  { id: "blood-bakery", name: "Blood Bakery", rarity: "epic", threshold: 40, detail: "Gain light lifesteal on weapon hits." },
+  { id: "black-horn", name: "Black Horn Doctrine", rarity: "legendary", threshold: 50, detail: "Crit chance rises, and enemy pressure pays more score." },
+  { id: "endless-satchel", name: "Endless Satchel", rarity: "legendary", threshold: 60, detail: "Bread, relic shards, and hearts pull from much farther away." }
+];
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -38,6 +49,8 @@ function loadMeta() {
     const parsed = JSON.parse(localStorage.getItem(META_KEY) || "{}");
     return {
       essence: Math.max(0, Math.floor(Number(parsed.essence) || 0)),
+      bestRound: Math.max(0, Math.floor(Number(parsed.bestRound) || 0)),
+      powerUps: Object.fromEntries(powerCatalog.map((item) => [item.id, Boolean(parsed.powerUps?.[item.id])])),
       upgrades: Object.fromEntries(catalog.map((item) => [
         item.id,
         clamp(Math.floor(Number(parsed.upgrades?.[item.id]) || 0), 0, item.max)
@@ -46,6 +59,8 @@ function loadMeta() {
   } catch {
     return {
       essence: 0,
+      bestRound: 0,
+      powerUps: Object.fromEntries(powerCatalog.map((item) => [item.id, false])),
       upgrades: Object.fromEntries(catalog.map((item) => [item.id, 0]))
     };
   }
@@ -93,6 +108,26 @@ function render() {
       </article>
     `).join("");
   }
+  if (powerCodex) {
+    powerCodex.innerHTML = powerCatalog.map((item) => {
+      const unlocked = Boolean(meta.powerUps?.[item.id]);
+      return `
+        <article class="relic-upgrade-shop-card rarity-${item.rarity}">
+          <div>
+            <strong>${item.name}</strong>
+            <small>Round ${item.threshold} · ${item.detail}</small>
+          </div>
+          <footer>
+            <span>${unlocked ? "Awakened" : `Best round ${meta.bestRound || 0}/${item.threshold}`}</span>
+          </footer>
+        </article>
+      `;
+    }).join("");
+  }
+  if (powerStatus) {
+    const unlockedCount = Object.values(meta.powerUps || {}).filter(Boolean).length;
+    powerStatus.textContent = `${unlockedCount}/${powerCatalog.length} awakened`;
+  }
 }
 
 shop.addEventListener("click", (event) => {
@@ -114,6 +149,8 @@ resetButton.addEventListener("click", () => {
   if (!confirm("Reset Relic Siege upgrades and essence on this browser?")) return;
   meta = {
     essence: 0,
+    bestRound: 0,
+    powerUps: Object.fromEntries(powerCatalog.map((item) => [item.id, false])),
     upgrades: Object.fromEntries(catalog.map((item) => [item.id, 0]))
   };
   saveMeta();

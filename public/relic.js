@@ -17,6 +17,9 @@ const intel = document.getElementById("relicIntel");
 const intelLabel = document.getElementById("relicIntelLabel");
 const essenceCounter = document.getElementById("relicEssence");
 const metaUpgradeList = document.getElementById("relicMetaUpgrades");
+const loadoutOptions = document.getElementById("relicLoadoutOptions");
+const loadoutStatus = document.getElementById("relicLoadoutStatus");
+const permanentPowers = document.getElementById("relicPermanentPowers");
 const upgradeModal = document.getElementById("relicUpgradeModal");
 const upgradeGrid = document.getElementById("relicUpgradeGrid");
 const fullscreenButton = document.getElementById("relicFullscreen");
@@ -46,6 +49,7 @@ const services = createGameServices("relic", {
 const WORLD = { width: 3200, height: 2200 };
 const VIEW = { width: 1280, height: 720 };
 const META_KEY = "chipkittle-relic-meta";
+const LOADOUT_KEY = "chipkittle-relic-loadout";
 const keys = new Set();
 const GAMEPLAY_KEYS = new Set(["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", " ", "shift", "q", "p", "escape", "m"]);
 const pointer = { x: VIEW.width / 2, y: VIEW.height / 2, down: false, worldX: 0, worldY: 0 };
@@ -69,7 +73,26 @@ const metaUpgradeCatalog = [
   { id: "crit", name: "Unwise Confidence", description: "+2% critical chance per level.", max: 6, baseCost: 30, step: 20 }
 ];
 
+const startingPerkCatalog = {
+  none: { id: "none", name: "No Starting Perk", rarity: "common", role: "Pure run", description: "Start clean and let the den decide your build.", apply() {} },
+  overcharge: { id: "overcharge", name: "Opening Overcharge", rarity: "rare", role: "Aggressive opener", description: "Start with short overcharge and extra early tempo.", apply() { player.overcharge = Math.max(player.overcharge, 6); state.fireCooldown = 0; } },
+  relicseed: { id: "relicseed", name: "Relic Seed", rarity: "rare", role: "Ability build", description: "Begin with 35% relic charge and a lower burst cooldown.", apply() { player.relic = Math.max(player.relic, player.relicMax * 0.35); state.relicCooldown = 0; } },
+  breadmagnet: { id: "breadmagnet", name: "Bread Magnet Charm", rarity: "rare", role: "Economy utility", description: "Start with stronger pickup range and slightly better bread flow.", apply() { player.magnet += 115; state.flags.add("starter-bread-magnet"); } },
+  shieldstarter: { id: "shieldstarter", name: "Keeper's Advance", rarity: "epic", role: "Defensive opener", requiresPower: "keeper-oath", description: "Start shielded and trigger a small pulse on your first shield break.", apply() { player.shield += 42; state.flags.add("reactive-armor"); } },
+  voltstarter: { id: "voltstarter", name: "Storm Primer", rarity: "epic", role: "Chain opener", requiresPower: "storm-memory", description: "Shots chain to one extra target from wave one.", apply() { player.chainTargets += 1; state.flags.add("storm-bridge"); } }
+};
+
+const permanentPowerCatalog = [
+  { id: "dash-core", name: "Dash Core", rarity: "rare", threshold: 10, description: "Dash recovers faster and gives a longer invulnerability blink.", apply() { player.dash += 0.22; state.flags.add("dash-core"); } },
+  { id: "keeper-oath", name: "Keeper Oath", rarity: "rare", threshold: 20, description: "Unlocks Keeper's Advance and adds a small shield to every run.", apply() { player.shield += 18; } },
+  { id: "storm-memory", name: "Storm Memory", rarity: "epic", threshold: 30, description: "Unlocks Storm Primer and adds one passive chain target.", apply() { player.chainTargets += 1; } },
+  { id: "blood-bakery", name: "Blood Bakery", rarity: "epic", threshold: 40, description: "Gain light lifesteal on weapon hits.", apply() { state.flags.add("meta-lifesteal"); } },
+  { id: "black-horn", name: "Black Horn Doctrine", rarity: "legendary", threshold: 50, description: "Crit chance rises, but enemy pressure pays more score.", apply() { player.crit += 0.06; state.flags.add("black-horn-doctrine"); } },
+  { id: "endless-satchel", name: "Endless Satchel", rarity: "legendary", threshold: 60, description: "Bread, relic shards, and hearts pull from much farther away.", apply() { player.magnet += 145; } }
+];
+
 let meta = loadMetaProgress();
+let activeLoadoutTab = "weapon";
 
 function normalizeKey(key = "") {
   return String(key || "").toLowerCase();
@@ -202,6 +225,44 @@ const armorCatalog = {
   "ember-molt": { id: "ember-molt", name: "Ember Molt", rarity: "epic", role: "Sustain burn", maxHealth: 35, armor: 1, speed: 1.04, dash: 1, regen: 1.8, shield: 0, flag: "ember-armor", description: "Regenerates and improves burn builds, but offers modest direct protection." },
   "void-husk": { id: "void-husk", name: "Void Husk", rarity: "legendary", role: "Risk shield", maxHealth: -45, armor: 5, speed: 1.08, dash: 1.18, regen: 0, shield: 90, flag: "void-husk", description: "Huge shield and speed, low health. Perfect until it suddenly is not." }
 };
+
+let selectedLoadout = loadLoadout();
+
+function defaultLoadout() {
+  return { weapon: "thorn-smg", armor: "ritual-fleece", perk: "none" };
+}
+
+function loadLoadout() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LOADOUT_KEY) || "{}");
+    return {
+      weapon: weaponCatalog[parsed.weapon] ? parsed.weapon : "thorn-smg",
+      armor: armorCatalog[parsed.armor] ? parsed.armor : "ritual-fleece",
+      perk: startingPerkCatalog[parsed.perk] ? parsed.perk : "none"
+    };
+  } catch {
+    return defaultLoadout();
+  }
+}
+
+function saveLoadout() {
+  localStorage.setItem(LOADOUT_KEY, JSON.stringify(selectedLoadout));
+  if (loadoutStatus) {
+    loadoutStatus.textContent = "Saved";
+    window.clearTimeout(saveLoadout.timer);
+    saveLoadout.timer = window.setTimeout(() => {
+      loadoutStatus.textContent = "Ready";
+    }, 1200);
+  }
+}
+
+function hasPermanentPower(powerId) {
+  return Boolean(meta.powerUps?.[powerId]);
+}
+
+function isPerkUnlocked(perk) {
+  return !perk?.requiresPower || hasPermanentPower(perk.requiresPower);
+}
 
 function currentWeapon() {
   return weaponCatalog[player.weapon] || weaponCatalog["thorn-smg"];
@@ -373,6 +434,131 @@ const upgrades = [
     description: "Wave clears pay more bread and essence, but messy waves cost extra.",
     apply() {
       state.flags.add("danger-dividend");
+    }
+  },
+  {
+    id: "glass-cannon",
+    name: "Glass Cannon Doctrine",
+    rarity: "epic",
+    type: "Tradeoff",
+    description: "+40% weapon damage, but max health drops by 20%. Great for Rail Horn and speed builds.",
+    apply() {
+      player.damage *= 1.4;
+      player.maxHealth = Math.max(55, Math.floor(player.maxHealth * 0.8));
+      player.health = Math.min(player.health, player.maxHealth);
+      state.flags.add("tradeoff-glass-cannon");
+    }
+  },
+  {
+    id: "wild-trigger",
+    name: "Wild Trigger Finger",
+    rarity: "rare",
+    type: "Tradeoff",
+    description: "+32% fire rate, but shots spread wider. Strong on status guns, risky on precision builds.",
+    apply() {
+      player.fireRate *= 0.68;
+      state.flags.add("wild-spread");
+    }
+  },
+  {
+    id: "blood-loaf",
+    name: "Blood Loaf Compact",
+    rarity: "epic",
+    type: "Tradeoff",
+    description: "Weapon hits heal you, but base damage drops. Tank and rapid-fire builds love this.",
+    apply() {
+      player.damage *= 0.86;
+      state.flags.add("weapon-lifesteal");
+    }
+  },
+  {
+    id: "volatile-loaves",
+    name: "Volatile Loaves",
+    rarity: "legendary",
+    type: "Tradeoff",
+    description: "All shots can create small explosions, but blasts near you cause self-damage.",
+    apply() {
+      player.explosionRadius += 24;
+      state.flags.add("volatile-loaves");
+    }
+  },
+  {
+    id: "speed-tax",
+    name: "Speed Tax Exemption",
+    rarity: "rare",
+    type: "Tradeoff",
+    description: "+30% movement speed and faster dash recovery, but max health drops by 15%.",
+    apply() {
+      player.speed *= 1.3;
+      player.dash += 0.28;
+      player.maxHealth = Math.max(60, Math.floor(player.maxHealth * 0.85));
+      player.health = Math.min(player.health, player.maxHealth);
+    }
+  },
+  {
+    id: "heavy-barrel",
+    name: "Heavy Barrel Blessing",
+    rarity: "rare",
+    type: "Weapon upgrade",
+    description: "Shots hit harder and knock enemies back, but fire rate slows slightly.",
+    apply() {
+      player.damage *= 1.26;
+      player.fireRate *= 1.14;
+      state.flags.add("heavy-barrel");
+    }
+  },
+  {
+    id: "chain-gland",
+    name: "Chain Gland",
+    rarity: "epic",
+    type: "Weapon upgrade",
+    description: "Non-chain weapons gain a weak shock jump. Storm Relic gains two more jumps.",
+    apply() {
+      player.chainTargets += currentWeapon().tags.includes("chain") ? 2 : 1;
+      state.flags.add("chain-gland");
+    }
+  },
+  {
+    id: "spore-cloud",
+    name: "Spore Cloud Payload",
+    rarity: "epic",
+    type: "Weapon upgrade",
+    description: "Poison and slow effects spread to nearby enemies on kill.",
+    apply() {
+      player.statusPower += 0.25;
+      state.flags.add("spore-cloud");
+    }
+  },
+  {
+    id: "shield-siphon",
+    name: "Shield Siphon",
+    rarity: "rare",
+    type: "Survivability",
+    description: "Kills slowly refill shields. Reactive and Void armor scale especially well.",
+    apply() {
+      state.flags.add("shield-siphon");
+    }
+  },
+  {
+    id: "relic-capacitor",
+    name: "Relic Capacitor",
+    rarity: "epic",
+    type: "Utility",
+    description: "Relic burst charges faster, and using it briefly overcharges your weapon.",
+    apply() {
+      player.relicMax = Math.max(48, player.relicMax - 18);
+      state.flags.add("relic-capacitor");
+    }
+  },
+  {
+    id: "magnet-sprint",
+    name: "Magnet Sprint",
+    rarity: "common",
+    type: "Utility",
+    description: "Pickup range and movement speed rise together. Simple, useful, greedy.",
+    apply() {
+      player.magnet += 95;
+      player.speed += 28;
     }
   },
   {
@@ -623,6 +809,8 @@ function loadMetaProgress() {
     const parsed = JSON.parse(localStorage.getItem(META_KEY) || "{}");
     return {
       essence: Math.max(0, Math.floor(Number(parsed.essence) || 0)),
+      powerUps: Object.fromEntries(permanentPowerCatalog.map((power) => [power.id, Boolean(parsed.powerUps?.[power.id])])),
+      bestRound: Math.max(0, Math.floor(Number(parsed.bestRound) || 0)),
       upgrades: Object.fromEntries(metaUpgradeCatalog.map((item) => [
         item.id,
         clamp(Math.floor(Number(parsed.upgrades?.[item.id]) || 0), 0, item.max)
@@ -631,6 +819,8 @@ function loadMetaProgress() {
   } catch {
     return {
       essence: 0,
+      powerUps: Object.fromEntries(permanentPowerCatalog.map((power) => [power.id, false])),
+      bestRound: 0,
       upgrades: Object.fromEntries(metaUpgradeCatalog.map((item) => [item.id, 0]))
     };
   }
@@ -677,6 +867,77 @@ function buyMetaUpgrade(upgradeId) {
   announce(`${item.name} upgraded. Permanent weirdness increased.`, "#fff29b");
   showToast("Permanent upgrade", `${item.name} is now level ${meta.upgrades[item.id]}.`, "legendary");
   audio.upgrade();
+}
+
+function renderLoadoutPicker() {
+  if (!loadoutOptions) return;
+  if (!isPerkUnlocked(startingPerkCatalog[selectedLoadout.perk])) {
+    selectedLoadout.perk = "none";
+    saveLoadout();
+  }
+  const collections = {
+    weapon: Object.values(weaponCatalog),
+    armor: Object.values(armorCatalog),
+    perk: Object.values(startingPerkCatalog)
+  };
+  const selected = activeLoadoutTab === "weapon" ? selectedLoadout.weapon : activeLoadoutTab === "armor" ? selectedLoadout.armor : selectedLoadout.perk;
+  loadoutOptions.innerHTML = collections[activeLoadoutTab].map((item) => {
+    const id = item.id;
+    const locked = activeLoadoutTab === "perk" && !isPerkUnlocked(item);
+    const selectedClass = selected === id ? " is-selected" : "";
+    const lockedText = locked ? `Requires ${permanentPowerCatalog.find((power) => power.id === item.requiresPower)?.name || "a permanent power"}` : item.description;
+    return `
+      <button type="button" class="relic-loadout-card rarity-${item.rarity || "common"}${selectedClass}" data-loadout-kind="${activeLoadoutTab}" data-loadout-id="${id}" ${locked ? "disabled" : ""}>
+        <span>${safeName(item.role || item.type || "Loadout")}</span>
+        <strong>${safeName(item.name)}</strong>
+        <small>${safeName(lockedText)}</small>
+      </button>
+    `;
+  }).join("");
+
+  document.querySelectorAll("[data-loadout-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.loadoutTab === activeLoadoutTab);
+  });
+
+  const unlocked = permanentPowerCatalog.filter((power) => hasPermanentPower(power.id));
+  if (permanentPowers) {
+    permanentPowers.innerHTML = unlocked.length
+      ? unlocked.map((power) => `<span class="rarity-${power.rarity}"><b>${safeName(power.name)}</b> ${safeName(power.description)}</span>`).join("")
+      : "Reach round 10 to awaken the first permanent power.";
+  }
+}
+
+function applyStartingPerk(perkId) {
+  const perk = startingPerkCatalog[perkId] || startingPerkCatalog.none;
+  if (!isPerkUnlocked(perk)) return startingPerkCatalog.none.apply();
+  perk.apply();
+  if (perk.id !== "none") state.upgrades.push(`Start: ${perk.name}`);
+}
+
+function applyPermanentPowers() {
+  for (const power of permanentPowerCatalog) {
+    if (hasPermanentPower(power.id)) {
+      power.apply();
+      state.upgrades.push(`Permanent: ${power.name}`);
+    }
+  }
+}
+
+function awardPermanentPowers(roundReached) {
+  const previousBest = Math.max(Number(meta.bestRound) || 0, 0);
+  meta.bestRound = Math.max(previousBest, roundReached);
+  const newlyUnlocked = [];
+  for (const power of permanentPowerCatalog) {
+    if (roundReached >= power.threshold && !hasPermanentPower(power.id)) {
+      meta.powerUps[power.id] = true;
+      newlyUnlocked.push(power);
+    }
+  }
+  if (newlyUnlocked.length || meta.bestRound !== previousBest) {
+    saveMetaProgress();
+    renderLoadoutPicker();
+  }
+  return newlyUnlocked;
 }
 
 function applyMetaUpgrades() {
@@ -758,9 +1019,11 @@ function resetRun(practice = false) {
     weapon: "thorn-smg",
     armorSuit: "ritual-fleece"
   });
-  equipWeapon("thorn-smg");
-  equipArmor("ritual-fleece");
   applyMetaUpgrades();
+  applyPermanentPowers();
+  equipWeapon(selectedLoadout.weapon);
+  equipArmor(selectedLoadout.armor);
+  applyStartingPerk(selectedLoadout.perk);
   for (const list of Object.values(pools)) list.length = 0;
   for (let i = 0; i < 30; i += 1) spawnPickup(rand(240, WORLD.width - 240), rand(220, WORLD.height - 220), "bread", 1);
   overlay.classList.add("is-hidden");
@@ -893,7 +1156,8 @@ function fireProjectile() {
   const dy = pointer.worldY - player.y;
   const angle = Math.atan2(dy, dx);
   const count = player.multiShot;
-  const spread = count === 1 ? weapon.spread : weapon.spread + count * 0.012;
+  const spreadPenalty = state.flags.has("wild-spread") ? 2.35 : 1;
+  const spread = (count === 1 ? weapon.spread : weapon.spread + count * 0.012) * spreadPenalty;
   const damageMultiplier = player.overcharge > 0 ? 1.45 : 1;
   for (let i = 0; i < count; i += 1) {
     const offset = (i - (count - 1) / 2) * spread;
@@ -912,7 +1176,7 @@ function fireProjectile() {
       tags: weapon.tags,
       color: weapon.color,
       explosionRadius: weapon.explosionRadius || player.explosionRadius,
-      knockback: weapon.tags.includes("knockback") ? 1.9 : 1
+      knockback: (weapon.tags.includes("knockback") ? 1.9 : 1) + (state.flags.has("heavy-barrel") ? 0.45 : 0)
     });
   }
   state.fireCooldown = Math.max(0.06, player.fireRate);
@@ -924,6 +1188,7 @@ function relicBurst() {
   if (player.relic < player.relicMax || state.relicCooldown > 0 || state.mode !== "playing") return;
   player.relic = 0;
   state.relicCooldown = 1.2;
+  if (state.flags.has("relic-capacitor")) player.overcharge = Math.max(player.overcharge, 4.5);
   state.flash = 0.38;
   camera.trauma = Math.max(camera.trauma, 0.42);
   showEvent("Relic burst", "The creature objected loudly", "legendary");
@@ -1145,8 +1410,8 @@ function updatePlayer(dt) {
   if ((keys.has(" ") || keys.has("shift") || padDash) && player.dashCooldown <= 0 && (ax || ay)) {
     player.vx += ax * 880;
     player.vy += ay * 880;
-    player.invulnerable = 0.24;
-    player.dashCooldown = Math.max(0.35, 0.9 - player.dash * 0.08);
+    player.invulnerable = state.flags.has("dash-core") ? 0.34 : 0.24;
+    player.dashCooldown = Math.max(0.28, (state.flags.has("dash-core") ? 0.76 : 0.9) - player.dash * 0.08);
     camera.trauma = Math.max(camera.trauma, 0.18);
     for (let i = 0; i < 18; i += 1) particle(player.x, player.y, rand(-180, 180), rand(-180, 180), rand(0.25, 0.52), "#f4fff1", rand(2, 5));
   }
@@ -1471,17 +1736,17 @@ function killEnemy(enemy, index) {
   state.kills += 1;
   state.combo = clamp(state.combo + 0.08, 1, 4);
   state.comboTimer = 2.5;
-  const scoreGain = Math.floor(enemy.value * state.combo * difficultyProfile().scoreMultiplier * (state.flags.has("glass-contract") ? 1.18 : 1));
+  const scoreGain = Math.floor(enemy.value * state.combo * difficultyProfile().scoreMultiplier * (state.flags.has("glass-contract") ? 1.18 : 1) * (state.flags.has("black-horn-doctrine") ? 1.08 : 1));
   state.score += scoreGain;
   const relicGain = enemy.type === "boss" ? 32 : enemy.type === "miniboss" ? 22 : 8;
-  player.relic = clamp(player.relic + relicGain, 0, player.relicMax);
+  player.relic = clamp(player.relic + relicGain * (state.flags.has("relic-capacitor") ? 1.22 : 1), 0, player.relicMax);
   if (state.kills === 25) unlockAchievement("First Furstorm", "25 curse-things removed.");
   if (state.combo >= 3) unlockAchievement("Combo Creature", "Reached a 3x score chain.");
   if (enemy.type === "boss") unlockAchievement("Boss Handler", "Defeated a boss wave.");
   if (enemy.type === "miniboss") unlockAchievement("Mini Problem", "Defeated a mini-boss.");
   audio.pickup();
   floatingText(enemy.x, enemy.y - enemy.radius, `+${scoreGain}`, enemy.color);
-  const breadDrops = Math.ceil((enemy.type === "boss" ? 10 : enemy.type === "miniboss" ? 7 : enemy.type === "brute" || enemy.type === "guardian" ? 3 : 1) * (state.flags.has("greed-spiral") ? 1.28 : 1));
+  const breadDrops = Math.ceil((enemy.type === "boss" ? 10 : enemy.type === "miniboss" ? 7 : enemy.type === "brute" || enemy.type === "guardian" ? 3 : 1) * (state.flags.has("greed-spiral") ? 1.28 : 1) * (state.flags.has("starter-bread-magnet") ? 1.08 : 1));
   for (let i = 0; i < breadDrops; i += 1) spawnPickup(enemy.x + rand(-24, 24), enemy.y + rand(-24, 24), "bread", enemy.type === "boss" ? 5 : 1);
   if (enemy.type === "splitter") {
     for (let i = 0; i < 3; i += 1) {
@@ -1499,6 +1764,17 @@ function killEnemy(enemy, index) {
     }
   }
   if (Math.random() < 0.16 || enemy.type === "boss" || enemy.type === "miniboss") spawnPickup(enemy.x, enemy.y, "relic", enemy.type === "boss" ? 18 : enemy.type === "miniboss" ? 14 : 8);
+  if (state.flags.has("shield-siphon")) {
+    player.shield = Math.min(140, player.shield + (enemy.type === "boss" ? 16 : enemy.type === "miniboss" ? 10 : 3));
+  }
+  if (state.flags.has("spore-cloud") && (enemy.status?.poison > 0 || enemy.status?.slow > 0)) {
+    for (const nearby of pools.enemies) {
+      if (nearby !== enemy && distanceSq(enemy, nearby) < 180 ** 2) {
+        applyStatus(nearby, "poison", 1.4);
+        applyStatus(nearby, "slow", 1.2);
+      }
+    }
+  }
   if (enemy.type === "boss" || enemy.type === "miniboss") {
     spawnPickup(enemy.x + rand(-28, 28), enemy.y + rand(-28, 28), "heart", enemy.type === "boss" ? 36 : 24);
     spawnPickup(enemy.x + rand(-28, 28), enemy.y + rand(-28, 28), "shield", enemy.type === "boss" ? 34 : 24);
@@ -1553,6 +1829,12 @@ function explodeAt(x, y, radius, damage, color = "#ff9b5c") {
       if (state.flags.has("ember-armor")) applyStatus(enemy, "burn", 1.8);
     }
   }
+  if (state.flags.has("volatile-loaves") && distanceSq({ x, y }, player) < (radius * 0.78) ** 2 && player.invulnerable <= 0) {
+    const selfDamage = Math.max(3, damage * 0.13 - player.armor * 0.4);
+    player.health -= selfDamage;
+    state.waveDamageTaken += selfDamage;
+    floatingText(player.x, player.y - 34, `VOLATILE -${Math.round(selfDamage)}`, "#ff9b9b");
+  }
   for (let i = 0; i < 26; i += 1) {
     const angle = rand(0, Math.PI * 2);
     particle(x, y, Math.cos(angle) * rand(80, 360), Math.sin(angle) * rand(80, 360), rand(0.22, 0.62), color, rand(3, 7));
@@ -1588,6 +1870,12 @@ function applyShotEffects(shot, enemy) {
   if (tags.includes("explosive")) {
     explodeAt(enemy.x, enemy.y, shot.explosionRadius || player.explosionRadius, shot.damage * 0.82, shot.color);
   }
+  if (state.flags.has("volatile-loaves") && !tags.includes("explosive") && Math.random() < 0.34) {
+    explodeAt(enemy.x, enemy.y, Math.max(54, player.explosionRadius * 0.58), shot.damage * 0.46, "#ffcf8a");
+  }
+  if (state.flags.has("chain-gland") && !tags.includes("chain") && Math.random() < 0.36) {
+    chainFrom(enemy, shot.damage * 0.34, Math.max(1, Math.floor(player.chainTargets / 2)), "#85ffd2");
+  }
   if (state.flags.has("burn-explodes") && enemy.status?.burn > 0 && Math.random() < 0.22) {
     explodeAt(enemy.x, enemy.y, player.explosionRadius * 0.72, shot.damage * 0.48, "#ffcf8a");
   }
@@ -1607,6 +1895,10 @@ function updateProjectiles(dt) {
         enemy.vx += shot.vx * 0.055 * (shot.knockback || 1);
         enemy.vy += shot.vy * 0.055 * (shot.knockback || 1);
         applyShotEffects(shot, enemy);
+        if (state.flags.has("weapon-lifesteal") || state.flags.has("meta-lifesteal")) {
+          const healRate = state.flags.has("weapon-lifesteal") ? 0.018 : 0.008;
+          player.health = Math.min(player.maxHealth, player.health + Math.max(0.25, shot.damage * healRate));
+        }
         floatingText(enemy.x, enemy.y - enemy.radius, shot.crit ? "CRIT" : Math.round(shot.damage), shot.crit ? "#fff29b" : "#f3fff1");
         for (let p = 0; p < 8; p += 1) particle(shot.x, shot.y, rand(-160, 160), rand(-160, 160), rand(0.18, 0.38), shot.crit ? "#fff29b" : shot.color || "#caffb8", rand(2, 4));
         if (shot.pierce > 0) shot.pierce -= 1;
@@ -1750,11 +2042,13 @@ function updateHud() {
 }
 
 function updateSidebar() {
-  const weapon = currentWeapon();
-  const armor = currentArmor();
+  const weapon = state.mode === "menu" || state.mode === "gameover" ? weaponCatalog[selectedLoadout.weapon] || currentWeapon() : currentWeapon();
+  const armor = state.mode === "menu" || state.mode === "gameover" ? armorCatalog[selectedLoadout.armor] || currentArmor() : currentArmor();
+  const perk = startingPerkCatalog[selectedLoadout.perk] || startingPerkCatalog.none;
   const loadoutItems = [
     `${weapon.name} · ${weapon.role}`,
     `${armor.name} · ${armor.role}`,
+    `Perk · ${perk.name}`,
     ...state.upgrades.slice(-8)
   ];
   loadout.innerHTML = loadoutItems.map((item) => `<span>${safeName(item)}</span>`).join("");
@@ -1787,17 +2081,20 @@ function endRun() {
   state.mode = "gameover";
   const bread = Math.floor(state.bread * (state.practice ? 0.4 : 1));
   const essenceEarned = Math.max(4, Math.floor(state.score / (state.flags.has("danger-dividend") ? 560 : 650)) + state.wave * 3 + Math.floor(state.kills / 12));
+  const roundReached = Math.max(1, state.wave);
+  const unlockedPowers = state.practice ? [] : awardPermanentPowers(roundReached);
   if (!state.practice) {
     meta.essence += essenceEarned;
     saveMetaProgress();
     renderMetaUpgrades();
+    renderLoadoutPicker();
   }
   const minutes = Math.floor(state.time / 60);
   const seconds = Math.floor(state.time % 60).toString().padStart(2, "0");
   overlay.classList.remove("is-hidden");
   overlay.querySelector("p").textContent = "Run complete";
   overlay.querySelector("h2").textContent = `${state.score.toLocaleString()} score`;
-  overlay.querySelector("span").textContent = `${bread.toLocaleString()} claimable bread. Survived ${minutes}:${seconds}, reached wave ${state.wave}, removed ${state.kills} curse-things, unlocked ${state.achievements.size} achievements, and earned ${state.practice ? 0 : essenceEarned} essence.`;
+  overlay.querySelector("span").textContent = `${bread.toLocaleString()} claimable bread. Survived ${minutes}:${seconds}, reached wave ${state.wave}, removed ${state.kills} curse-things, unlocked ${state.achievements.size} achievements, and earned ${state.practice ? 0 : essenceEarned} essence.${unlockedPowers.length ? ` Permanent power awakened: ${unlockedPowers.map((power) => power.name).join(", ")}.` : ""}`;
   services.submitScore({ score: state.score, bread });
   services.createClaimCode({ score: state.score, bread });
   statusText.textContent = "Run complete";
@@ -2258,6 +2555,24 @@ upgradeGrid.addEventListener("click", (event) => {
 upgradeModal.addEventListener("cancel", (event) => {
   event.preventDefault();
 });
+document.querySelectorAll("[data-loadout-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    activeLoadoutTab = button.dataset.loadoutTab || "weapon";
+    renderLoadoutPicker();
+  });
+});
+loadoutOptions?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-loadout-kind][data-loadout-id]");
+  if (!button || button.disabled) return;
+  const kind = button.dataset.loadoutKind;
+  const id = button.dataset.loadoutId;
+  if (kind === "weapon" && weaponCatalog[id]) selectedLoadout.weapon = id;
+  if (kind === "armor" && armorCatalog[id]) selectedLoadout.armor = id;
+  if (kind === "perk" && startingPerkCatalog[id] && isPerkUnlocked(startingPerkCatalog[id])) selectedLoadout.perk = id;
+  saveLoadout();
+  renderLoadoutPicker();
+  updateSidebar();
+});
 metaUpgradeList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-meta-upgrade]");
   if (!button) return;
@@ -2283,6 +2598,7 @@ document.addEventListener("fullscreenchange", () => {
 
 resizeCanvas();
 renderMetaUpgrades();
+renderLoadoutPicker();
 services.loadLeaderboard();
 updateHud();
 updateSidebar();
