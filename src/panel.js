@@ -1807,7 +1807,7 @@ function sanitizeConfigForRestore(config = {}) {
 
 function cleanGameId(value = "") {
   const gameId = String(value || "dash").toLowerCase().replace(/[^a-z0-9-]/g, "");
-  return ["dash", "runner", "mines", "catch", "loaf", "blitz", "relic"].includes(gameId) ? gameId : "dash";
+  return ["dash", "runner", "mines", "catch", "loaf", "blitz", "relic", "tower"].includes(gameId) ? gameId : "dash";
 }
 
 function cleanLeaderboardName(value = "") {
@@ -2432,7 +2432,8 @@ function gameLabel(gameId = "") {
     catch: "Bread Catch",
     loaf: "Loaf Hopper",
     blitz: "Bread Blitz",
-    relic: "Relic Siege"
+    relic: "Relic Siege",
+    tower: "Chipkittle Tower Defense"
   };
   return labels[cleanGameId(gameId)] || "Chipkittle Dash";
 }
@@ -2455,7 +2456,7 @@ function deleteGameLeaderboardEntry(index, gameId = "dash", settings = DEFAULT_P
 
 function gameLeaderboardControls(guildId = "", settings = DEFAULT_PUBLIC_GAME_SETTINGS) {
   const fileEntries = publicLeaderboardFileEntries(readGameLeaderboard(), settings);
-  const gameIds = ["relic", "dash", "runner", "mines", "catch", "loaf", "blitz"];
+  const gameIds = ["tower", "relic", "dash", "runner", "mines", "catch", "loaf", "blitz"];
   return `
     <section class="panel-section leaderboard-admin">
       <div class="section-heading">

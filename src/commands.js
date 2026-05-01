@@ -110,7 +110,7 @@ const BUILT_IN_BLOCKED_SUGGESTION_TERMS = [
   "retard"
 ];
 const currentDates = new Map();
-const PUBLIC_GAME_IDS = ["dash", "runner", "mines", "catch"];
+const PUBLIC_GAME_IDS = ["dash", "runner", "mines", "catch", "loaf", "blitz", "relic", "tower"];
 
 function pendingDateKey(guildId, targetId) {
   return `${guildId}:${targetId}`;
@@ -2025,7 +2025,11 @@ function publicGameLabel(gameId = "") {
     dash: "Chipkittle Dash",
     runner: "Ritual Runner",
     mines: "Bread Mines",
-    catch: "Bread Catch"
+    catch: "Bread Catch",
+    loaf: "Loaf Hopper",
+    blitz: "Bread Blitz",
+    relic: "Relic Siege",
+    tower: "Chipkittle Tower Defense"
   };
   return labels[cleanPublicGameId(gameId)] || "Chipkittle Dash";
 }
@@ -6924,7 +6928,7 @@ define({
   aliases: ["gameleaderboard", "gamelb"],
   category: "Games",
   description: "Show the top scores for a public Chipkittle browser game.",
-  usage: "leaderboard [dash|runner|mines|catch]",
+  usage: "leaderboard [dash|runner|mines|catch|loaf|blitz|relic|tower]",
   async run(ctx) {
     const gameId = cleanPublicGameId(ctx.args[0] || "dash");
     const limit = Math.max(Math.min(Number(ctx.config.publicSite?.games?.maxLeaderboardEntriesPerGame) || 10, 10), 1);

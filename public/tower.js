@@ -38,13 +38,13 @@ const STARTING_TOWERS = new Set(["thorn", "needle", "relic", "spore"]);
 
 const maps = {
   den: {
-    name: "Green Den",
+    name: "Greenleaf Grove",
     difficulty: "Starter",
     reward: 1,
     bread: 105,
     lives: 24,
     color: "#8dff71",
-    description: "One readable path with generous build space. Good for learning tower roles.",
+    description: "Classic bright grass, fat corners, and enough room to teach a Nut Shooter manners.",
     blocked: [[6, 5], [7, 5], [8, 5], [2, 2], [12, 2]],
     zones: [
       { id: "focus", name: "Focus Moss", col: 5, row: 3, radius: 1.25, type: "buff", stat: "range", amount: 1.12, color: "#8dff71" }
@@ -58,13 +58,13 @@ const maps = {
     ]]
   },
   pantry: {
-    name: "Split Pantry",
+    name: "Acorn Acres",
     difficulty: "Medium",
     reward: 1.18,
     bread: 120,
     lives: 22,
     color: "#fff29b",
-    description: "Two entrances merge near the vault. Split defenses or get folded.",
+    description: "Two dusty farm roads merge near the vault. Split defenses or get folded.",
     blocked: [[7, 1], [8, 1], [7, 7], [8, 7], [5, 4], [11, 4]],
     zones: [
       { id: "crumb-tax", name: "Crumb Tax", col: 8, row: 4, radius: 1.35, type: "debuff", stat: "enemySpeed", amount: 0.9, color: "#fff29b" }
@@ -75,13 +75,13 @@ const maps = {
     ]
   },
   archive: {
-    name: "Archive Spiral",
+    name: "Spooky Hollow",
     difficulty: "Hard",
     reward: 1.34,
     bread: 135,
     lives: 20,
     color: "#ba7cff",
-    description: "A long spiral path creates strong choke points, but archive tiles block greedy builds.",
+    description: "A moonlit mushroom spiral with greedy choke points and rude purple fog.",
     blocked: [[3, 1], [4, 1], [11, 1], [12, 1], [3, 7], [4, 7], [11, 7], [12, 7], [7, 4], [8, 4]],
     zones: [
       { id: "archive", name: "Archive Static", col: 7, row: 4, radius: 1.5, type: "buff", stat: "damage", amount: 1.13, color: "#ba7cff" }
@@ -93,13 +93,13 @@ const maps = {
     ]]
   },
   furnace: {
-    name: "Furnace Fork",
+    name: "River Rush",
     difficulty: "Brutal",
     reward: 1.52,
     bread: 145,
     lives: 18,
     color: "#ff8f5c",
-    description: "Short split lanes, heat vents, and less reaction time. Splash and slow matter.",
+    description: "Short split bridges, wet corners, and less reaction time. Splash and slow matter.",
     blocked: [[4, 4], [5, 4], [10, 4], [11, 4], [7, 2], [8, 6]],
     zones: [
       { id: "heat-a", name: "Heat Vent", col: 6, row: 3, radius: 1.1, type: "hazard", damage: 5, color: "#ff8f5c" },
@@ -113,15 +113,15 @@ const maps = {
 };
 
 const towerTypes = {
-  thorn: { name: "Thorn Sprayer", role: "Balanced DPS", unlockWave: 1, cost: 35, color: "#8dff71", range: 138, fireRate: 0.36, damage: 15, projectileSpeed: 620, tags: ["basic"], strong: ["normal"], weak: ["shield"], description: "Reliable pressure with no weird requirements." },
-  needle: { name: "Needle Nest", role: "Rapid anti-swarm", unlockWave: 1, cost: 42, color: "#79eaff", range: 118, fireRate: 0.15, damage: 6, projectileSpeed: 720, tags: ["rapid", "swarm"], strong: ["swarm", "split"], weak: ["armor"], description: "Shreds small enemies but struggles against armor." },
-  relic: { name: "Relic Mortar", role: "Splash control", unlockWave: 1, cost: 62, color: "#fff29b", range: 178, fireRate: 1.12, damage: 36, projectileSpeed: 430, splash: 76, tags: ["splash"], strong: ["swarm", "split"], weak: ["fast"], description: "Explodes clusters. Misses fast nonsense if unsupported." },
-  spore: { name: "Spore Lantern", role: "Slow/debuff", unlockWave: 1, cost: 48, color: "#ba7cff", range: 128, fireRate: 0.62, damage: 8, projectileSpeed: 540, splash: 46, slow: 0.42, weaken: 0.08, tags: ["slow", "debuff"], strong: ["fast"], weak: ["boss"], description: "Slows groups and makes them easier to damage." },
-  horn: { name: "Horn Sniper", role: "Long-range burst", unlockWave: 4, cost: 78, color: "#f7fff4", range: 265, fireRate: 1.35, damage: 88, projectileSpeed: 980, pierce: 1, tags: ["sniper", "armor"], strong: ["armor", "boss"], weak: ["swarm"], description: "Huge range and armor cracking. Terrible into crowds." },
-  kiln: { name: "Bread Kiln", role: "Burn/status", unlockWave: 6, cost: 70, color: "#ff8f5c", range: 142, fireRate: 0.82, damage: 18, projectileSpeed: 520, splash: 54, burn: 4.8, tags: ["burn", "status"], strong: ["regen", "swarm"], weak: ["shield"], description: "Burns enemies after impact and keeps pressure rolling." },
-  prism: { name: "Prism Conduit", role: "Chain lightning", unlockWave: 8, cost: 88, color: "#7cf7ff", range: 154, fireRate: 0.72, damage: 21, projectileSpeed: 860, chain: 3, tags: ["chain"], strong: ["packed", "fast"], weak: ["boss"], description: "Chains between nearby enemies. Loves messy split paths." },
-  antler: { name: "Antler Breaker", role: "Anti-armor", unlockWave: 10, cost: 92, color: "#ff8fd8", range: 156, fireRate: 0.58, damage: 26, projectileSpeed: 660, armorBreak: 34, tags: ["armor", "shield"], strong: ["shield", "armor"], weak: ["swarm"], description: "Deletes shields and chunks armored enemies." },
-  keeper: { name: "Keeper Totem", role: "Support buff", unlockWave: 12, cost: 82, color: "#c9ff8f", range: 128, fireRate: 999, damage: 0, projectileSpeed: 0, auraDamage: 1.18, auraRate: 0.88, tags: ["support"], strong: ["towers"], weak: ["solo"], description: "Does not attack. Buffs nearby tower damage and fire rate." }
+  thorn: { name: "Nut Shooter", role: "Balanced DPS", unlockWave: 1, cost: 35, color: "#8dff71", range: 138, fireRate: 0.36, damage: 15, projectileSpeed: 620, tags: ["basic"], strong: ["normal"], weak: ["shield"], description: "A tiny squirrel cannon with honest acorn pressure." },
+  needle: { name: "Leaf Blaster", role: "Rapid anti-swarm", unlockWave: 1, cost: 42, color: "#79eaff", range: 118, fireRate: 0.15, damage: 6, projectileSpeed: 720, tags: ["rapid", "swarm"], strong: ["swarm", "split"], weak: ["armor"], description: "Throws leaf darts at silly speed. Hates armor." },
+  relic: { name: "Acorn Cannon", role: "Splash control", unlockWave: 1, cost: 62, color: "#fff29b", range: 178, fireRate: 1.12, damage: 36, projectileSpeed: 430, splash: 76, tags: ["splash"], strong: ["swarm", "split"], weak: ["fast"], description: "Lobs heavy acorns into clusters. Misses fast nonsense if unsupported." },
+  spore: { name: "Sticky Sap", role: "Slow/debuff", unlockWave: 1, cost: 48, color: "#ba7cff", range: 128, fireRate: 0.62, damage: 8, projectileSpeed: 540, splash: 46, slow: 0.42, weaken: 0.08, tags: ["slow", "debuff"], strong: ["fast"], weak: ["boss"], description: "Slows groups with syrupy sap and makes them easier to damage." },
+  horn: { name: "Nutty Sniper", role: "Long-range burst", unlockWave: 4, cost: 78, color: "#f7fff4", range: 265, fireRate: 1.35, damage: 88, projectileSpeed: 980, pierce: 1, tags: ["sniper", "armor"], strong: ["armor", "boss"], weak: ["swarm"], description: "Huge range and armor cracking. Terrible into crowds." },
+  kiln: { name: "Berry Bomb", role: "Burn/status", unlockWave: 6, cost: 70, color: "#ff8f5c", range: 142, fireRate: 0.82, damage: 18, projectileSpeed: 520, splash: 54, burn: 4.8, tags: ["burn", "status"], strong: ["regen", "swarm"], weak: ["shield"], description: "Explodes hot berry juice after impact and keeps pressure rolling." },
+  prism: { name: "Sparky Nut", role: "Chain lightning", unlockWave: 8, cost: 88, color: "#7cf7ff", range: 154, fireRate: 0.72, damage: 21, projectileSpeed: 860, chain: 3, tags: ["chain"], strong: ["packed", "fast"], weak: ["boss"], description: "Chains charged nut bolts between packed enemies." },
+  antler: { name: "Spike Nest", role: "Anti-armor", unlockWave: 10, cost: 92, color: "#ff8fd8", range: 156, fireRate: 0.58, damage: 26, projectileSpeed: 660, armorBreak: 34, tags: ["armor", "shield"], strong: ["shield", "armor"], weak: ["swarm"], description: "Throws brutal thorn spikes that delete shields and armor." },
+  keeper: { name: "Sunseed Druid", role: "Support buff", unlockWave: 12, cost: 82, color: "#c9ff8f", range: 128, fireRate: 999, damage: 0, projectileSpeed: 0, auraDamage: 1.18, auraRate: 0.88, tags: ["support"], strong: ["towers"], weak: ["solo"], description: "Does not attack. Grows nearby tower damage and fire rate." }
 };
 
 const upgradePaths = {
@@ -167,13 +167,13 @@ const upgradePaths = {
 };
 
 const enemyTypes = {
-  mite: { name: "Curse Mite", class: "swarm", hp: 42, speed: 56, reward: 7, damage: 1, color: "#ff7676", radius: 14, resist: { armor: 0, burn: 1, slow: 1, shield: 1 } },
-  runner: { name: "Vault Runner", class: "fast", hp: 34, speed: 96, reward: 8, damage: 1, color: "#ffb86c", radius: 12, resist: { armor: 0, burn: 1, slow: 0.82, shield: 1 } },
-  brute: { name: "Bread Brute", class: "armor", hp: 132, armor: 7, speed: 42, reward: 16, damage: 2, color: "#ff6fb1", radius: 18, resist: { armor: 1, burn: 1.1, slow: 0.92, shield: 1 } },
-  shield: { name: "Plate Keeper", class: "shield", hp: 76, shield: 88, armor: 4, speed: 48, reward: 19, damage: 2, color: "#85ffd2", radius: 17, resist: { armor: 1, burn: 0.8, slow: 0.9, shield: 1.45 } },
-  splitter: { name: "Split Crumb", class: "split", hp: 68, speed: 58, reward: 13, damage: 1, color: "#d7ff91", radius: 15, splits: true, resist: { armor: 0, burn: 1, slow: 1, shield: 1 } },
-  regenerator: { name: "Loaf Mender", class: "regen", hp: 96, speed: 46, reward: 18, damage: 1, color: "#9cff74", radius: 16, regen: 4.2, resist: { armor: 0, burn: 1.35, slow: 1, shield: 1 } },
-  boss: { name: "Antler Auditor", class: "boss", hp: 430, shield: 120, armor: 8, speed: 34, reward: 64, damage: 5, color: "#f7fff4", radius: 26, resist: { armor: 1, burn: 0.78, slow: 0.55, shield: 1.25 } }
+  mite: { name: "Scamper", class: "swarm", hp: 42, speed: 56, reward: 7, damage: 1, color: "#f0a23a", radius: 14, resist: { armor: 0, burn: 1, slow: 1, shield: 1 } },
+  runner: { name: "Fast Feather", class: "fast", hp: 34, speed: 96, reward: 8, damage: 1, color: "#fff0be", radius: 12, resist: { armor: 0, burn: 1, slow: 0.82, shield: 1 } },
+  brute: { name: "Armored Nut", class: "armor", hp: 132, armor: 7, speed: 42, reward: 16, damage: 2, color: "#b77a36", radius: 18, resist: { armor: 1, burn: 1.1, slow: 0.92, shield: 1 } },
+  shield: { name: "Shield Nut", class: "shield", hp: 76, shield: 88, armor: 4, speed: 48, reward: 19, damage: 2, color: "#85ffd2", radius: 17, resist: { armor: 1, burn: 0.8, slow: 0.9, shield: 1.45 } },
+  splitter: { name: "Splitter", class: "split", hp: 68, speed: 58, reward: 13, damage: 1, color: "#d7ff91", radius: 15, splits: true, resist: { armor: 0, burn: 1, slow: 1, shield: 1 } },
+  regenerator: { name: "Regeneratree", class: "regen", hp: 96, speed: 46, reward: 18, damage: 1, color: "#6fcf5f", radius: 16, regen: 4.2, resist: { armor: 0, burn: 1.35, slow: 1, shield: 1 } },
+  boss: { name: "Boss: Chunkster", class: "boss", hp: 430, shield: 120, armor: 8, speed: 34, reward: 64, damage: 5, color: "#f7c15d", radius: 26, resist: { armor: 1, burn: 0.78, slow: 0.55, shield: 1.25 } }
 };
 
 const towers = [];
@@ -244,49 +244,61 @@ const audio = {
 
 const drawBackground = createBackgroundCache(canvas, (cacheCtx, targetCanvas, key) => {
   const map = maps[key] || maps.den;
-  const gradient = cacheCtx.createRadialGradient(710, 250, 80, 480, 270, 640);
+  const gradient = cacheCtx.createRadialGradient(710, 250, 70, 430, 270, 720);
   gradient.addColorStop(0, `${map.color}55`);
-  gradient.addColorStop(0.52, "#8fa696");
-  gradient.addColorStop(1, "#31413a");
+  gradient.addColorStop(0.45, "#376238");
+  gradient.addColorStop(1, "#0d1a17");
   cacheCtx.fillStyle = gradient;
   cacheCtx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
 
-  cacheCtx.strokeStyle = "rgba(12, 28, 18, 0.12)";
-  cacheCtx.lineWidth = 1;
-  for (let x = 0; x <= targetCanvas.width; x += TILE) {
-    cacheCtx.beginPath();
-    cacheCtx.moveTo(x, 0);
-    cacheCtx.lineTo(x, targetCanvas.height);
-    cacheCtx.stroke();
-  }
-  for (let y = 0; y <= targetCanvas.height; y += TILE) {
-    cacheCtx.beginPath();
-    cacheCtx.moveTo(0, y);
-    cacheCtx.lineTo(targetCanvas.width, y);
-    cacheCtx.stroke();
+  for (let row = 0; row < ROWS; row += 1) {
+    for (let col = 0; col < COLS; col += 1) {
+      const x = col * TILE;
+      const y = row * TILE;
+      cacheCtx.fillStyle = (row + col) % 2 ? "rgba(102, 166, 58, 0.2)" : "rgba(139, 204, 70, 0.18)";
+      cacheCtx.fillRect(x, y, TILE, TILE);
+      cacheCtx.strokeStyle = "rgba(11, 30, 18, 0.18)";
+      cacheCtx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+      if ((row * 7 + col * 11) % 9 === 0) {
+        cacheCtx.fillStyle = "rgba(246, 207, 92, 0.16)";
+        cacheCtx.beginPath();
+        cacheCtx.arc(x + 18, y + 18, 4, 0, Math.PI * 2);
+        cacheCtx.arc(x + 26, y + 21, 3, 0, Math.PI * 2);
+        cacheCtx.fill();
+      }
+    }
   }
 
   for (const path of map.paths.map(cellsToPoints)) {
     cacheCtx.lineCap = "round";
     cacheCtx.lineJoin = "round";
-    cacheCtx.strokeStyle = "rgba(62, 48, 39, 0.78)";
-    cacheCtx.lineWidth = 48;
+    cacheCtx.strokeStyle = key === "furnace" ? "rgba(53, 125, 151, 0.82)" : "rgba(71, 47, 27, 0.88)";
+    cacheCtx.lineWidth = 52;
     cacheCtx.beginPath();
     path.forEach((point, index) => index ? cacheCtx.lineTo(point.x, point.y) : cacheCtx.moveTo(point.x, point.y));
     cacheCtx.stroke();
-    cacheCtx.strokeStyle = "rgba(244, 223, 156, 0.58)";
-    cacheCtx.lineWidth = 28;
+    cacheCtx.strokeStyle = key === "furnace" ? "rgba(89, 199, 231, 0.65)" : "rgba(241, 197, 105, 0.75)";
+    cacheCtx.lineWidth = 31;
     cacheCtx.stroke();
+    cacheCtx.strokeStyle = key === "furnace" ? "rgba(211, 252, 255, 0.3)" : "rgba(84, 52, 24, 0.24)";
+    cacheCtx.lineWidth = 5;
+    cacheCtx.setLineDash([18, 22]);
+    cacheCtx.stroke();
+    cacheCtx.setLineDash([]);
   }
 
   for (const [col, row] of map.blocked || []) {
-    cacheCtx.fillStyle = "rgba(9, 20, 14, 0.42)";
-    cacheCtx.strokeStyle = "rgba(255,255,255,0.16)";
+    const x = col * TILE + 8;
+    const y = row * TILE + 8;
+    cacheCtx.fillStyle = "rgba(89, 62, 35, 0.74)";
+    cacheCtx.strokeStyle = "rgba(255, 217, 121, 0.22)";
     cacheCtx.lineWidth = 2;
     cacheCtx.beginPath();
-    cacheCtx.roundRect(col * TILE + 8, row * TILE + 8, TILE - 16, TILE - 16, 12);
+    cacheCtx.roundRect(x, y, TILE - 16, TILE - 16, 12);
     cacheCtx.fill();
     cacheCtx.stroke();
+    cacheCtx.fillStyle = "rgba(255, 232, 147, 0.14)";
+    cacheCtx.fillRect(x + 9, y + 12, TILE - 34, 6);
   }
 
   for (const zone of map.zones || []) {
@@ -298,11 +310,18 @@ const drawBackground = createBackgroundCache(canvas, (cacheCtx, targetCanvas, ke
     cacheCtx.globalAlpha = 1;
   }
 
-  cacheCtx.fillStyle = "rgba(8, 24, 13, 0.5)";
+  cacheCtx.fillStyle = "rgba(8, 24, 13, 0.58)";
   cacheCtx.fillRect(0, 0, 12, targetCanvas.height);
-  cacheCtx.fillStyle = `${map.color}70`;
+  cacheCtx.fillStyle = "rgba(129, 75, 28, 0.62)";
+  cacheCtx.strokeStyle = "rgba(255, 221, 104, 0.48)";
+  cacheCtx.lineWidth = 3;
   cacheCtx.beginPath();
   cacheCtx.roundRect(targetCanvas.width - 88, 200, 78, 140, 22);
+  cacheCtx.fill();
+  cacheCtx.stroke();
+  cacheCtx.fillStyle = `${map.color}99`;
+  cacheCtx.beginPath();
+  cacheCtx.arc(targetCanvas.width - 49, 270, 23, 0, Math.PI * 2);
   cacheCtx.fill();
 });
 
@@ -1050,6 +1069,9 @@ function updateWave(dt) {
 }
 
 function updateParticles(dt) {
+  for (const tower of towers) {
+    tower.pulse = Math.max(0, (tower.pulse || 0) - dt);
+  }
   for (const list of [particles, floaters, pulses]) {
     for (let i = list.length - 1; i >= 0; i -= 1) {
       const item = list[i];
@@ -1095,6 +1117,151 @@ function drawPathBadges() {
   ctx.restore();
 }
 
+function drawAcornShell(x, y, scale = 1, color = "#c47a34") {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = color;
+  ctx.strokeStyle = "#452711";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.ellipse(0, 4, 13, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#8b5424";
+  ctx.beginPath();
+  ctx.roundRect(-14, -12, 28, 13, 7);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#e5ad55";
+  ctx.beginPath();
+  ctx.moveTo(0, -17);
+  ctx.lineTo(5, -10);
+  ctx.lineTo(-2, -9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawChipmunkFace(scale = 1) {
+  ctx.save();
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "#d88935";
+  ctx.strokeStyle = "#4a2913";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, -6, 13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#ffd08a";
+  ctx.beginPath();
+  ctx.arc(-5, -3, 4, 0, Math.PI * 2);
+  ctx.arc(5, -3, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#14100b";
+  ctx.beginPath();
+  ctx.arc(-5, -8, 1.8, 0, Math.PI * 2);
+  ctx.arc(5, -8, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawTowerSprite(tower, stats, selected) {
+  const pulse = 1 + Math.sin((tower.pulse || 0) * 16) * 0.04;
+  ctx.save();
+  ctx.scale(pulse, pulse);
+  ctx.fillStyle = selected ? "rgba(255, 217, 96, 0.24)" : "rgba(0, 0, 0, 0.25)";
+  ctx.beginPath();
+  ctx.ellipse(0, 17, 28, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#5b3418";
+  ctx.strokeStyle = "#2a170c";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(-21, -6, 42, 32, 12);
+  ctx.fill();
+  ctx.stroke();
+  if (["thorn", "needle", "horn"].includes(tower.type)) {
+    drawChipmunkFace(0.82);
+    ctx.fillStyle = tower.type === "horn" ? "#d8e5d7" : "#6a3a19";
+    ctx.strokeStyle = "#24150b";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(-2, -13, 30, 12, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = stats.color;
+    ctx.fillRect(22, -10, 9, 6);
+  } else if (tower.type === "relic") {
+    drawAcornShell(0, -5, 0.9, "#b8742e");
+    ctx.fillStyle = "#3a2414";
+    ctx.fillRect(-23, -10, 46, 10);
+    ctx.fillStyle = "#f5c052";
+    ctx.fillRect(18, -9, 12, 8);
+  } else if (tower.type === "spore") {
+    ctx.fillStyle = "#9e4ecf";
+    ctx.beginPath();
+    ctx.arc(0, -11, 16, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = "#f7d9ff";
+    ctx.fillRect(-7, -10, 14, 26);
+  } else if (tower.type === "kiln") {
+    ctx.fillStyle = "#8f2e22";
+    ctx.beginPath();
+    ctx.arc(0, -9, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffbd47";
+    ctx.beginPath();
+    ctx.moveTo(0, -24);
+    ctx.lineTo(9, -4);
+    ctx.lineTo(-9, -4);
+    ctx.closePath();
+    ctx.fill();
+  } else if (tower.type === "prism") {
+    ctx.fillStyle = "#183a47";
+    ctx.beginPath();
+    ctx.arc(0, -5, 17, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = "#7cf7ff";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, -5, 10, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (tower.type === "antler") {
+    ctx.fillStyle = "#6c3a24";
+    for (let i = -1; i <= 1; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(i * 12, -22);
+      ctx.lineTo(i * 12 + 8, 2);
+      ctx.lineTo(i * 12 - 8, 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (tower.type === "keeper") {
+    ctx.fillStyle = "#f7bf3e";
+    ctx.beginPath();
+    ctx.arc(0, -12, 17, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    for (let i = 0; i < 8; i += 1) {
+      const angle = i * Math.PI / 4;
+      ctx.fillStyle = "#c9ff8f";
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(angle) * 21, -12 + Math.sin(angle) * 21, 5, 11, angle, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.fillStyle = "#fff6c4";
+  ctx.strokeStyle = "#2d170b";
+  ctx.lineWidth = 3;
+  ctx.font = "950 12px Inter, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.strokeText(String(tower.level), 0, 23);
+  ctx.fillText(String(tower.level), 0, 23);
+  ctx.restore();
+}
+
 function drawTowers() {
   for (const tower of towers) {
     const stats = towerStats(tower);
@@ -1103,41 +1270,7 @@ function drawTowers() {
     ctx.translate(tower.x, tower.y);
     if (selected) drawRange(stats.range, stats.color);
     if (tower.type === "keeper") drawRange(stats.range, stats.color, 0.1);
-    ctx.fillStyle = "rgba(3, 12, 7, 0.78)";
-    ctx.strokeStyle = stats.color;
-    ctx.lineWidth = selected ? 4 : 3;
-    ctx.beginPath();
-    ctx.roundRect(-21, -21, 42, 42, 12);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = stats.color;
-    ctx.beginPath();
-    if (["relic", "kiln"].includes(tower.type)) {
-      ctx.arc(0, 0, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.rotate(Math.PI / 4);
-      ctx.fillRect(-7, -7, 14, 14);
-    } else if (["spore", "keeper"].includes(tower.type)) {
-      ctx.ellipse(0, -3, 11, 15, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillRect(-4, 7, 8, 11);
-    } else if (tower.type === "horn") {
-      ctx.moveTo(-16, 8);
-      ctx.lineTo(17, -1);
-      ctx.lineTo(-16, -10);
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      ctx.moveTo(0, -16);
-      ctx.lineTo(14, 10);
-      ctx.lineTo(-14, 10);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.fillStyle = "#f7fff4";
-    ctx.font = "900 12px Inter, system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(String(tower.level), 0, 5);
+    drawTowerSprite(tower, stats, selected);
     ctx.restore();
   }
 }
@@ -1152,6 +1285,52 @@ function drawRange(range, color, alpha = 0.18) {
   ctx.restore();
 }
 
+function drawEnemySprite(enemy) {
+  if (enemy.type === "runner") {
+    ctx.fillStyle = "#f8ead0";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, enemy.radius + 3, enemy.radius - 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.ellipse(-10, -7, 9, 4, -0.4, 0, Math.PI * 2);
+    ctx.ellipse(10, -7, 9, 4, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (enemy.type === "brute" || enemy.type === "shield") {
+    drawAcornShell(0, 0, enemy.radius / 16, enemy.type === "shield" ? "#d49a47" : "#9a5e2a");
+    if (enemy.type === "shield") {
+      ctx.strokeStyle = "#85ffd2";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, enemy.radius + 7, -0.5, Math.PI + 0.5);
+      ctx.stroke();
+    }
+  } else if (enemy.type === "splitter") {
+    ctx.fillStyle = "#d7ff91";
+    ctx.beginPath();
+    ctx.arc(-6, 0, enemy.radius * 0.72, 0, Math.PI * 2);
+    ctx.arc(7, 0, enemy.radius * 0.72, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (enemy.type === "regenerator") {
+    ctx.fillStyle = "#75451f";
+    ctx.fillRect(-5, -2, 10, 21);
+    ctx.fillStyle = "#58b24b";
+    ctx.beginPath();
+    ctx.arc(0, -7, enemy.radius + 5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (enemy.type === "boss") {
+    drawAcornShell(0, 0, enemy.radius / 18, "#c78632");
+    ctx.fillStyle = "#4b7a2b";
+    ctx.beginPath();
+    ctx.roundRect(-19, -9, 38, 18, 7);
+    ctx.fill();
+    ctx.fillStyle = "#f7d45d";
+    ctx.fillRect(-12, -20, 24, 7);
+  } else {
+    drawChipmunkFace(enemy.radius / 14);
+  }
+}
+
 function drawEnemies() {
   for (const enemy of enemies) {
     ctx.save();
@@ -1163,18 +1342,10 @@ function drawEnemies() {
       ctx.arc(0, 0, enemy.radius + 6, 0, Math.PI * 2);
       ctx.stroke();
     }
-    ctx.fillStyle = enemy.color;
     ctx.shadowColor = enemy.color;
     ctx.shadowBlur = enemy.type === "boss" ? 26 : 14;
-    ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
-    ctx.fill();
+    drawEnemySprite(enemy);
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "rgba(2, 7, 5, 0.86)";
-    ctx.beginPath();
-    ctx.arc(enemy.radius * 0.22, -enemy.radius * 0.2, Math.max(2, enemy.radius * 0.16), 0, Math.PI * 2);
-    ctx.arc(enemy.radius * 0.22, enemy.radius * 0.2, Math.max(2, enemy.radius * 0.16), 0, Math.PI * 2);
-    ctx.fill();
     ctx.fillStyle = "rgba(0,0,0,0.46)";
     ctx.fillRect(-enemy.radius, enemy.radius + 7, enemy.radius * 2, 4);
     ctx.fillStyle = "#9cff74";
@@ -1198,12 +1369,31 @@ function drawShots() {
     ctx.lineTo(shot.x, shot.y);
     ctx.stroke();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = shot.color;
     ctx.shadowColor = shot.color;
     ctx.shadowBlur = 12;
-    ctx.beginPath();
-    ctx.arc(shot.x, shot.y, shot.radius, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.translate(shot.x, shot.y);
+    if (shot.sourceType === "relic") {
+      drawAcornShell(0, 0, Math.max(0.34, shot.radius / 10), "#b36d2f");
+    } else if (shot.sourceType === "needle") {
+      ctx.fillStyle = "#7ee06b";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, shot.radius * 1.9, shot.radius * 0.8, 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (shot.sourceType === "kiln") {
+      ctx.fillStyle = "#ff8f5c";
+      ctx.beginPath();
+      ctx.arc(0, 0, shot.radius + 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff29b";
+      ctx.beginPath();
+      ctx.arc(-2, -2, shot.radius * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = shot.color;
+      ctx.beginPath();
+      ctx.arc(0, 0, shot.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 }
