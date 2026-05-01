@@ -41,29 +41,26 @@
         <canvas id="towerCanvas" width="960" height="540" aria-label="Chipkittle Tower Defense playfield"></canvas>
       </div>
       <aside class="game-panel tower-panel">
-        <div class="game-stat"><span>Score</span><strong id="scoreValue">0</strong></div>
-        <div class="game-stat"><span>Bread</span><strong id="breadValue">90</strong></div>
-        <div class="game-stat"><span>Lives</span><strong id="livesValue">20</strong></div>
-        <div class="game-stat"><span>Wave</span><strong id="waveValue">1</strong></div>
+        <div class="tower-stats-grid">
+          <div class="game-stat"><span>Score</span><strong id="scoreValue">0</strong></div>
+          <div class="game-stat"><span>Bread</span><strong id="breadValue">105</strong></div>
+          <div class="game-stat"><span>Lives</span><strong id="livesValue">24</strong></div>
+          <div class="game-stat"><span>Wave</span><strong id="waveValue">1</strong></div>
+        </div>
 
         <label>
           Player name
           <input id="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
         </label>
 
-        <div class="tower-shop" aria-label="Tower shop">
-          <button class="tower-choice is-active" type="button" data-tower="thorn">
-            <span>Thorn Sprayer</span>
-            <small>Fast single-target shots · 35 bread</small>
-          </button>
-          <button class="tower-choice" type="button" data-tower="relic">
-            <span>Relic Mortar</span>
-            <small>Slow splash damage · 60 bread</small>
-          </button>
-          <button class="tower-choice" type="button" data-tower="spore">
-            <span>Spore Lantern</span>
-            <small>Slows groups nearby · 45 bread</small>
-          </button>
+        <div class="tower-section">
+          <span>Map</span>
+          <div class="map-picker" id="mapPicker" aria-label="Map selection"></div>
+        </div>
+
+        <div class="tower-section">
+          <span>Towers</span>
+          <div class="tower-shop" id="towerShop" aria-label="Tower shop"></div>
         </div>
 
         <div class="game-controls">
@@ -74,6 +71,11 @@
         <div class="tower-inspector" id="towerInspector">
           <span>No tower selected</span>
           <small>Pick a tower type, then click an open tile beside the path.</small>
+        </div>
+
+        <div class="tower-inspector enemy-intel" id="enemyIntel">
+          <span>Enemy Intel</span>
+          <small>No enemies active.</small>
         </div>
 
         <div class="game-status" id="statusText">Build before wave 1. The bread vault is watching.</div>

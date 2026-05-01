@@ -1268,11 +1268,53 @@ a {
   gap: 10px;
 }
 
+.tower-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tower-stats-grid .game-stat {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+  min-height: 76px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--card-bg);
+}
+
+.tower-stats-grid .game-stat strong {
+  font-size: 26px;
+}
+
+.tower-section {
+  display: grid;
+  gap: 8px;
+}
+
+.tower-section > span {
+  color: var(--soft-ink);
+  font-size: 13px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.map-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.map-choice,
 .tower-shop {
   display: grid;
   gap: 8px;
 }
 
+.map-choice,
 .tower-choice {
   display: grid;
   gap: 4px;
@@ -1287,12 +1329,14 @@ a {
   cursor: pointer;
 }
 
+.map-choice span,
 .tower-choice span {
   color: var(--green-dark);
   font-size: 14px;
   font-weight: 950;
 }
 
+.map-choice small,
 .tower-choice small {
   color: var(--soft-ink);
   font-size: 12px;
@@ -1300,10 +1344,17 @@ a {
   line-height: 1.35;
 }
 
+.map-choice.is-active,
 .tower-choice.is-active {
   border-color: rgba(45, 171, 76, 0.68);
   background: var(--green-soft);
   box-shadow: inset 0 0 0 1px rgba(45, 171, 76, 0.2);
+}
+
+.map-choice:disabled,
+.tower-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .tower-inspector {
@@ -1333,6 +1384,29 @@ a {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   padding-top: 4px;
+}
+
+.tower-branches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tower-branches button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.tower-branches button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .tower-actions button {
