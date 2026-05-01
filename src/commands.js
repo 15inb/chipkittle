@@ -1523,6 +1523,7 @@ const DEFAULT_ECONOMY_SETTINGS = {
 const ECONOMY_UPGRADES = [
   {
     id: "daily-oven",
+    aliases: ["daily", "dailybonus", "oven"],
     name: "Daily Oven",
     description: "Adds 125 bread to every daily claim.",
     maxLevel: 5,
@@ -1533,6 +1534,7 @@ const ECONOMY_UPGRADES = [
   },
   {
     id: "streak-vault",
+    aliases: ["streak", "streakcap", "streakcapbonus", "vault"],
     name: "Streak Vault",
     description: "Raises the daily streak bonus cap by 150 bread per level.",
     maxLevel: 4,
@@ -1543,6 +1545,7 @@ const ECONOMY_UPGRADES = [
   },
   {
     id: "interest-altar",
+    aliases: ["interest", "interestaltar", "altar", "bankinterest"],
     name: "Interest Altar",
     description: "Adds 0.35% bank interest and 400 max interest per level.",
     maxLevel: 5,
@@ -1552,6 +1555,7 @@ const ECONOMY_UPGRADES = [
   },
   {
     id: "interest-clock",
+    aliases: ["interestcooldown", "cooldown", "clock", "bankclock"],
     name: "Interest Clock",
     description: "Shortens bank interest cooldown by 1 hour per level.",
     maxLevel: 5,
@@ -1561,6 +1565,7 @@ const ECONOMY_UPGRADES = [
   },
   {
     id: "work-tools",
+    aliases: ["work", "workbonus", "tools"],
     name: "Work Tools",
     description: "Adds 60 bread to work payouts per level.",
     maxLevel: 5,
@@ -1571,6 +1576,7 @@ const ECONOMY_UPGRADES = [
   },
   {
     id: "casino-disguise",
+    aliases: ["casino", "disguise", "casinorob"],
     name: "Casino Disguise",
     description: "Improves casino robbery payouts and lowers losses slightly.",
     maxLevel: 4,
@@ -1580,6 +1586,7 @@ const ECONOMY_UPGRADES = [
   },
   {
     id: "bread-shield",
+    aliases: ["robdefense", "shield", "robshield"],
     name: "Bread Shield",
     description: "Keeps more of your wallet safe from member robberies.",
     maxLevel: 4,
@@ -1589,6 +1596,15 @@ const ECONOMY_UPGRADES = [
     valuePerLevel: 0.04
   }
 ];
+const LEGACY_UPGRADE_KEYS = {
+  "daily-oven": ["dailyBonus"],
+  "streak-vault": ["streakCapBonus"],
+  "interest-altar": ["interest"],
+  "interest-clock": ["interestCooldown"],
+  "work-tools": ["workBonus"],
+  "casino-disguise": ["casino"],
+  "bread-shield": ["robDefense"]
+};
 const ECONOMY_LOG_LIMIT = 60;
 const BLACKJACK_SESSION_MS = 120_000;
 const LOAN_GRACE_MS = 60 * 60 * 1000;
@@ -1676,11 +1692,27 @@ function userUpgrades(economy, userId) {
 }
 
 function upgradeDefinition(upgradeId = "") {
-  return ECONOMY_UPGRADES.find((upgrade) => upgrade.id === String(upgradeId || "").toLowerCase()) || null;
+  const normalized = String(upgradeId || "").toLowerCase().replace(/[\s_]+/g, "-");
+  const compact = normalized.replace(/-/g, "");
+  return ECONOMY_UPGRADES.find((upgrade) => {
+    if (upgrade.id === normalized || upgrade.id.replace(/-/g, "") === compact) return true;
+    return (upgrade.aliases || []).some((alias) => String(alias).toLowerCase().replace(/[\s_-]+/g, "") === compact);
+  }) || null;
 }
 
 function upgradeLevel(economy, userId, upgradeId) {
-  return Math.max(Math.floor(Number(economy.upgrades?.[userId]?.[upgradeId]) || 0), 0);
+  const upgrade = upgradeDefinition(upgradeId);
+  const canonicalId = upgrade?.id || String(upgradeId || "").toLowerCase();
+  const owned = economy.upgrades?.[userId] || {};
+  if (Object.prototype.hasOwnProperty.call(owned, canonicalId)) {
+    return Math.max(Math.floor(Number(owned[canonicalId]) || 0), 0);
+  }
+  for (const legacyKey of LEGACY_UPGRADE_KEYS[canonicalId] || []) {
+    if (Object.prototype.hasOwnProperty.call(owned, legacyKey)) {
+      return Math.max(Math.floor(Number(owned[legacyKey]) || 0), 0);
+    }
+  }
+  return 0;
 }
 
 function clampEconomyNumber(value, fallback, min, max) {
@@ -1748,6 +1780,25 @@ function maxInterestFor(economy, userId) {
 
 function interestCooldownFor(economy, userId) {
   return Math.max(8 * 60 * 60 * 1000, economySettings(economy).bankInterestCooldownMs - upgradeTotal(economy, userId, "interestCooldown") * 60 * 60 * 1000);
+}
+
+function interestBreakdownFor(economy, userId) {
+  const settings = economySettings(economy);
+  const altarLevel = upgradeTotal(economy, userId, "interest");
+  const clockLevel = upgradeTotal(economy, userId, "interestCooldown");
+  return {
+    baseRate: settings.bankInterestRate,
+    bonusRate: altarLevel * 0.0035,
+    rate: interestRateFor(economy, userId),
+    baseCap: settings.maxBankInterest,
+    bonusCap: altarLevel * 400,
+    cap: maxInterestFor(economy, userId),
+    baseCooldownMs: settings.bankInterestCooldownMs,
+    cooldownReductionMs: clockLevel * 60 * 60 * 1000,
+    cooldownMs: interestCooldownFor(economy, userId),
+    altarLevel,
+    clockLevel
+  };
 }
 
 function casinoUpgradeLevel(economy, userId) {
@@ -3645,8 +3696,9 @@ define({
     const target = mentionTargetUser(ctx.message);
     const wallet = breadBalance(economy, target.id);
     const bank = bankBalance(economy, target.id);
-    const interest = Math.min(Math.floor(bank * interestRateFor(economy, target.id)), maxInterestFor(economy, target.id));
-    const cooldown = persistentCooldownStatus(economy, "interest", target.id, interestCooldownFor(economy, target.id));
+    const interestInfo = interestBreakdownFor(economy, target.id);
+    const interest = Math.min(Math.floor(bank * interestInfo.rate), interestInfo.cap);
+    const cooldown = persistentCooldownStatus(economy, "interest", target.id, interestInfo.cooldownMs);
     const ownedUpgrades = Object.values(userUpgrades(economy, target.id)).reduce((sum, level) => sum + Math.max(Number(level) || 0, 0), 0);
     const loan = activeLoan(economy, target.id);
     await ctx.message.reply([
@@ -3655,8 +3707,10 @@ define({
       `Bank: **${formatBread(bank)}**`,
       `Net worth: **${formatBread(wallet + bank)}**`,
       loan ? `Loan debt: **${formatBread(loan.owed)}** due ${new Date(loan.dueAt).getTime() < Date.now() ? "**now**" : `<t:${Math.floor(new Date(loan.dueAt).getTime() / 1000)}:R>`}` : "Loan debt: **none**",
-      `Interest rate: **${(interestRateFor(economy, target.id) * 100).toFixed(2)}%**`,
+      `Interest rate: **${(interestInfo.rate * 100).toFixed(2)}%** (${(interestInfo.baseRate * 100).toFixed(2)}% base + ${(interestInfo.bonusRate * 100).toFixed(2)}% upgrade)`,
+      `Interest cap: **${formatBread(interestInfo.cap)}** (${formatBread(interestInfo.baseCap)} base + ${formatBread(interestInfo.bonusCap)} upgrade)`,
       `Next interest: **${formatBread(interest)}**`,
+      `Interest cooldown: **${formatCooldown(interestInfo.cooldownMs)}**${interestInfo.clockLevel ? ` (${formatCooldown(interestInfo.cooldownReductionMs)} faster from upgrades)` : ""}`,
       `Interest status: ${cooldown.limited ? `ready in **${formatCooldown(cooldown.remainingMs)}**` : "**ready now**"}`,
       `Upgrade levels owned: **${ownedUpgrades}**`
     ].join("\n"));
@@ -3739,7 +3793,8 @@ define({
       if (cooldown.limited) return `Bank interest will be ready in ${formatCooldown(cooldown.remainingMs)}.`;
       const bank = bankBalance(economy, userId);
       if (bank < 100) return "You need at least 100 bread in the bank before it earns interest.";
-      const amount = Math.min(Math.floor(bank * interestRateFor(economy, userId)), maxInterestFor(economy, userId));
+      const interestInfo = interestBreakdownFor(economy, userId);
+      const amount = Math.min(Math.floor(bank * interestInfo.rate), interestInfo.cap);
       if (amount < 1) return "Your bank balance is too low to generate interest yet.";
       setPersistentCooldown(economy, "interest", userId);
       setBankBalance(economy, userId, bank + amount);
@@ -3752,6 +3807,10 @@ define({
       });
       return [
         `Collected **${formatBread(amount)}** in bank interest.`,
+        `Rate: **${(interestInfo.rate * 100).toFixed(2)}%** | cap: **${formatBread(interestInfo.cap)}** | cooldown: **${formatCooldown(interestInfo.cooldownMs)}**`,
+        interestInfo.altarLevel || interestInfo.clockLevel
+          ? `Upgrade effects: Interest Altar **${interestInfo.altarLevel}** adds **${(interestInfo.bonusRate * 100).toFixed(2)}%** and **${formatBread(interestInfo.bonusCap)}** cap. Interest Clock **${interestInfo.clockLevel}** cuts **${formatCooldown(interestInfo.cooldownReductionMs)}**.`
+          : "Upgrade effects: none yet.",
         `Bank: **${formatBread(bankBalance(economy, userId))}**`,
         `Net worth: **${formatBread(totalBreadWealth(economy, userId))}**`
       ].join("\n");
