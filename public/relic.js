@@ -91,6 +91,48 @@ const permanentPowerCatalog = [
   { id: "endless-satchel", name: "Endless Satchel", rarity: "legendary", threshold: 60, description: "Bread, relic shards, and hearts pull from much farther away.", apply() { player.magnet += 145; } }
 ];
 
+const RUN_MODIFIERS = [
+  { id: "rush", name: "Panic Migration", detail: "Enemies move faster, but every wave pays more score.", speed: 1.12, score: 1.16 },
+  { id: "glass", name: "Glass Fur Treaty", detail: "You and the den both hit harder. Mistakes matter.", playerDamage: 1.18, enemyDamage: 1.2, score: 1.18 },
+  { id: "lowgrav", name: "Low Gravity Crumbs", detail: "Projectiles fly faster and knockback gets sillier.", projectileSpeed: 1.14, knockback: 1.25 },
+  { id: "scarcity", name: "Thin Bread Weather", detail: "Fewer drops, stronger relic charge.", bread: 0.82, relic: 1.2, score: 1.1 },
+  { id: "overgrowth", name: "Green Overgrowth", detail: "Hazards appear more often, but pickups pull farther.", hazards: 1.35, magnet: 1.22 },
+  { id: "bloodmoon", name: "Blood Moon Audit", detail: "More elite enemies appear. They pay better.", elite: 1.55, score: 1.2 }
+];
+
+const ENEMY_BIASES = [
+  { id: "swarm", name: "Swarm-heavy", detail: "More wisps, skitters, splitters, and fast trash.", boost: ["wisp", "skitter", "splitter", "mite"] },
+  { id: "ranged", name: "Ranged pressure", detail: "More spitters, snipers, and bombardiers.", boost: ["spitter", "sniper", "bombardier"] },
+  { id: "armored", name: "Armored procession", detail: "More brutes, guardians, and bulwarks.", boost: ["brute", "guardian", "bulwark"] },
+  { id: "support", name: "Support cult", detail: "More healers and buffers mixed into normal waves.", boost: ["healer", "buffer", "guardian"] },
+  { id: "volatile", name: "Volatile crumbs", detail: "More mines, chargers, and messy area denial.", boost: ["mine", "charger", "bombardier"] }
+];
+
+const WAVE_EVENTS = [
+  { id: "standard", name: "Standard Siege", detail: "No special event. Suspiciously normal.", tone: "rare", weight: 34 },
+  { id: "bonus", name: "Bread Surge", detail: "Extra bread drops, but the den sends more bodies.", tone: "rare", weight: 9, rewardBoost: 1.25 },
+  { id: "elite", name: "Elite Audit", detail: "More elite and affixed enemies. Better score and relic payouts.", tone: "epic", weight: 11, rewardBoost: 1.28 },
+  { id: "chaos", name: "Chaos Rule", detail: "A temporary mutator changes this wave's rules.", tone: "legendary", weight: 8, rewardBoost: 1.35 },
+  { id: "shop", name: "Keeper Cache", detail: "Shorter wave, better upgrade odds after clearing.", tone: "epic", weight: 6, rewardBoost: 1.1 },
+  { id: "ambush", name: "Ambush Pattern", detail: "Fast enemies arrive in packs from weird angles.", tone: "epic", weight: 8, rewardBoost: 1.22 }
+];
+
+const WAVE_MUTATORS = [
+  { id: "limited-vision", name: "Tunnel Vision", detail: "The arena darkens. Stay close to your own glow." },
+  { id: "double-edge", name: "Double-Edge Rite", detail: "All damage is higher this wave." },
+  { id: "static-field", name: "Static Field", detail: "Projectiles move faster, enemy shots included." },
+  { id: "crumbquake", name: "Crumbquake", detail: "Hazards pulse harder and more often." },
+  { id: "greedy-cache", name: "Greedy Cache", detail: "More bread drops, but enemies are tougher." }
+];
+
+const ENEMY_AFFIXES = [
+  { id: "swift", name: "Swift", color: "#79eaff" },
+  { id: "armored", name: "Armored", color: "#a6ffd9" },
+  { id: "volatile", name: "Volatile", color: "#ffdf6e" },
+  { id: "regenerating", name: "Regen", color: "#b7ff4f" },
+  { id: "vicious", name: "Vicious", color: "#ff8f8f" }
+];
+
 let meta = loadMetaProgress();
 let activeLoadoutTab = "weapon";
 
@@ -101,6 +143,29 @@ function normalizeKey(key = "") {
 function isTextInputTarget(target) {
   const tagName = target?.tagName?.toLowerCase();
   return tagName === "input" || tagName === "textarea" || tagName === "select" || Boolean(target?.isContentEditable);
+}
+
+function weightedChoice(entries = [], weightKey = "weight") {
+  const total = entries.reduce((sum, entry) => sum + Math.max(0, Number(entry[weightKey]) || 0), 0);
+  if (total <= 0) return entries[0] || null;
+  let roll = Math.random() * total;
+  for (const entry of entries) {
+    roll -= Math.max(0, Number(entry[weightKey]) || 0);
+    if (roll <= 0) return entry;
+  }
+  return entries.at(-1) || null;
+}
+
+function runMultiplier(key, fallback = 1) {
+  return (state.runModifiers || []).reduce((value, modifier) => value * (Number(modifier[key]) || 1), fallback);
+}
+
+function currentWaveEvent(wave = state.wave) {
+  return state.waveEvents?.[wave] || null;
+}
+
+function currentMutator(id = "") {
+  return state.activeMutator?.id === id;
 }
 
 function focusGameCanvas() {
@@ -162,6 +227,13 @@ const state = {
   upgrades: [],
   weaponLevels: {},
   armorLevels: {},
+  runModifiers: [],
+  enemyBias: null,
+  waveEvents: {},
+  activeMutator: null,
+  nextRewardBoost: 0,
+  skippedRewards: 0,
+  roundModifierOffset: 0,
   flags: new Set(),
   achievements: new Set(),
   milestones: new Set(),
@@ -767,7 +839,7 @@ function lateWavePressure(wave = state.wave) {
 
 function roundModifierFor(wave = state.wave) {
   if (wave < 4) return ROUND_MODIFIERS[0];
-  return ROUND_MODIFIERS[(wave - 1) % ROUND_MODIFIERS.length];
+  return ROUND_MODIFIERS[(wave - 1 + (state.roundModifierOffset || 0)) % ROUND_MODIFIERS.length];
 }
 
 function difficultyProfile(wave = state.wave) {
@@ -777,6 +849,17 @@ function difficultyProfile(wave = state.wave) {
   const endless = Math.max(0, wave - DIFFICULTY_MODEL.endlessStartWave);
   const doom = Math.max(0, wave - DIFFICULTY_MODEL.doomStartWave);
   const modifier = roundModifierFor(wave);
+  const event = currentWaveEvent(wave);
+  const eventElite = event?.id === "elite" ? 1.85 : event?.id === "ambush" ? 1.18 : 1;
+  const eventSpawn = event?.id === "bonus" || event?.id === "ambush" ? 0.82 : event?.id === "shop" ? 1.24 : 1;
+  const eventHealth = event?.id === "elite" ? 1.18 : 1;
+  const risk = state.skippedRewards || 0;
+  const riskSpawn = Math.max(0.7, 1 - risk * 0.08);
+  const riskHealth = 1 + risk * 0.08;
+  const riskReward = 1 + risk * 0.16;
+  const mutatorDamage = currentMutator("double-edge") ? 1.28 : 1;
+  const mutatorProjectile = currentMutator("static-field") ? 1.22 : 1;
+  const mutatorHazards = currentMutator("crumbquake") ? 1.42 : 1;
   const smoothCurve = wave ** DIFFICULTY_MODEL.healthPower;
   const layeredCurve = layered ** 1.22;
   const surgeCurve = surge ** DIFFICULTY_MODEL.surgePower;
@@ -804,29 +887,29 @@ function difficultyProfile(wave = state.wave) {
     chaos,
     doom,
     threat,
-    healthScale: (1 + smoothCurve * 0.052 + layeredCurve * 0.04 + surgeCurve * 0.034 + endlessCurve * 0.033 + doomCurve * 0.024) * modifier.health,
-    speedScale: (1 + soft * 0.013 + layeredCurve * 0.009 + surgeCurve * 0.0075 + doomCurve * 0.0038) * modifier.speed,
-    damageScale: 1 + Math.max(0, wave - 7) * 0.026 + surgeCurve * 0.007 + doomCurve * 0.006,
+    healthScale: (1 + smoothCurve * 0.052 + layeredCurve * 0.04 + surgeCurve * 0.034 + endlessCurve * 0.033 + doomCurve * 0.024) * modifier.health * eventHealth * riskHealth * (currentMutator("greedy-cache") ? 1.16 : 1),
+    speedScale: (1 + soft * 0.013 + layeredCurve * 0.009 + surgeCurve * 0.0075 + doomCurve * 0.0038) * modifier.speed * runMultiplier("speed"),
+    damageScale: (1 + Math.max(0, wave - 7) * 0.026 + surgeCurve * 0.007 + doomCurve * 0.006) * runMultiplier("enemyDamage") * mutatorDamage,
     spawnInterval: Math.max(
       DIFFICULTY_MODEL.spawnFloor,
-      (1.08 / (1 + soft * 0.055 + layeredCurve * 0.025 + surgeCurve * 0.021 + doomCurve * 0.014)) * modifier.spawn
+      (1.08 / (1 + soft * 0.055 + layeredCurve * 0.025 + surgeCurve * 0.021 + doomCurve * 0.014)) * modifier.spawn * eventSpawn * riskSpawn
     ),
     enemyCap,
     burstCount: Math.max(1, Math.floor(1 + layered / 8 + surgeCurve * 0.035 + doomCurve * 0.025)),
-    hazardRate: (0.018 + soft * 0.004 + layeredCurve * 0.0037 + surgeCurve * 0.0032 + doomCurve * 0.0028) * modifier.hazards,
+    hazardRate: (0.018 + soft * 0.004 + layeredCurve * 0.0037 + surgeCurve * 0.0032 + doomCurve * 0.0028) * modifier.hazards * runMultiplier("hazards") * mutatorHazards,
     extraSpawnChance: 0.08 + layered * 0.025 + surgeCurve * 0.009 + doomCurve * 0.006,
     supportChance: Math.max(0, (wave - 7) * 0.025 + surgeCurve * 0.006 + doomCurve * 0.004),
-    eliteChance: Math.max(0, (wave - 9) * 0.018 + surgeCurve * 0.006 + doomCurve * 0.004),
-    incomingDamageMultiplier: 1 + Math.max(0, wave - 16) * 0.012 + doomCurve * 0.01,
+    eliteChance: Math.max(0, ((wave - 9) * 0.018 + surgeCurve * 0.006 + doomCurve * 0.004) * eventElite * runMultiplier("elite")),
+    incomingDamageMultiplier: (1 + Math.max(0, wave - 16) * 0.012 + doomCurve * 0.01) * mutatorDamage,
     sustainMultiplier: Math.max(0.32, 1 - Math.max(0, wave - 18) * 0.012 - doomCurve * 0.004),
     bossCount: Math.max(1, Math.floor(1 + Math.max(0, wave - 16) / 12 + doom / 8)),
     minibossCount: Math.max(1, Math.floor(1 + Math.max(0, wave - 9) / 9 + doom / 7)),
     telegraphMultiplier,
     specialCooldownMultiplier,
-    projectileSpeedScale: 1 + soft * 0.01 + layeredCurve * 0.008 + surgeCurve * 0.006 + doomCurve * 0.003,
+    projectileSpeedScale: (1 + soft * 0.01 + layeredCurve * 0.008 + surgeCurve * 0.006 + doomCurve * 0.003) * mutatorProjectile,
     bossPatternScale: 1 + layeredCurve * 0.035 + surgeCurve * 0.032 + doomCurve * 0.022,
-    scoreMultiplier: (1 + soft * 0.035 + layered * 0.028 + surgeCurve * 0.018 + endlessCurve * 0.026 + doomCurve * 0.02) * modifier.score,
-    waveLength: DIFFICULTY_MODEL.baseWaveSeconds + Math.sqrt(wave) * 4.2 + layeredCurve * 0.34 + surgeCurve * 0.16 + doomCurve * 0.08
+    scoreMultiplier: (1 + soft * 0.035 + layered * 0.028 + surgeCurve * 0.018 + endlessCurve * 0.026 + doomCurve * 0.02) * modifier.score * runMultiplier("score") * (event?.rewardBoost || 1) * riskReward,
+    waveLength: (DIFFICULTY_MODEL.baseWaveSeconds + Math.sqrt(wave) * 4.2 + layeredCurve * 0.34 + surgeCurve * 0.16 + doomCurve * 0.08) * (event?.id === "shop" ? 0.72 : 1)
   };
 }
 
@@ -978,6 +1061,54 @@ function applyMetaUpgrades() {
   player.crit += (levels.crit || 0) * 0.02;
 }
 
+function chooseRunModifiers() {
+  return [...RUN_MODIFIERS]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 2);
+}
+
+function chooseEnemyBias() {
+  return ENEMY_BIASES[Math.floor(rand(0, ENEMY_BIASES.length))] || ENEMY_BIASES[0];
+}
+
+function applyRunProfile() {
+  player.damage *= runMultiplier("playerDamage");
+  player.projectileSpeed *= runMultiplier("projectileSpeed");
+  player.magnet *= runMultiplier("magnet");
+  if (runMultiplier("knockback") > 1) state.flags.add("run-knockback");
+}
+
+function randomWaveEvent(wave = state.wave) {
+  if (wave <= 2) return WAVE_EVENTS[0];
+  if (wave >= 15 && wave % 15 === 0) return { id: "superboss", name: "Super Boss Trial", detail: "The Grand Antler Auditor arrives this wave.", tone: "legendary", rewardBoost: 1.45 };
+  if (wave % 4 === 0) return { id: "boss", name: "Boss Wave", detail: "A boss anchors the wave. Extra rewards if you survive.", tone: "legendary", rewardBoost: 1.18 };
+  if (wave % 3 === 0) return { id: "miniboss", name: "Mini-boss Spike", detail: "A smaller problem with a large attitude.", tone: "epic", rewardBoost: 1.1 };
+  const pressure = lateWavePressure(wave);
+  return weightedChoice(WAVE_EVENTS.map((event) => ({
+    ...event,
+    weight: event.weight + (event.id === "chaos" ? pressure * 0.9 : 0) + (event.id === "elite" ? pressure * 0.55 : 0)
+  }))) || WAVE_EVENTS[0];
+}
+
+function waveEventFor(wave = state.wave) {
+  state.waveEvents ||= {};
+  if (!state.waveEvents[wave]) state.waveEvents[wave] = randomWaveEvent(wave);
+  return state.waveEvents[wave];
+}
+
+function chooseWaveMutator() {
+  return WAVE_MUTATORS[Math.floor(rand(0, WAVE_MUTATORS.length))] || WAVE_MUTATORS[0];
+}
+
+function beginWaveVariation(wave = state.wave) {
+  const event = waveEventFor(wave);
+  state.activeMutator = event.id === "chaos" ? chooseWaveMutator() : null;
+  state.nextRewardBoost = Math.max(state.nextRewardBoost || 0, event.rewardBoost || 1);
+  const detail = state.activeMutator ? `${event.detail} ${state.activeMutator.name}: ${state.activeMutator.detail}` : event.detail;
+  showEvent(event.name, detail, event.tone || "rare");
+  showToast(event.name, detail, event.tone || "rare");
+}
+
 function resetRun(practice = false) {
   keys.clear();
   focusGameCanvas();
@@ -1003,6 +1134,13 @@ function resetRun(practice = false) {
     upgrades: [],
     weaponLevels: {},
     armorLevels: {},
+    runModifiers: chooseRunModifiers(),
+    enemyBias: chooseEnemyBias(),
+    waveEvents: {},
+    activeMutator: null,
+    nextRewardBoost: 1,
+    skippedRewards: 0,
+    roundModifierOffset: Math.floor(rand(0, ROUND_MODIFIERS.length)),
     flags: new Set(),
     achievements: new Set(),
     milestones: new Set(),
@@ -1050,14 +1188,15 @@ function resetRun(practice = false) {
   equipWeapon(selectedLoadout.weapon);
   equipArmor(selectedLoadout.armor);
   applyStartingPerk(selectedLoadout.perk);
+  applyRunProfile();
   for (const list of Object.values(pools)) list.length = 0;
   for (let i = 0; i < 30; i += 1) spawnPickup(rand(240, WORLD.width - 240), rand(220, WORLD.height - 220), "bread", 1);
   overlay.classList.add("is-hidden");
   services.resetClaimState("Finish this run to create a Discord bread claim.");
+  beginWaveVariation(1);
   updateSidebar();
   announce("Wave 1: keep the fur attached.", "#d7ff91");
-  showEvent("Wave 1", "Keep the fur attached", "rare");
-  showToast("Run started", practice ? "Practice bread is discounted. Shameful, but useful." : "Survive waves, pick relics, leave with bread.", "common");
+  showToast("Run profile", `${state.runModifiers.map((item) => item.name).join(" + ")}. ${state.enemyBias.name}.`, "epic");
   audio.ensure();
   audio.wave();
 }
@@ -1080,6 +1219,16 @@ function screenToWorld(event) {
   pointer.y = event.clientY - rect.top;
   pointer.worldX = pointer.x + camera.x;
   pointer.worldY = pointer.y + camera.y;
+}
+
+function chooseEnemyAffix(type, profile = difficultyProfile()) {
+  if (["fragment", "boss", "miniboss", "superboss"].includes(type)) return null;
+  const event = currentWaveEvent();
+  let chance = 0.035 + Math.min(0.28, Math.max(0, state.wave - 6) * 0.012) + profile.doom * 0.006;
+  if (event?.id === "elite") chance += 0.16;
+  if (state.runModifiers.some((modifier) => modifier.id === "bloodmoon")) chance += 0.08;
+  if (Math.random() > chance) return null;
+  return ENEMY_AFFIXES[Math.floor(rand(0, ENEMY_AFFIXES.length))] || null;
 }
 
 function spawnEnemy(type = "mite") {
@@ -1105,7 +1254,14 @@ function spawnEnemy(type = "mite") {
     y = rand(120, WORLD.height - 120);
   }
   const elite = !["fragment", "boss", "miniboss", "superboss"].includes(type) && Math.random() < profile.eliteChance;
-  const shield = (spec.shield || 0) * healthScale * (elite ? 1.35 : 1);
+  const affix = chooseEnemyAffix(type, profile);
+  const affixId = affix?.id || "";
+  const affixHealth = affixId === "armored" ? 1.26 : affixId === "regenerating" ? 1.14 : 1;
+  const affixSpeed = affixId === "swift" ? 1.34 : affixId === "vicious" ? 1.08 : 1;
+  const affixDamage = affixId === "vicious" ? 1.28 : affixId === "volatile" ? 1.12 : 1;
+  const affixValue = affix ? 1.38 : 1;
+  const baseShield = (spec.shield || 0) * healthScale * (elite ? 1.35 : 1);
+  const shield = baseShield + (affixId === "armored" ? spec.hp * healthScale * 0.55 : 0);
   pools.enemies.push({
     type,
     elite,
@@ -1113,14 +1269,17 @@ function spawnEnemy(type = "mite") {
     y,
     vx: 0,
     vy: 0,
-    hp: spec.hp * healthScale * (elite ? 1.7 : 1),
-    maxHp: spec.hp * healthScale * (elite ? 1.7 : 1),
+    affix: affixId,
+    affixName: affix?.name || "",
+    affixColor: affix?.color || "",
+    hp: spec.hp * healthScale * (elite ? 1.7 : 1) * affixHealth,
+    maxHp: spec.hp * healthScale * (elite ? 1.7 : 1) * affixHealth,
     shield,
     maxShield: shield,
-    speed: spec.speed * speedScale * (elite ? 1.08 : 1),
+    speed: spec.speed * speedScale * (elite ? 1.08 : 1) * affixSpeed,
     radius: spec.radius * (elite ? 1.12 : 1),
-    damage: spec.damage * damageScale * (elite ? 1.18 : 1),
-    value: Math.floor(spec.value * (elite ? 2.2 : 1)),
+    damage: spec.damage * damageScale * (elite ? 1.18 : 1) * affixDamage,
+    value: Math.floor(spec.value * (elite ? 2.2 : 1) * affixValue),
     color: spec.color,
     hitFlash: 0,
     attackCooldown: 0,
@@ -1207,7 +1366,7 @@ function fireProjectile() {
       tags: weapon.tags,
       color: weapon.color,
       explosionRadius: weapon.explosionRadius || player.explosionRadius,
-      knockback: (weapon.tags.includes("knockback") ? 1.9 : 1) + (state.flags.has("heavy-barrel") ? 0.45 : 0)
+      knockback: ((weapon.tags.includes("knockback") ? 1.9 : 1) + (state.flags.has("heavy-barrel") ? 0.45 : 0)) * runMultiplier("knockback")
     });
   }
   state.fireCooldown = Math.max(0.06, player.fireRate);
@@ -1295,6 +1454,7 @@ function showEvent(kicker, title, tone = "rare") {
 
 function chooseUpgradeOptions() {
   const rarityScore = { common: 1, rare: 2, epic: 3, legendary: 4 };
+  const rewardLift = Math.max(0, (state.nextRewardBoost || 1) - 1) + (state.skippedRewards || 0) * 0.18;
   return [...upgrades]
     .filter((upgrade) => !upgrade.id.startsWith("weapon-") || upgrade.id !== `weapon-${player.weapon}`)
     .filter((upgrade) => !upgrade.id.startsWith("armor-") || upgrade.id !== `armor-${player.armorSuit}`)
@@ -1303,7 +1463,7 @@ function chooseUpgradeOptions() {
       const rarity = rarityScore[upgrade.rarity] || 1;
       const lateWaveLift = Math.min(0.72, state.wave / 22);
       const buildMatch = upgrade.type === "Synergy" ? 0.14 : upgrade.type === "Weapon upgrade" || upgrade.type === "Armor upgrade" ? 0.08 : 0;
-      return { upgrade, roll: Math.random() + buildMatch + lateWaveLift * (rarity - 1) * 0.24 };
+      return { upgrade, roll: Math.random() + buildMatch + lateWaveLift * (rarity - 1) * 0.24 + rewardLift * (rarity - 1) * 0.34 };
     })
     .sort((a, b) => b.roll - a.roll)
     .slice(0, 3)
@@ -1315,13 +1475,19 @@ function openUpgradeModal() {
   state.upgradePending = true;
   state.mode = "upgrade";
   const options = chooseUpgradeOptions();
-  upgradeGrid.innerHTML = options.map((upgrade, index) => `
+  const rewardButtons = options.map((upgrade, index) => `
     <button type="button" class="rarity-${upgrade.rarity || "common"}" data-upgrade="${upgrade.id}" value="${index}">
       <span>${safeName(upgrade.type || "Relic")} · ${rarityLabel(upgrade.rarity)}</span>
       <b>${upgrade.name}</b>
       <small>${escapeHtml(upgrade.description)}</small>
     </button>
   `).join("");
+  upgradeGrid.innerHTML = `${rewardButtons}
+    <button type="button" class="rarity-legendary" data-run-choice="skip-reward">
+      <span>Risk Contract · Future Reward</span>
+      <b>Skip This Relic</b>
+      <small>Take no upgrade now. The next wave gets nastier, but the following relic choices roll hotter.</small>
+    </button>`;
   showEvent("Choose a relic", "The den offers three bad ideas", "epic");
   upgradeModal.showModal();
 }
@@ -1331,6 +1497,9 @@ function applyUpgrade(upgradeId) {
   if (!upgrade) return;
   upgrade.apply();
   state.upgrades.push(upgrade.name);
+  state.nextRewardBoost = 1;
+  state.skippedRewards = 0;
+  state.flags.delete("risk-contract-active");
   state.mode = "playing";
   state.wave += 1;
   state.waveTimer = 0;
@@ -1341,11 +1510,32 @@ function applyUpgrade(upgradeId) {
   state.upgradePending = false;
   state.waveDamageTaken = 0;
   upgradeModal.close();
+  beginWaveVariation(state.wave);
   updateSidebar();
   announce(`Wave ${state.wave}: ${upgrade.name}`, "#d7ff91");
   showToast("Relic equipped", upgrade.name, upgrade.rarity || "rare");
-  showEvent(`Wave ${state.wave}`, upgrade.name, upgrade.rarity || "rare");
   audio.upgrade();
+}
+
+function skipUpgradeReward() {
+  state.skippedRewards += 1;
+  state.nextRewardBoost = Math.max(state.nextRewardBoost || 1, 1.3 + state.skippedRewards * 0.22);
+  state.flags.add("risk-contract-active");
+  state.mode = "playing";
+  state.wave += 1;
+  state.waveTimer = 0;
+  state.spawnTimer = 0;
+  state.bossSpawned = false;
+  state.escalationTimer = 0;
+  state.waveClearing = false;
+  state.upgradePending = false;
+  state.waveDamageTaken = 0;
+  upgradeModal.close();
+  beginWaveVariation(state.wave);
+  updateSidebar();
+  announce(`Wave ${state.wave}: risk contract`, "#fff29b");
+  showToast("Risk contract signed", "No relic now. Next reward odds improve, but the den gets meaner.", "legendary");
+  audio.wave();
 }
 
 function update(dt) {
@@ -1466,6 +1656,14 @@ function updatePlayer(dt) {
 function weightedEnemyType(profile = difficultyProfile()) {
   const wave = profile.wave;
   const pressure = lateWavePressure(wave);
+  const event = currentWaveEvent(wave);
+  const biasTypes = new Set(state.enemyBias?.boost || []);
+  const eventBoosts = {
+    ambush: new Set(["wisp", "skitter", "charger", "splitter"]),
+    elite: new Set(["brute", "guardian", "bulwark", "healer", "buffer"]),
+    bonus: new Set(["mite", "wisp", "splitter"]),
+    chaos: new Set(["phantom", "bombardier", "mine", "sniper"])
+  }[event?.id] || new Set();
   const weights = [
     ["mite", 28],
     ["wisp", wave >= 2 ? 12 + pressure * 0.7 : 0],
@@ -1483,7 +1681,10 @@ function weightedEnemyType(profile = difficultyProfile()) {
     ["bombardier", wave >= 16 ? 5 + pressure * 0.75 : 0],
     ["leech", wave >= 18 ? 5 + pressure * 0.65 : 0],
     ["phantom", wave >= 20 ? 5 + pressure * 0.62 : 0]
-  ];
+  ].map(([type, weight]) => [
+    type,
+    weight * (biasTypes.has(type) ? 1.65 : 1) * (eventBoosts.has(type) ? 1.45 : 1)
+  ]);
   const total = weights.reduce((sum, [, weight]) => sum + Math.max(0, weight), 0);
   let roll = Math.random() * total;
   for (const [type, weight] of weights) {
@@ -1494,6 +1695,7 @@ function weightedEnemyType(profile = difficultyProfile()) {
 }
 
 function updateWave(dt) {
+  waveEventFor(state.wave);
   const profile = difficultyProfile();
   const pressure = lateWavePressure();
   const waveLength = profile.waveLength;
@@ -1656,6 +1858,10 @@ function updateEnemies(dt) {
       }
       if (enemy.status.slow > 0) enemy.status.slow -= dt;
       if (enemy.status.shock > 0) enemy.status.shock -= dt;
+    }
+    if (enemy.affix === "regenerating" && enemy.hp > 0 && enemy.hp < enemy.maxHp) {
+      enemy.hp = Math.min(enemy.maxHp, enemy.hp + (2.8 + state.wave * 0.32) * dt);
+      if (Math.random() < dt * 4) particle(enemy.x, enemy.y, rand(-36, 36), rand(-54, -12), 0.38, enemy.affixColor || "#b7ff4f", 3);
     }
     const dx = player.x - enemy.x;
     const dy = player.y - enemy.y;
@@ -1974,7 +2180,7 @@ function killEnemy(enemy, index) {
   const scoreGain = Math.floor(enemy.value * state.combo * difficultyProfile().scoreMultiplier * (state.flags.has("glass-contract") ? 1.18 : 1) * (state.flags.has("black-horn-doctrine") ? 1.08 : 1));
   state.score += scoreGain;
   const relicGain = enemy.type === "superboss" ? 60 : enemy.type === "boss" ? 32 : enemy.type === "miniboss" ? 22 : 8;
-  player.relic = clamp(player.relic + relicGain * (state.flags.has("relic-capacitor") ? 1.22 : 1), 0, player.relicMax);
+  player.relic = clamp(player.relic + relicGain * (state.flags.has("relic-capacitor") ? 1.22 : 1) * runMultiplier("relic"), 0, player.relicMax);
   if (state.kills === 25) unlockAchievement("First Furstorm", "25 curse-things removed.");
   if (state.combo >= 3) unlockAchievement("Combo Creature", "Reached a 3x score chain.");
   if (enemy.type === "boss") unlockAchievement("Boss Handler", "Defeated a boss wave.");
@@ -1982,7 +2188,7 @@ function killEnemy(enemy, index) {
   if (enemy.type === "miniboss") unlockAchievement("Mini Problem", "Defeated a mini-boss.");
   audio.pickup();
   floatingText(enemy.x, enemy.y - enemy.radius, `+${scoreGain}`, enemy.color);
-  const breadDrops = Math.ceil((enemy.type === "superboss" ? 18 : enemy.type === "boss" ? 10 : enemy.type === "miniboss" ? 7 : enemy.type === "brute" || enemy.type === "guardian" ? 3 : 1) * (state.flags.has("greed-spiral") ? 1.28 : 1) * (state.flags.has("starter-bread-magnet") ? 1.08 : 1));
+  const breadDrops = Math.ceil((enemy.type === "superboss" ? 18 : enemy.type === "boss" ? 10 : enemy.type === "miniboss" ? 7 : enemy.type === "brute" || enemy.type === "guardian" ? 3 : 1) * (state.flags.has("greed-spiral") ? 1.28 : 1) * (state.flags.has("starter-bread-magnet") ? 1.08 : 1) * runMultiplier("bread") * (currentMutator("greedy-cache") ? 1.35 : 1));
   for (let i = 0; i < breadDrops; i += 1) spawnPickup(enemy.x + rand(-24, 24), enemy.y + rand(-24, 24), "bread", enemy.type === "superboss" ? 8 : enemy.type === "boss" ? 5 : 1);
   if (enemy.type === "splitter") {
     for (let i = 0; i < 3; i += 1) {
@@ -2022,6 +2228,11 @@ function killEnemy(enemy, index) {
   if (state.flags.has("death-echo") && Math.random() < 0.22) {
     shockwave(enemy.x, enemy.y, 145, 48);
   }
+  if (enemy.affix === "volatile") {
+    shockwave(enemy.x, enemy.y, 150 + state.wave * 2, 36 + state.wave * 1.4);
+    camera.trauma = Math.max(camera.trauma, 0.18);
+    floatingText(enemy.x, enemy.y - enemy.radius - 18, "VOLATILE", enemy.affixColor || "#ffdf6e");
+  }
 }
 
 function unlockAchievement(name, description) {
@@ -2038,7 +2249,7 @@ function unlockAchievement(name, description) {
 }
 
 function damageEnemy(enemy, amount) {
-  let damage = amount * (enemy.phased > 0 ? 0.28 : 1);
+  let damage = amount * (currentMutator("double-edge") ? 1.2 : 1) * (enemy.phased > 0 ? 0.28 : 1);
   if (enemy.shield > 0) {
     const blocked = Math.min(enemy.shield, damage);
     enemy.shield -= blocked;
@@ -2291,15 +2502,20 @@ function updateSidebar() {
   const weapon = state.mode === "menu" || state.mode === "gameover" ? weaponCatalog[selectedLoadout.weapon] || currentWeapon() : currentWeapon();
   const armor = state.mode === "menu" || state.mode === "gameover" ? armorCatalog[selectedLoadout.armor] || currentArmor() : currentArmor();
   const perk = startingPerkCatalog[selectedLoadout.perk] || startingPerkCatalog.none;
+  const event = currentWaveEvent();
+  const mutator = state.activeMutator;
   const loadoutItems = [
     `${weapon.name} · ${weapon.role}`,
     `${armor.name} · ${armor.role}`,
     `Perk · ${perk.name}`,
-    ...state.upgrades.slice(-8)
+    ...(state.runModifiers?.length ? [`Run · ${state.runModifiers.map((item) => item.name).join(" + ")}`] : []),
+    ...state.upgrades.slice(-7)
   ];
   loadout.innerHTML = loadoutItems.map((item) => `<span>${safeName(item)}</span>`).join("");
   objectives.innerHTML = [
     state.waveClearing ? `Clear the remaining wave ${state.wave} enemies.` : `Survive wave ${state.wave}.`,
+    event ? `${event.name}: ${event.detail}` : "The den is behaving. Suspicious.",
+    mutator ? `${mutator.name}: ${mutator.detail}` : `Enemy composition: ${state.enemyBias?.name || "Unknown"}.`,
     state.waveClearing ? "Spawner paused. Upgrade appears when the arena is clean." : `${Math.max(0, Math.ceil(difficultyProfile().waveLength - state.waveTimer))} seconds until the wave starts clearing.`,
     `${pools.enemies.length} curse-things active.`,
     player.relic >= player.relicMax ? "Relic burst ready. Press Q." : "Charge relic burst with kills and shards."
@@ -2308,6 +2524,10 @@ function updateSidebar() {
   const pressure = lateWavePressure();
   intel.innerHTML = [
     `<span>Biome <b>${safeName(state.biome)}</b></span>`,
+    `<span>Wave Event <b>${safeName(event?.name || "Standard Siege")}</b></span>`,
+    `<span>Run Mix <b>${safeName(state.enemyBias?.name || "Normal")}</b></span>`,
+    `<span>Mutator <b>${safeName(mutator?.name || "None")}</b></span>`,
+    `<span>Reward Heat <b>${state.nextRewardBoost > 1 ? `${state.nextRewardBoost.toFixed(1)}x` : "Normal"}</b></span>`,
     `<span>Modifier <b>${safeName(state.roundModifier)}</b></span>`,
     `<span>Late Pressure <b>${pressure > 0 ? `${pressure.toFixed(1)}x` : "Calm"}</b></span>`,
     `<span>Enemy Cap <b>${difficultyProfile().enemyCap.toLocaleString()}</b></span>`,
@@ -2367,6 +2587,7 @@ function render() {
   drawMinimap();
   drawLowHealthWarning();
   drawFlash();
+  drawVisionMask();
   if (state.mode === "paused") drawPauseTint();
 }
 
@@ -2599,6 +2820,15 @@ function drawEnemies() {
       ctx.stroke();
       ctx.setLineDash([]);
     }
+    if (enemy.affix) {
+      ctx.strokeStyle = enemy.affixColor || "#d7ff91";
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.64 + Math.sin(state.time * 10 + enemy.phase) * 0.16;
+      ctx.beginPath();
+      ctx.arc(0, 0, enemy.radius + 14, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     ctx.shadowBlur = 0;
     ctx.fillStyle = "rgba(2,6,4,0.84)";
     ctx.beginPath();
@@ -2800,6 +3030,21 @@ function drawFlash() {
   ctx.restore();
 }
 
+function drawVisionMask() {
+  if (!currentMutator("limited-vision") || state.mode !== "playing") return;
+  const x = player.x - camera.x;
+  const y = player.y - camera.y;
+  const radius = Math.max(180, Math.min(VIEW.width, VIEW.height) * 0.38);
+  const gradient = ctx.createRadialGradient(x, y, radius * 0.28, x, y, radius);
+  gradient.addColorStop(0, "rgba(0,0,0,0)");
+  gradient.addColorStop(0.68, "rgba(0,0,0,0.28)");
+  gradient.addColorStop(1, "rgba(0,0,0,0.82)");
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+  ctx.restore();
+}
+
 function loop(now) {
   const dt = Math.min(0.033, (now - state.lastTime) / 1000 || 0);
   state.lastTime = now;
@@ -2835,6 +3080,11 @@ canvas.addEventListener("pointerleave", () => {
   pointer.down = false;
 });
 upgradeGrid.addEventListener("click", (event) => {
+  const runChoice = event.target.closest("button[data-run-choice]");
+  if (runChoice?.dataset.runChoice === "skip-reward") {
+    skipUpgradeReward();
+    return;
+  }
   const button = event.target.closest("button[data-upgrade]");
   if (!button) return;
   applyUpgrade(button.dataset.upgrade);
