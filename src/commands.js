@@ -1555,7 +1555,7 @@ const ECONOMY_UPGRADES = [
   },
   {
     id: "interest-clock",
-    aliases: ["interestcooldown", "cooldown", "clock", "bankclock"],
+    aliases: ["interestcooldown", "interest-cooldown", "interesttime", "interest-time", "cooldown", "clock", "bankclock", "banktime", "time"],
     name: "Interest Clock",
     description: "Shortens bank interest cooldown by 1 hour per level.",
     maxLevel: 5,
@@ -3789,11 +3789,16 @@ define({
   async run(ctx) {
     const output = await updateBreadEconomy(ctx, async (economy) => {
       const userId = ctx.message.author.id;
-      const cooldown = persistentCooldownStatus(economy, "interest", userId, interestCooldownFor(economy, userId));
-      if (cooldown.limited) return `Bank interest will be ready in ${formatCooldown(cooldown.remainingMs)}.`;
+      const interestInfo = interestBreakdownFor(economy, userId);
+      const cooldown = persistentCooldownStatus(economy, "interest", userId, interestInfo.cooldownMs);
+      if (cooldown.limited) {
+        return [
+          `Bank interest will be ready in **${formatCooldown(cooldown.remainingMs)}**.`,
+          `Current interest cooldown: **${formatCooldown(interestInfo.cooldownMs)}**${interestInfo.clockLevel ? ` (${formatCooldown(interestInfo.cooldownReductionMs)} faster from Interest Clock level **${interestInfo.clockLevel}**)` : ""}.`
+        ].join("\n");
+      }
       const bank = bankBalance(economy, userId);
       if (bank < 100) return "You need at least 100 bread in the bank before it earns interest.";
-      const interestInfo = interestBreakdownFor(economy, userId);
       const amount = Math.min(Math.floor(bank * interestInfo.rate), interestInfo.cap);
       if (amount < 1) return "Your bank balance is too low to generate interest yet.";
       setPersistentCooldown(economy, "interest", userId);
@@ -4001,9 +4006,17 @@ define({
         balance: breadBalance(economy, userId),
         bank: bankBalance(economy, userId)
       });
+      const upgradeDetails = [];
+      if (upgrade.id === "interest-clock") {
+        upgradeDetails.push(`Bank interest cooldown is now **${formatCooldown(interestCooldownFor(economy, userId))}**.`);
+      }
+      if (upgrade.id === "interest-altar") {
+        upgradeDetails.push(`Bank interest rate is now **${(interestRateFor(economy, userId) * 100).toFixed(2)}%** with a cap of **${formatBread(maxInterestFor(economy, userId))}**.`);
+      }
       return [
         `Bought **${upgrade.name}** level **${currentLevel + 1}/${upgrade.maxLevel}** for **${formatBread(cost)}**.`,
         upgrade.description,
+        ...upgradeDetails,
         `Wallet: **${formatBread(breadBalance(economy, userId))}**`
       ].join("\n");
     });
