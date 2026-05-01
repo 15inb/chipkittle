@@ -57,6 +57,7 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const OAUTH_STATE_BYTES = 18;
+const DISABLED_OWNER_ROOT_FALLBACK_IDS = new Set(["140478632165507073"]);
 const PANEL_ROLE_TEMPLATE_LEVELS = {
   moderator: "round_table",
   senior_moderator: "keeper",
@@ -4723,6 +4724,7 @@ export function createPanel({
   }
 
   function fallbackOwnerRoot(userId = "") {
+    if (DISABLED_OWNER_ROOT_FALLBACK_IDS.has(String(userId || ""))) return null;
     const ownedGuild = client.guilds.cache.find((guild) => guild.ownerId === userId);
     if (!ownedGuild) return null;
     const config = store.getGuild(ownedGuild.id);
