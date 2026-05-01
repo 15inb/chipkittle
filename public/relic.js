@@ -678,7 +678,8 @@ const enemyTypes = {
   phantom: { hp: 46, speed: 168, radius: 19, damage: 11, value: 96, color: "#b7c8ff", role: "evasive phase" },
   fragment: { hp: 18, speed: 155, radius: 14, damage: 5, value: 10, color: "#d7ff91", role: "split add" },
   miniboss: { hp: 340, speed: 72, radius: 44, damage: 24, value: 220, color: "#ff6fb4", role: "mid-wave spike" },
-  boss: { hp: 720, speed: 64, radius: 54, damage: 26, value: 480, color: "#ff7373", role: "boss phase" }
+  boss: { hp: 720, speed: 64, radius: 54, damage: 26, value: 480, color: "#ff7373", role: "boss phase" },
+  superboss: { hp: 2400, speed: 58, radius: 72, damage: 34, value: 1800, color: "#9cff74", shield: 420, role: "super-boss trial" }
 };
 
 const DIFFICULTY_MODEL = {
@@ -1103,7 +1104,7 @@ function spawnEnemy(type = "mite") {
     x = -80;
     y = rand(120, WORLD.height - 120);
   }
-  const elite = !["fragment", "boss", "miniboss"].includes(type) && Math.random() < profile.eliteChance;
+  const elite = !["fragment", "boss", "miniboss", "superboss"].includes(type) && Math.random() < profile.eliteChance;
   const shield = (spec.shield || 0) * healthScale * (elite ? 1.35 : 1);
   pools.enemies.push({
     type,
@@ -1125,6 +1126,7 @@ function spawnEnemy(type = "mite") {
     attackCooldown: 0,
     specialCooldown: rand(1.2, 3.4) * profile.specialCooldownMultiplier,
     beamCooldown: rand(1.8, 3.4) * profile.specialCooldownMultiplier,
+    phaseIndex: 0,
     state: "idle",
     stateTimer: 0,
     chargeX: 0,
@@ -1531,6 +1533,24 @@ function updateWave(dt) {
     camera.trauma = Math.max(camera.trauma, 0.24);
     audio.wave();
   }
+  if (state.wave >= 15 && state.wave % 15 === 0 && !state.bossSpawned && state.waveTimer > 6) {
+    spawnEnemy("superboss");
+    const superBoss = pools.enemies[pools.enemies.length - 1];
+    superBoss.x = WORLD.width / 2 + rand(-120, 120);
+    superBoss.y = -120;
+    superBoss.vy = 160;
+    superBoss.specialCooldown = 1.2;
+    superBoss.beamCooldown = 2.4;
+    state.bossSpawned = true;
+    state.bossAttackTimer = 1.2;
+    state.flash = Math.max(state.flash, 0.42);
+    announce("SUPER BOSS: The Grand Antler Auditor has arrived.", "#9cff74");
+    showEvent("Super Boss", "Grand Antler Auditor protocol", "legendary");
+    showToast("Super Boss every 15 waves", "This one has shields, phase spikes, summons, and deeply personal bullet patterns.", "legendary");
+    for (let i = 0; i < 4 + Math.floor(state.wave / 15); i += 1) spawnHazard();
+    camera.trauma = Math.max(camera.trauma, 0.42);
+    audio.wave();
+  }
   if (state.wave > 3 && state.wave % 3 === 0 && state.wave % 4 !== 0 && !state.bossSpawned && state.waveTimer > 7) {
     for (let i = 0; i < profile.minibossCount; i += 1) spawnEnemy("miniboss");
     state.bossSpawned = true;
@@ -1551,7 +1571,7 @@ function updateWave(dt) {
     showToast("Boss thing detected", profile.bossCount > 1 ? `${profile.bossCount} boss things. The den made choices.` : "Break it before the arena becomes a problem.", "legendary");
     audio.wave();
   }
-  if (state.wave >= 16 && state.bossSpawned && state.waveTimer > waveLength * 0.68 && state.escalationTimer <= 0 && pools.enemies.some((enemy) => enemy.type === "boss" || enemy.type === "miniboss")) {
+  if (state.wave >= 16 && state.bossSpawned && state.waveTimer > waveLength * 0.68 && state.escalationTimer <= 0 && pools.enemies.some((enemy) => enemy.type === "superboss" || enemy.type === "boss" || enemy.type === "miniboss")) {
     state.escalationTimer = 999;
     showEvent("Phase spike", "The boss called friends", "legendary");
     const adds = 2 + Math.floor(state.wave / 5) + Math.floor(profile.doom / 2);
@@ -1776,6 +1796,23 @@ function updateEnemies(dt) {
       enemy.specialCooldown = Math.max(0.72, (3.4 - state.wave * 0.04) * difficultyProfile().specialCooldownMultiplier);
     }
 
+    if (enemy.type === "superboss") {
+      const healthRatio = clamp(enemy.hp / enemy.maxHp, 0, 1);
+      const nextPhase = healthRatio < 0.28 ? 3 : healthRatio < 0.55 ? 2 : healthRatio < 0.78 ? 1 : 0;
+      if (nextPhase > enemy.phaseIndex) {
+        enemy.phaseIndex = nextPhase;
+        superBossPhaseSpike(enemy, nextPhase);
+      }
+      if (enemy.specialCooldown <= 0) {
+        superBossPattern(enemy);
+        enemy.specialCooldown = Math.max(0.48, (2.55 - enemy.phaseIndex * 0.26 - state.wave * 0.018) * difficultyProfile().specialCooldownMultiplier);
+      }
+      if (enemy.beamCooldown <= 0) {
+        superBossBeam(enemy);
+        enemy.beamCooldown = Math.max(1.05, (4.2 - enemy.phaseIndex * 0.38) * difficultyProfile().specialCooldownMultiplier);
+      }
+    }
+
     if (dist < enemy.radius + player.radius && enemy.attackCooldown <= 0 && player.invulnerable <= 0) {
       let damage = Math.max(2, enemy.damage * difficultyProfile().incomingDamageMultiplier - player.armor);
       if (state.flags.has("glass-contract")) damage *= 1.22;
@@ -1824,6 +1861,64 @@ function bossPattern(enemy) {
     spawnEnemy(["healer", "charger", "buffer", "sniper"][Math.floor(rand(0, 4))]);
   }
   camera.trauma = Math.max(camera.trauma, 0.16);
+}
+
+function superBossPattern(enemy) {
+  const profile = difficultyProfile();
+  const pressure = lateWavePressure();
+  const phase = enemy.phaseIndex || 0;
+  const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+  const ringCount = 18 + phase * 7 + Math.floor(state.wave / 10) + Math.floor(pressure * 2.4);
+  const ringOffset = state.time * (0.45 + phase * 0.16);
+  for (let i = 0; i < ringCount; i += 1) {
+    const angle = ringOffset + i * Math.PI * 2 / ringCount;
+    spawnEnemyShot(enemy.x, enemy.y, angle, (235 + phase * 42 + pressure * 13) * profile.projectileSpeedScale, enemy.damage * 0.5, "#9cff74", 8 + phase);
+  }
+  const aimedCount = 3 + phase;
+  for (let i = 0; i < aimedCount; i += 1) {
+    const angle = base + (i - (aimedCount - 1) / 2) * 0.12;
+    spawnEnemyShot(enemy.x, enemy.y, angle, (470 + phase * 54 + state.wave * 4) * profile.projectileSpeedScale, enemy.damage * 0.82, "#fff29b", 9 + phase * 0.7);
+  }
+  if (!state.waveClearing) {
+    const addTypes = phase >= 2 ? ["bulwark", "sniper", "buffer", "charger"] : ["spitter", "charger", "skitter", "mine"];
+    const addCount = 1 + phase + Math.floor(Math.max(0, state.wave - 15) / 30);
+    for (let i = 0; i < addCount; i += 1) spawnEnemy(addTypes[(i + Math.floor(rand(0, addTypes.length))) % addTypes.length]);
+  }
+  if (Math.random() < 0.72) {
+    pools.hazards.push({
+      x: clamp(player.x + rand(-220, 220), 180, WORLD.width - 180),
+      y: clamp(player.y + rand(-220, 220), 180, WORLD.height - 180),
+      radius: rand(86, 132 + phase * 18 + pressure * 6),
+      life: rand(4.2, 6.4 + phase * 0.35),
+      pulse: rand(0, Math.PI * 2)
+    });
+  }
+  camera.trauma = Math.max(camera.trauma, 0.2 + phase * 0.04);
+}
+
+function superBossBeam(enemy) {
+  const profile = difficultyProfile();
+  const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+  floatingText(enemy.x, enemy.y - enemy.radius - 12, "ANTLER LOCK", "#fff29b");
+  const lanes = 5 + (enemy.phaseIndex || 0) * 2;
+  for (let i = 0; i < lanes; i += 1) {
+    const angle = base + (i - (lanes - 1) / 2) * 0.075;
+    spawnEnemyShot(enemy.x, enemy.y, angle, 760 * profile.projectileSpeedScale, enemy.damage * 0.95, "#fff29b", 7);
+  }
+  shockwave(enemy.x, enemy.y, 148 + (enemy.phaseIndex || 0) * 26, 18 + state.wave * 0.9);
+  camera.trauma = Math.max(camera.trauma, 0.26);
+}
+
+function superBossPhaseSpike(enemy, phase) {
+  enemy.shield = Math.max(enemy.shield || 0, 180 + phase * 95 + state.wave * 7);
+  enemy.maxShield = Math.max(enemy.maxShield || 0, enemy.shield);
+  floatingText(enemy.x, enemy.y - enemy.radius - 18, `PHASE ${phase + 1}`, "#9cff74");
+  showEvent("Super Boss phase", phase >= 3 ? "Final antler judgment" : "The auditor adapts", "legendary");
+  showToast("Super Boss phase shift", "Shield restored, adds incoming, safe space officially reduced.", "legendary");
+  for (let i = 0; i < 3 + phase * 2; i += 1) spawnHazard();
+  for (let i = 0; i < 2 + phase; i += 1) spawnEnemy(["healer", "buffer", "bulwark", "sniper", "charger"][i % 5]);
+  camera.trauma = Math.max(camera.trauma, 0.46);
+  state.flash = Math.max(state.flash, 0.32);
 }
 
 function miniBossPattern(enemy) {
@@ -1878,16 +1973,17 @@ function killEnemy(enemy, index) {
   state.comboTimer = 2.5;
   const scoreGain = Math.floor(enemy.value * state.combo * difficultyProfile().scoreMultiplier * (state.flags.has("glass-contract") ? 1.18 : 1) * (state.flags.has("black-horn-doctrine") ? 1.08 : 1));
   state.score += scoreGain;
-  const relicGain = enemy.type === "boss" ? 32 : enemy.type === "miniboss" ? 22 : 8;
+  const relicGain = enemy.type === "superboss" ? 60 : enemy.type === "boss" ? 32 : enemy.type === "miniboss" ? 22 : 8;
   player.relic = clamp(player.relic + relicGain * (state.flags.has("relic-capacitor") ? 1.22 : 1), 0, player.relicMax);
   if (state.kills === 25) unlockAchievement("First Furstorm", "25 curse-things removed.");
   if (state.combo >= 3) unlockAchievement("Combo Creature", "Reached a 3x score chain.");
   if (enemy.type === "boss") unlockAchievement("Boss Handler", "Defeated a boss wave.");
+  if (enemy.type === "superboss") unlockAchievement("Grand Auditor Defeated", "Defeated a super boss wave.");
   if (enemy.type === "miniboss") unlockAchievement("Mini Problem", "Defeated a mini-boss.");
   audio.pickup();
   floatingText(enemy.x, enemy.y - enemy.radius, `+${scoreGain}`, enemy.color);
-  const breadDrops = Math.ceil((enemy.type === "boss" ? 10 : enemy.type === "miniboss" ? 7 : enemy.type === "brute" || enemy.type === "guardian" ? 3 : 1) * (state.flags.has("greed-spiral") ? 1.28 : 1) * (state.flags.has("starter-bread-magnet") ? 1.08 : 1));
-  for (let i = 0; i < breadDrops; i += 1) spawnPickup(enemy.x + rand(-24, 24), enemy.y + rand(-24, 24), "bread", enemy.type === "boss" ? 5 : 1);
+  const breadDrops = Math.ceil((enemy.type === "superboss" ? 18 : enemy.type === "boss" ? 10 : enemy.type === "miniboss" ? 7 : enemy.type === "brute" || enemy.type === "guardian" ? 3 : 1) * (state.flags.has("greed-spiral") ? 1.28 : 1) * (state.flags.has("starter-bread-magnet") ? 1.08 : 1));
+  for (let i = 0; i < breadDrops; i += 1) spawnPickup(enemy.x + rand(-24, 24), enemy.y + rand(-24, 24), "bread", enemy.type === "superboss" ? 8 : enemy.type === "boss" ? 5 : 1);
   if (enemy.type === "splitter") {
     for (let i = 0; i < 3; i += 1) {
       spawnEnemy("mite");
@@ -1903,9 +1999,9 @@ function killEnemy(enemy, index) {
       child.damage = Math.max(3, child.damage * 0.55);
     }
   }
-  if (Math.random() < 0.16 || enemy.type === "boss" || enemy.type === "miniboss") spawnPickup(enemy.x, enemy.y, "relic", enemy.type === "boss" ? 18 : enemy.type === "miniboss" ? 14 : 8);
+  if (Math.random() < 0.16 || enemy.type === "superboss" || enemy.type === "boss" || enemy.type === "miniboss") spawnPickup(enemy.x, enemy.y, "relic", enemy.type === "superboss" ? 34 : enemy.type === "boss" ? 18 : enemy.type === "miniboss" ? 14 : 8);
   if (state.flags.has("shield-siphon")) {
-    player.shield = Math.min(140, player.shield + (enemy.type === "boss" ? 16 : enemy.type === "miniboss" ? 10 : 3));
+    player.shield = Math.min(160, player.shield + (enemy.type === "superboss" ? 28 : enemy.type === "boss" ? 16 : enemy.type === "miniboss" ? 10 : 3));
   }
   if (state.flags.has("spore-cloud") && (enemy.status?.poison > 0 || enemy.status?.slow > 0)) {
     for (const nearby of pools.enemies) {
@@ -1915,9 +2011,10 @@ function killEnemy(enemy, index) {
       }
     }
   }
-  if (enemy.type === "boss" || enemy.type === "miniboss") {
-    spawnPickup(enemy.x + rand(-28, 28), enemy.y + rand(-28, 28), "heart", enemy.type === "boss" ? 36 : 24);
-    spawnPickup(enemy.x + rand(-28, 28), enemy.y + rand(-28, 28), "shield", enemy.type === "boss" ? 34 : 24);
+  if (enemy.type === "superboss" || enemy.type === "boss" || enemy.type === "miniboss") {
+    spawnPickup(enemy.x + rand(-28, 28), enemy.y + rand(-28, 28), "heart", enemy.type === "superboss" ? 54 : enemy.type === "boss" ? 36 : 24);
+    spawnPickup(enemy.x + rand(-28, 28), enemy.y + rand(-28, 28), "shield", enemy.type === "superboss" ? 52 : enemy.type === "boss" ? 34 : 24);
+    if (enemy.type === "superboss") spawnPickup(enemy.x, enemy.y, "overcharge", 28);
   } else if (Math.random() < 0.035) {
     spawnPickup(enemy.x, enemy.y, Math.random() < 0.5 ? "heart" : "overcharge", 16);
   }
@@ -2207,7 +2304,7 @@ function updateSidebar() {
     `${pools.enemies.length} curse-things active.`,
     player.relic >= player.relicMax ? "Relic burst ready. Press Q." : "Charge relic burst with kills and shards."
   ].map((item) => `<li>${item}</li>`).join("");
-  const boss = pools.enemies.find((enemy) => enemy.type === "boss");
+  const boss = pools.enemies.find((enemy) => enemy.type === "superboss" || enemy.type === "boss");
   const pressure = lateWavePressure();
   intel.innerHTML = [
     `<span>Biome <b>${safeName(state.biome)}</b></span>`,
@@ -2220,7 +2317,7 @@ function updateSidebar() {
     `<span>Overcharge <b>${player.overcharge > 0 ? `${player.overcharge.toFixed(1)}s` : "None"}</b></span>`,
     `<span>Weapon <b>${safeName(weapon.name)}</b></span>`,
     `<span>Armor <b>${safeName(armor.name)}</b></span>`,
-    `<span>Boss <b>${boss ? `${Math.ceil(Math.max(0, boss.hp))} HP` : "Dormant"}</b></span>`,
+    `<span>Boss <b>${boss ? `${boss.type === "superboss" ? "SUPER " : ""}${Math.ceil(Math.max(0, boss.hp))} HP` : "Dormant"}</b></span>`,
     `<span>Mini-boss <b>${pools.enemies.some((enemy) => enemy.type === "miniboss") ? "Active" : "Clear"}</b></span>`,
     `<span>Threat Mix <b>${new Set(pools.enemies.map((enemy) => enemy.type)).size || 0}</b></span>`,
     `<span>Achievements <b>${state.achievements.size}</b></span>`
@@ -2462,7 +2559,7 @@ function drawEnemies() {
     ctx.fillStyle = enemy.hitFlash > 0 ? "#ffffff" : enemy.color;
     if (enemy.phased > 0) ctx.globalAlpha = 0.42 + Math.sin(state.time * 24) * 0.18;
     ctx.shadowColor = enemy.color;
-    ctx.shadowBlur = enemy.type === "boss" || enemy.type === "miniboss" ? 34 : 16;
+    ctx.shadowBlur = enemy.type === "superboss" ? 48 : enemy.type === "boss" || enemy.type === "miniboss" ? 34 : 16;
     ctx.beginPath();
     if (enemy.type === "mine") {
       ctx.moveTo(0, -enemy.radius);
@@ -2476,10 +2573,22 @@ function drawEnemies() {
       ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
     }
     ctx.fill();
-    if (enemy.type === "boss" || enemy.type === "miniboss") {
+    if (enemy.type === "superboss" || enemy.type === "boss" || enemy.type === "miniboss") {
       ctx.strokeStyle = "rgba(255,255,255,0.68)";
-      ctx.lineWidth = enemy.type === "boss" ? 4 : 3;
+      ctx.lineWidth = enemy.type === "superboss" ? 6 : enemy.type === "boss" ? 4 : 3;
       ctx.stroke();
+    }
+    if (enemy.type === "superboss") {
+      ctx.save();
+      ctx.globalAlpha = 0.42 + Math.sin(state.time * 8 + enemy.phase) * 0.16;
+      ctx.strokeStyle = "#9cff74";
+      ctx.lineWidth = 4;
+      ctx.setLineDash([14, 8]);
+      ctx.beginPath();
+      ctx.arc(0, 0, enemy.radius + 18 + Math.sin(state.time * 5) * 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
     }
     if (enemy.elite) {
       ctx.strokeStyle = "#fff29b";
@@ -2655,8 +2764,9 @@ function drawMinimap() {
   ctx.fill();
   ctx.fillStyle = "#ff7373";
   for (const enemy of pools.enemies.slice(0, DIFFICULTY_MODEL.maxDrawMinimapEnemies)) {
-    ctx.fillStyle = enemy.type === "boss" ? "#ff7373" : enemy.type === "miniboss" ? "#ff8fd8" : enemy.type === "healer" || enemy.type === "buffer" ? "#ff8fd8" : enemy.type === "charger" || enemy.type === "sniper" ? "#ffdf6e" : enemy.type === "bulwark" ? "#a6ffd9" : "#ff7373";
-    ctx.fillRect(x + enemy.x * sx - 1.5, y + enemy.y * sy - 1.5, 3, 3);
+    ctx.fillStyle = enemy.type === "superboss" ? "#9cff74" : enemy.type === "boss" ? "#ff7373" : enemy.type === "miniboss" ? "#ff8fd8" : enemy.type === "healer" || enemy.type === "buffer" ? "#ff8fd8" : enemy.type === "charger" || enemy.type === "sniper" ? "#ffdf6e" : enemy.type === "bulwark" ? "#a6ffd9" : "#ff7373";
+    const dot = enemy.type === "superboss" ? 5 : 3;
+    ctx.fillRect(x + enemy.x * sx - dot / 2, y + enemy.y * sy - dot / 2, dot, dot);
   }
   ctx.restore();
 }
