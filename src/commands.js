@@ -50,12 +50,15 @@ import {
   toEmbedPayload
 } from "./embedOutput.js";
 import {
+  isBotOwnerOverrideUser,
   canGrantPanelAccess,
   hashPanelPassword,
+  isProtectedPanelRootUser,
   normalizePanelAccessLevel,
   panelAccessAtLeast,
   panelAccessLabel,
   panelAccessRank,
+  panelAccessUser,
   panelAccessUsers,
   randomPanelPassword
 } from "./panelAccess.js";
@@ -683,6 +686,11 @@ function hasAdministratorBypass(member) {
   return Boolean(member?.permissions?.has?.(PermissionsBitField.Flags.Administrator));
 }
 
+function hasBotOwnerOverride(memberOrMessage) {
+  const userId = memberOrMessage?.author?.id || memberOrMessage?.user?.id || memberOrMessage?.id;
+  return isBotOwnerOverrideUser(userId);
+}
+
 function isCommandDisabled(config, commandName) {
   return Boolean(config.commandRoles?.disabled?.[commandName]);
 }
@@ -731,6 +739,10 @@ function channelCommandRestrictions(config, message) {
 }
 
 function commandRestrictionMessage(command, message, config) {
+  if (hasBotOwnerOverride(message)) {
+    return "";
+  }
+
   if (hasAdministratorBypass(message.member)) {
     return "";
   }
@@ -769,6 +781,7 @@ function commandRestrictionMessage(command, message, config) {
 
 function requirePermission(ctx, permission) {
   if (
+    hasBotOwnerOverride(ctx.message) ||
     hasPermission(ctx.message.member, permission) ||
     hasCommandRoleOverride(ctx.message.member, ctx.config, ctx.command.name)
   ) {
@@ -780,8 +793,8 @@ function requirePermission(ctx, permission) {
 }
 
 function requirePanelRoot(ctx) {
-  const user = ctx.config.panelAccess?.users?.[ctx.message.author.id];
-  if (user && !user.revokedAt && normalizePanelAccessLevel(user.level) === "root") {
+  const user = panelAccessUser(ctx.config, ctx.message.author.id);
+  if (user && normalizePanelAccessLevel(user.level) === "root") {
     return true;
   }
   ctx.message.reply("Only root panel users can use that command.");
@@ -821,7 +834,7 @@ async function canModerateTarget(ctx, member, action, botCapability, permissionN
     return false;
   }
 
-  if (ctx.message.author.id !== ctx.message.guild.ownerId) {
+  if (!hasBotOwnerOverride(ctx.message) && ctx.message.author.id !== ctx.message.guild.ownerId) {
     const actorRole = ctx.message.member?.roles.highest;
     const targetRole = member.roles.highest;
     if (actorRole && targetRole && targetRole.position >= actorRole.position) {
@@ -2101,9 +2114,9 @@ function storedSuggestions(config = {}) {
 }
 
 function isPanelRootUser(config = {}, userId = "") {
-  const users = panelAccessUsers(config);
-  const entry = users[userId];
-  return Boolean(entry && !entry.revokedAt && panelAccessAtLeast(normalizePanelAccessLevel(entry.level), "root"));
+  if (isProtectedPanelRootUser(userId)) return true;
+  const user = panelAccessUser(config, userId);
+  return Boolean(user && panelAccessAtLeast(normalizePanelAccessLevel(user.level), "root"));
 }
 
 function buildSuggestionEmbed(suggestion = {}) {
@@ -2963,9 +2976,10 @@ define({
       : template?.days
         ? new Date(Date.now() + Number(template.days) * 24 * 60 * 60 * 1000).toISOString()
         : "";
+    const grantorUser = panelAccessUser(ctx.config, ctx.message.author.id);
     const grantorLevel = hasGrantCommandOverride
       ? "root"
-      : normalizePanelAccessLevel(existingUsers[ctx.message.author.id]?.level || (hasAnyPanelUsers ? "" : "root"));
+      : normalizePanelAccessLevel(grantorUser?.level || (hasAnyPanelUsers ? "" : "root"));
     if (grantorLevel !== "root" && !panelAccessAtLeast(grantorLevel, level)) {
       await ctx.message.reply("You cannot grant an access level higher than your own.");
       return;
@@ -8322,6 +8336,17 @@ export function createCommandHandler(options) {
     }
   }
 
+  async function auditOwnerOverrideUse(command, message) {
+    if (!message.guild?.id || !hasBotOwnerOverride(message)) return;
+    await addAuditLog(options.store, message.guild.id, {
+      type: "owner-override",
+      label: "Owner override command",
+      details: `${message.author.tag} used owner override on ${command.name}.`,
+      actor: message.author.tag,
+      targetId: message.author.id
+    }).catch(() => {});
+  }
+
   async function runCommand(command, message, config, args, rest, invokedName = command.name) {
     const restrictionMessage = commandRestrictionMessage(command, message, config);
     if (restrictionMessage) {
@@ -8353,6 +8378,7 @@ export function createCommandHandler(options) {
       : createEmbedMessageProxy(message, commandEmbedMeta({ command, config, message }));
 
     try {
+      await auditOwnerOverrideUse(command, message);
       await command.run({
         ...options,
         message: commandMessage,
