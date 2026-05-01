@@ -237,7 +237,7 @@ const DEFAULT_ECONOMY_SETTINGS = {
   gamblingCooldownSeconds: 5,
   robCooldownMinutes: 180,
   casinoRobberyCooldownMinutes: 480,
-  bankInterestCooldownHours: 20,
+  bankInterestCooldownHours: 8,
   bankInterestRatePercent: 1.5,
   maxBankInterest: 1000,
   upgradeCosts: {}
@@ -1856,13 +1856,17 @@ function safeLeaderboardScore(value) {
 function economyPanelSettings(config = {}) {
   const settings = config?.economy?.settings || {};
   const upgradeCosts = settings.upgradeCosts || config?.economy?.upgradeCosts || {};
+  const rawBankInterestCooldownHours = Number(settings.bankInterestCooldownHours);
+  const bankInterestCooldownHours = !Number.isFinite(rawBankInterestCooldownHours) || rawBankInterestCooldownHours === 20
+    ? DEFAULT_ECONOMY_SETTINGS.bankInterestCooldownHours
+    : rawBankInterestCooldownHours;
   return {
     dailyBread: Math.floor(clampPanelNumber(settings.dailyBread, DEFAULT_ECONOMY_SETTINGS.dailyBread, 0, 1000000)),
     maxBreadBet: Math.floor(clampPanelNumber(settings.maxBreadBet, DEFAULT_ECONOMY_SETTINGS.maxBreadBet, 1, 1000000)),
     gamblingCooldownSeconds: Math.floor(clampPanelNumber(settings.gamblingCooldownSeconds, DEFAULT_ECONOMY_SETTINGS.gamblingCooldownSeconds, 0, 3600)),
     robCooldownMinutes: Math.floor(clampPanelNumber(settings.robCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.robCooldownMinutes, 1, 10080)),
     casinoRobberyCooldownMinutes: Math.floor(clampPanelNumber(settings.casinoRobberyCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.casinoRobberyCooldownMinutes, 1, 10080)),
-    bankInterestCooldownHours: Math.floor(clampPanelNumber(settings.bankInterestCooldownHours, DEFAULT_ECONOMY_SETTINGS.bankInterestCooldownHours, 1, 168)),
+    bankInterestCooldownHours: Math.floor(clampPanelNumber(bankInterestCooldownHours, DEFAULT_ECONOMY_SETTINGS.bankInterestCooldownHours, 1, 168)),
     bankInterestRatePercent: clampPanelNumber(settings.bankInterestRatePercent, DEFAULT_ECONOMY_SETTINGS.bankInterestRatePercent, 0, 100),
     maxBankInterest: Math.floor(clampPanelNumber(settings.maxBankInterest, DEFAULT_ECONOMY_SETTINGS.maxBankInterest, 0, 1000000)),
     upgradeCosts: Object.fromEntries(

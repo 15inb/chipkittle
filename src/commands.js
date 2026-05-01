@@ -1506,7 +1506,7 @@ const DAILY_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 const GAMBLING_COOLDOWN_MS = 5 * 1000;
 const ROB_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const CASINO_ROBBERY_COOLDOWN_MS = 8 * 60 * 60 * 1000;
-const BANK_INTEREST_COOLDOWN_MS = 20 * 60 * 60 * 1000;
+const BANK_INTEREST_COOLDOWN_MS = 8 * 60 * 60 * 1000;
 const BANK_INTEREST_RATE = 0.015;
 const MAX_BANK_INTEREST = 1_000;
 const DEFAULT_ECONOMY_SETTINGS = {
@@ -1726,13 +1726,17 @@ function economySettings(economy = {}) {
     ...DEFAULT_ECONOMY_SETTINGS,
     ...(economy.settings || {})
   };
+  const rawBankInterestCooldownHours = Number(settings.bankInterestCooldownHours);
+  const bankInterestCooldownHours = !Number.isFinite(rawBankInterestCooldownHours) || rawBankInterestCooldownHours === 20
+    ? DEFAULT_ECONOMY_SETTINGS.bankInterestCooldownHours
+    : rawBankInterestCooldownHours;
   return {
     dailyBread: Math.floor(clampEconomyNumber(settings.dailyBread, DAILY_BREAD, 0, 1_000_000)),
     maxBreadBet: Math.floor(clampEconomyNumber(settings.maxBreadBet, MAX_BREAD_BET, 1, 1_000_000)),
     gamblingCooldownMs: Math.floor(clampEconomyNumber(settings.gamblingCooldownSeconds, DEFAULT_ECONOMY_SETTINGS.gamblingCooldownSeconds, 0, 3600)) * 1000,
     robCooldownMs: Math.floor(clampEconomyNumber(settings.robCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.robCooldownMinutes, 1, 10080)) * 60000,
     casinoRobberyCooldownMs: Math.floor(clampEconomyNumber(settings.casinoRobberyCooldownMinutes, DEFAULT_ECONOMY_SETTINGS.casinoRobberyCooldownMinutes, 1, 10080)) * 60000,
-    bankInterestCooldownMs: Math.floor(clampEconomyNumber(settings.bankInterestCooldownHours, DEFAULT_ECONOMY_SETTINGS.bankInterestCooldownHours, 1, 168)) * 3600000,
+    bankInterestCooldownMs: Math.floor(clampEconomyNumber(bankInterestCooldownHours, DEFAULT_ECONOMY_SETTINGS.bankInterestCooldownHours, 1, 168)) * 3600000,
     bankInterestRate: clampEconomyNumber(settings.bankInterestRatePercent, DEFAULT_ECONOMY_SETTINGS.bankInterestRatePercent, 0, 100) / 100,
     maxBankInterest: Math.floor(clampEconomyNumber(settings.maxBankInterest, MAX_BANK_INTEREST, 0, 1_000_000)),
     upgradeCosts: settings.upgradeCosts || {}
@@ -1779,7 +1783,7 @@ function maxInterestFor(economy, userId) {
 }
 
 function interestCooldownFor(economy, userId) {
-  return Math.max(8 * 60 * 60 * 1000, economySettings(economy).bankInterestCooldownMs - upgradeTotal(economy, userId, "interestCooldown") * 60 * 60 * 1000);
+  return Math.max(3 * 60 * 60 * 1000, economySettings(economy).bankInterestCooldownMs - upgradeTotal(economy, userId, "interestCooldown") * 60 * 60 * 1000);
 }
 
 function interestBreakdownFor(economy, userId) {

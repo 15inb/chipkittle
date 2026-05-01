@@ -51,7 +51,7 @@ const DEFAULT_CONFIG = {
       gamblingCooldownSeconds: 5,
       robCooldownMinutes: 180,
       casinoRobberyCooldownMinutes: 480,
-      bankInterestCooldownHours: 20,
+      bankInterestCooldownHours: 8,
       bankInterestRatePercent: 1.5,
       maxBankInterest: 1000,
       upgradeCosts: {}
