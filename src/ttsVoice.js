@@ -27,6 +27,13 @@ const PIPER_NOISE_WIDTH = process.env.TTS_PIPER_NOISE_WIDTH || "";
 const ESPEAK_COMMAND = process.env.TTS_ESPEAK_COMMAND || "espeak-ng";
 const ESPEAK_VOICE = process.env.TTS_ESPEAK_VOICE || "en-us";
 const ESPEAK_SPEED = process.env.TTS_ESPEAK_SPEED || "175";
+const KOKORO_COMMAND = process.env.TTS_KOKORO_COMMAND || "python3";
+const KOKORO_SCRIPT = process.env.TTS_KOKORO_SCRIPT || path.join(process.cwd(), "scripts", "kokoro_tts.py");
+const KOKORO_MODEL = process.env.TTS_KOKORO_MODEL || "";
+const KOKORO_VOICES = process.env.TTS_KOKORO_VOICES || "";
+const KOKORO_VOICE = process.env.TTS_KOKORO_VOICE || "af_sarah";
+const KOKORO_SPEED = process.env.TTS_KOKORO_SPEED || "1.0";
+const KOKORO_LANG = process.env.TTS_KOKORO_LANG || "en-us";
 
 function cleanSpeechText(message) {
   return String(message.cleanContent || message.content || "")
@@ -45,8 +52,52 @@ function findTtsTextChannel(guild) {
 }
 
 async function createLocalSpeechFile(text) {
+  if (TTS_PROVIDER === "kokoro") return createKokoroSpeechFile(text);
   if (TTS_PROVIDER === "espeak") return createEspeakSpeechFile(text);
   return createPiperSpeechFile(text);
+}
+
+async function createKokoroSpeechFile(text) {
+  await mkdir(TTS_TMP_DIR, { recursive: true });
+  const filePath = path.join(TTS_TMP_DIR, `${randomUUID()}.wav`);
+
+  await new Promise((resolve, reject) => {
+    const child = spawn(KOKORO_COMMAND, [
+      KOKORO_SCRIPT,
+      "--model",
+      KOKORO_MODEL,
+      "--voices",
+      KOKORO_VOICES,
+      "--output",
+      filePath,
+      "--voice",
+      KOKORO_VOICE,
+      "--speed",
+      KOKORO_SPEED,
+      "--lang",
+      KOKORO_LANG
+    ], {
+      windowsHide: true
+    });
+
+    let errorOutput = "";
+    child.stderr.on("data", (chunk) => {
+      errorOutput += chunk.toString();
+    });
+    child.on("error", (error) => {
+      reject(new Error(`Could not start ${KOKORO_COMMAND}: ${error.message}`));
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${KOKORO_COMMAND} exited with code ${code}: ${errorOutput.trim()}`));
+    });
+    child.stdin.end(text);
+  });
+
+  return filePath;
 }
 
 async function createPiperSpeechFile(text) {
@@ -134,13 +185,33 @@ async function commandAvailable(command) {
 }
 
 async function localTtsStatus() {
+  if (TTS_PROVIDER === "kokoro") {
+    if (!KOKORO_MODEL || !KOKORO_VOICES) {
+      return "Kokoro TTS needs model files. Set `TTS_KOKORO_MODEL=/path/to/kokoro-v1.0.onnx` and `TTS_KOKORO_VOICES=/path/to/voices-v1.0.bin` in `.env`, then restart the bot.";
+    }
+
+    if (!(await commandAvailable(KOKORO_COMMAND))) {
+      return `Kokoro TTS command was not found. Set TTS_KOKORO_COMMAND to your Python executable, usually \`/home/ubuntu/kokoro-tts/venv/bin/python\`.`;
+    }
+
+    try {
+      await access(KOKORO_SCRIPT);
+      await access(KOKORO_MODEL);
+      await access(KOKORO_VOICES);
+    } catch {
+      return "Kokoro TTS files were not found. Check `TTS_KOKORO_SCRIPT`, `TTS_KOKORO_MODEL`, and `TTS_KOKORO_VOICES` in `.env`.";
+    }
+
+    return null;
+  }
+
   if (TTS_PROVIDER === "espeak") {
     if (await commandAvailable(ESPEAK_COMMAND)) return null;
     return `Local TTS is not installed. Install eSpeak NG on the VPS with \`sudo apt install -y espeak-ng\`, or set TTS_ESPEAK_COMMAND to the right binary.`;
   }
 
   if (TTS_PROVIDER !== "piper") {
-    return `Unknown TTS_PROVIDER \`${TTS_PROVIDER}\`. Use \`piper\` or \`espeak\`.`;
+    return `Unknown TTS_PROVIDER \`${TTS_PROVIDER}\`. Use \`kokoro\`, \`piper\`, or \`espeak\`.`;
   }
 
   if (!PIPER_MODEL) {
