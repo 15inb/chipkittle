@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" role="img" aria-label="Chipkittle Tower Defense cover art">
+  <defs>
+    <radialGradient id="bg" cx="65%" cy="40%" r="78%">
+      <stop offset="0" stop-color="#e6ffcf"/>
+      <stop offset=".46" stop-color="#8ebd83"/>
+      <stop offset="1" stop-color="#263a32"/>
+    </radialGradient>
+    <linearGradient id="path" x1="0" x2="1">
+      <stop offset="0" stop-color="#5b493b"/>
+      <stop offset="1" stop-color="#e6cd84"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="900" height="620" fill="url(#bg)"/>
+  <path d="M-40 374 C130 330 160 246 302 254 C440 262 426 400 566 406 C706 412 720 288 946 262" fill="none" stroke="#392d25" stroke-width="74" stroke-linecap="round"/>
+  <path d="M-40 374 C130 330 160 246 302 254 C440 262 426 400 566 406 C706 412 720 288 946 262" fill="none" stroke="url(#path)" stroke-width="46" stroke-linecap="round"/>
+  <g opacity=".22" stroke="#05210e" stroke-width="2">
+    <path d="M90 0v620M190 0v620M290 0v620M390 0v620M490 0v620M590 0v620M690 0v620M790 0v620"/>
+    <path d="M0 80h900M0 180h900M0 280h900M0 380h900M0 480h900M0 580h900"/>
+  </g>
+  <g filter="url(#glow)">
+    <circle cx="214" cy="208" r="42" fill="#102016" stroke="#8dff71" stroke-width="9"/>
+    <path d="M214 164 L244 234 H184 Z" fill="#8dff71"/>
+    <circle cx="480" cy="268" r="48" fill="#102016" stroke="#fff29b" stroke-width="9"/>
+    <rect x="458" y="246" width="44" height="44" rx="8" fill="#fff29b" transform="rotate(45 480 268)"/>
+    <circle cx="670" cy="360" r="44" fill="#102016" stroke="#ba7cff" stroke-width="9"/>
+    <ellipse cx="670" cy="350" rx="22" ry="31" fill="#ba7cff"/>
+  </g>
+  <g>
+    <circle cx="560" cy="405" r="26" fill="#ff7676"/>
+    <circle cx="570" cy="396" r="4" fill="#061009"/>
+    <circle cx="570" cy="414" r="4" fill="#061009"/>
+    <circle cx="710" cy="292" r="32" fill="#85ffd2"/>
+    <circle cx="724" cy="282" r="5" fill="#061009"/>
+    <circle cx="724" cy="305" r="5" fill="#061009"/>
+    <circle cx="320" cy="260" r="22" fill="#ffb86c"/>
+    <circle cx="330" cy="252" r="4" fill="#061009"/>
+    <circle cx="330" cy="268" r="4" fill="#061009"/>
+  </g>
+  <g opacity=".9">
+    <path d="M732 118c26-46 90-46 116 0l24 42c27 47-7 106-61 106h-48c-54 0-88-59-61-106z" fill="#ffffff" opacity=".72"/>
+    <circle cx="785" cy="142" r="16" fill="#101b17"/>
+    <circle cx="832" cy="142" r="16" fill="#101b17"/>
+    <path d="M710 160c-46 12-68 45-74 88M870 158c38 16 60 49 66 90" fill="none" stroke="#1b2722" stroke-width="18" stroke-linecap="round"/>
+  </g>
+</svg>

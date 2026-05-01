@@ -1070,6 +1070,10 @@ a {
   --game-card-art: url("/assets/blitz-cover.svg");
 }
 
+.tower-card {
+  --game-card-art: url("/assets/tower-cover.svg");
+}
+
 .relic-card {
   --game-card-art: radial-gradient(circle at 55% 42%, rgba(111, 255, 96, 0.7), transparent 24%), url("/assets/ckwebsitebg3.png");
 }
@@ -1254,6 +1258,98 @@ a {
   color: var(--ink);
   font: inherit;
   font-weight: 800;
+}
+
+.tower-shell {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 330px);
+}
+
+.tower-panel {
+  gap: 10px;
+}
+
+.tower-shop {
+  display: grid;
+  gap: 8px;
+}
+
+.tower-choice {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: var(--card-bg);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tower-choice span {
+  color: var(--green-dark);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.tower-choice small {
+  color: var(--soft-ink);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.tower-choice.is-active {
+  border-color: rgba(45, 171, 76, 0.68);
+  background: var(--green-soft);
+  box-shadow: inset 0 0 0 1px rgba(45, 171, 76, 0.2);
+}
+
+.tower-inspector {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--card-bg);
+}
+
+.tower-inspector span {
+  color: var(--green-dark);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.tower-inspector small {
+  color: var(--soft-ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.tower-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.tower-actions button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--green);
+  color: var(--white);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.tower-actions button:last-child {
+  background: var(--card-bg);
+  color: var(--soft-ink);
 }
 
 .score-form {

@@ -52,6 +52,10 @@
       "destination": "/blitz.html"
     },
     {
+      "source": "/tower",
+      "destination": "/tower.html"
+    },
+    {
       "source": "/relic",
       "destination": "/relic.html"
     },
