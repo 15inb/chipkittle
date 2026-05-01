@@ -1386,25 +1386,37 @@ a {
   padding-top: 4px;
 }
 
-.tower-branches {
+.tower-paths {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
-.tower-branches button {
-  min-height: 34px;
+.tower-paths button {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--green-soft);
+  padding: 8px 9px;
+  background: color-mix(in srgb, var(--path-color, var(--green)) 12%, var(--card-bg));
   color: var(--green-dark);
   font: inherit;
   font-size: 11px;
   font-weight: 950;
+  text-align: left;
   cursor: pointer;
 }
 
-.tower-branches button:disabled {
+.tower-paths button span {
+  color: var(--path-color, var(--green-dark));
+}
+
+.tower-paths button small {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.tower-paths button:disabled {
   cursor: not-allowed;
   opacity: 0.52;
 }

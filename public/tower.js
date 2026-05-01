@@ -124,11 +124,46 @@ const towerTypes = {
   keeper: { name: "Keeper Totem", role: "Support buff", unlockWave: 12, cost: 82, color: "#c9ff8f", range: 128, fireRate: 999, damage: 0, projectileSpeed: 0, auraDamage: 1.18, auraRate: 0.88, tags: ["support"], strong: ["towers"], weak: ["solo"], description: "Does not attack. Buffs nearby tower damage and fire rate." }
 };
 
-const branchUpgrades = {
-  overclock: { name: "Overclocked", detail: "+30% fire rate, -8% range.", apply(stats) { stats.fireRate *= 0.7; stats.range *= 0.92; } },
-  focus: { name: "Focusing Lens", detail: "+22% range, +18% damage.", apply(stats) { stats.range *= 1.22; stats.damage *= 1.18; } },
-  cruel: { name: "Cruel Barbs", detail: "+42% damage against tough enemies.", apply(stats) { stats.toughBonus = (stats.toughBonus || 1) * 1.42; } },
-  wide: { name: "Wide Curse", detail: "+28% splash/chain reach.", apply(stats) { stats.splash *= 1.28; stats.chainRange = (stats.chainRange || 105) * 1.28; } }
+const upgradePaths = {
+  power: {
+    name: "Power",
+    color: "#fff29b",
+    tiers: ["Sharper teeth", "Harder hits", "Armor bite", "Vault breaker"],
+    detail(level) {
+      return [
+        "+22% damage",
+        "+34% damage",
+        "+armor pressure",
+        "+elite/boss damage"
+      ][level] || "More damage";
+    }
+  },
+  utility: {
+    name: "Utility",
+    color: "#7cf7ff",
+    tiers: ["Cleaner range", "Control field", "Efficiency loop", "Field command"],
+    detail(level) {
+      return [
+        "+range",
+        "+status/control",
+        "cheaper firing",
+        "+map control"
+      ][level] || "More control";
+    }
+  },
+  mastery: {
+    name: "Mastery",
+    color: "#ff8fd8",
+    tiers: ["Odd behavior", "Nasty trick", "Specialist role", "Den signature"],
+    detail(level) {
+      return [
+        "tower-specific mechanic",
+        "stronger specialty",
+        "role-defining upgrade",
+        "signature effect"
+      ][level] || "Unique mechanic";
+    }
+  }
 };
 
 const enemyTypes = {
@@ -146,10 +181,12 @@ const enemies = [];
 const shots = [];
 const particles = [];
 const floaters = [];
+const pulses = [];
 
 let selectedTowerType = "thorn";
 let selectedTowerId = null;
 let hoverCell = null;
+let previewPulse = 0;
 let selectedMapId = "den";
 let activeMap = maps.den;
 let pathSets = [];
@@ -172,6 +209,38 @@ let statusCache = "";
 let statsCache = "";
 let animationFrame = 0;
 let progress = loadProgress();
+let waveIncome = 0;
+let lastWaveIncome = 0;
+let cameraShake = 0;
+
+const audio = {
+  context: null,
+  enabled: true,
+  ensure() {
+    if (!this.enabled || this.context) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) this.context = new AudioContext();
+  },
+  tone(frequency, duration = 0.06, type = "sine", gain = 0.018) {
+    if (!this.enabled) return;
+    this.ensure();
+    if (!this.context) return;
+    const oscillator = this.context.createOscillator();
+    const volume = this.context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, this.context.currentTime);
+    volume.gain.setValueAtTime(gain, this.context.currentTime);
+    volume.gain.exponentialRampToValueAtTime(0.0001, this.context.currentTime + duration);
+    oscillator.connect(volume).connect(this.context.destination);
+    oscillator.start();
+    oscillator.stop(this.context.currentTime + duration);
+  },
+  place() { this.tone(420, 0.06, "triangle", 0.018); this.tone(620, 0.08, "sine", 0.012); },
+  upgrade() { this.tone(520, 0.08, "triangle", 0.022); setTimeout(() => this.tone(780, 0.1, "sine", 0.018), 55); },
+  hit(big = false) { this.tone(big ? 130 : 210, big ? 0.1 : 0.035, "sawtooth", big ? 0.025 : 0.01); },
+  wave() { this.tone(260, 0.1, "triangle", 0.018); setTimeout(() => this.tone(430, 0.12, "triangle", 0.018), 80); },
+  deny() { this.tone(120, 0.08, "square", 0.012); }
+};
 
 const drawBackground = createBackgroundCache(canvas, (cacheCtx, targetCanvas, key) => {
   const map = maps[key] || maps.den;
@@ -329,6 +398,7 @@ function resetGame() {
   shots.length = 0;
   particles.length = 0;
   floaters.length = 0;
+  pulses.length = 0;
   selectedTowerId = null;
   running = false;
   ended = false;
@@ -343,6 +413,9 @@ function resetGame() {
   spawnTimer = 0;
   waveActive = false;
   nextTowerId = 1;
+  waveIncome = 0;
+  lastWaveIncome = 0;
+  cameraShake = 0;
   startWaveButton.disabled = false;
   startWaveButton.textContent = "Start Wave";
   services.resetClaimState("Defend the vault, then lose or finish to get a claim code.");
@@ -357,13 +430,16 @@ function resetGame() {
 function startWave() {
   if (ended || waveActive) return;
   if (!ensurePlayerReady()) return;
+  audio.ensure();
   running = true;
   waveActive = true;
   spawnQueue = buildWave(wave);
   spawnTimer = 0.2;
+  waveIncome = 0;
   startWaveButton.disabled = true;
   startWaveButton.textContent = "Wave Active";
   setStatus(`Wave ${wave} started on ${activeMap.name}. ${spawnQueue.length} problems inbound.`);
+  audio.wave();
 }
 
 function finishRun() {
@@ -414,6 +490,17 @@ function canPlace(col, row) {
   return col >= 0 && col < COLS && row >= 0 && row < ROWS && terrainAt(col, row) === "build" && !towerAt(col, row);
 }
 
+function placementProblem(col, row) {
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return "Out of bounds";
+  if (towerAt(col, row)) return "Tower already here";
+  const terrain = terrainAt(col, row);
+  if (terrain === "path") return "Path tile";
+  if (terrain === "blocked") return "Blocked terrain";
+  const spec = towerTypes[selectedTowerType];
+  if (spec && bread < spec.cost) return `Need ${spec.cost} bread`;
+  return "";
+}
+
 function zoneMultiplier(col, row, stat) {
   let value = 1;
   for (const zone of activeMap.zones || []) {
@@ -437,15 +524,87 @@ function auraMultiplier(tower, stat) {
   return value;
 }
 
+function towerPathLevels(tower) {
+  tower.paths ??= { power: 0, utility: 0, mastery: 0 };
+  return tower.paths;
+}
+
+function totalPathLevels(tower) {
+  const paths = towerPathLevels(tower);
+  return Object.values(paths).reduce((sum, value) => sum + value, 0);
+}
+
+function pathUpgradeCost(tower, pathId) {
+  const current = towerPathLevels(tower)[pathId] || 0;
+  const spec = towerTypes[tower.type];
+  return Math.floor(spec.cost * (0.74 + current * 0.62 + totalPathLevels(tower) * 0.2));
+}
+
+function canUpgradePath(tower, pathId) {
+  const current = towerPathLevels(tower)[pathId] || 0;
+  if (current >= 4) return { ok: false, reason: "Max tier" };
+  if (totalPathLevels(tower) >= 7) return { ok: false, reason: "Build capped" };
+  const otherHighPath = Object.entries(towerPathLevels(tower)).some(([id, level]) => id !== pathId && level >= 3);
+  if (current >= 2 && otherHighPath) return { ok: false, reason: "Tier locked" };
+  const cost = pathUpgradeCost(tower, pathId);
+  if (bread < cost) return { ok: false, reason: `Need ${cost}` };
+  return { ok: true, cost };
+}
+
+function applyPathStats(stats, tower) {
+  const paths = towerPathLevels(tower);
+  stats.damage *= 1 + paths.power * 0.24;
+  stats.range *= 1 + paths.utility * 0.075;
+  stats.fireRate *= Math.max(0.42, 1 - paths.utility * 0.035);
+  stats.splash += paths.utility * 6;
+  if (paths.power >= 3) stats.armorBreak = (stats.armorBreak || 0) + 15;
+  if (paths.power >= 4) stats.toughBonus = (stats.toughBonus || 1) * 1.55;
+  if (paths.utility >= 2) stats.weaken = (stats.weaken || 0) + 0.05;
+  if (paths.utility >= 4) stats.slow = Math.max(stats.slow || 0, 0.22);
+
+  if (paths.mastery <= 0) return;
+  if (tower.type === "thorn") {
+    stats.pierce = (stats.pierce || 0) + paths.mastery;
+    if (paths.mastery >= 3) stats.bleed = 3.8;
+  } else if (tower.type === "needle") {
+    stats.multiShot = 1 + Math.min(3, paths.mastery);
+    stats.fireRate *= Math.max(0.52, 1 - paths.mastery * 0.055);
+  } else if (tower.type === "relic") {
+    stats.splash += paths.mastery * 18;
+    if (paths.mastery >= 3) stats.stun = 0.35;
+  } else if (tower.type === "spore") {
+    stats.poison = 3.4 + paths.mastery * 1.2;
+    stats.slow = Math.max(stats.slow || 0, 0.45 + paths.mastery * 0.04);
+  } else if (tower.type === "horn") {
+    stats.pierce = (stats.pierce || 0) + 1 + Math.floor(paths.mastery / 2);
+    stats.execute = paths.mastery >= 3 ? 0.16 : 0;
+  } else if (tower.type === "kiln") {
+    stats.burn = (stats.burn || 0) + paths.mastery * 2;
+    stats.splash += paths.mastery * 10;
+  } else if (tower.type === "prism") {
+    stats.chain = (stats.chain || 0) + paths.mastery;
+    stats.chainRange += paths.mastery * 18;
+  } else if (tower.type === "antler") {
+    stats.armorBreak = (stats.armorBreak || 0) + paths.mastery * 18;
+    if (paths.mastery >= 3) stats.shieldSplash = 42;
+  } else if (tower.type === "keeper") {
+    stats.auraDamage = (stats.auraDamage || 1) + paths.mastery * 0.07;
+    stats.auraRate = Math.max(0.62, (stats.auraRate || 1) - paths.mastery * 0.045);
+    stats.range += paths.mastery * 18;
+  }
+}
+
 function placeTower(col, row) {
   const spec = towerTypes[selectedTowerType];
   if (!spec || !isTowerUnlocked(selectedTowerType)) return;
   if (!canPlace(col, row)) {
     setStatus(terrainAt(col, row) === "path" ? "That is the path. It is busy being walked on." : "That tile cannot hold a tower.");
+    audio.deny();
     return;
   }
   if (bread < spec.cost) {
     setStatus(`Need ${spec.cost} bread for ${spec.name}. Current bread: ${bread}.`);
+    audio.deny();
     return;
   }
   bread -= spec.cost;
@@ -457,7 +616,8 @@ function placeTower(col, row) {
     x: col * TILE + TILE / 2,
     y: row * TILE + TILE / 2,
     level: 1,
-    branch: "",
+    paths: { power: 0, utility: 0, mastery: 0 },
+    pulse: 0.36,
     cooldown: 0,
     spent: spec.cost
   };
@@ -466,6 +626,8 @@ function placeTower(col, row) {
   selectedTowerId = tower.id;
   setStatus(`${spec.name} placed. ${spec.role} is now somebody else's problem.`);
   burst(tower.x, tower.y, spec.color, 18);
+  pulses.push({ x: tower.x, y: tower.y, radius: 18, life: 0.42, maxLife: 0.42, color: spec.color });
+  audio.place();
   updateStats();
   renderInspector();
 }
@@ -488,10 +650,12 @@ function towerStats(tower, options = {}) {
     chain: spec.chain ? spec.chain + Math.floor(levelBonus / 2) : 0,
     armorBreak: spec.armorBreak ? spec.armorBreak + levelBonus * 6 : 0,
     chainRange: 105 + levelBonus * 8,
+    pierce: spec.pierce || 0,
+    multiShot: spec.multiShot || 1,
     upgradeCost: Math.floor(spec.cost * (0.72 + tower.level * 0.56)),
-    branchCost: Math.floor(spec.cost * 1.4)
+    value: tower.spent
   };
-  if (tower.branch && branchUpgrades[tower.branch]) branchUpgrades[tower.branch].apply(stats);
+  applyPathStats(stats, tower);
   if (!options.ignoreAuras) {
     stats.damage *= auraMultiplier(tower, "damage") * zoneMultiplier(tower.col, tower.row, "damage");
     stats.fireRate *= auraMultiplier(tower, "fireRate");
@@ -501,65 +665,39 @@ function towerStats(tower, options = {}) {
   return stats;
 }
 
-function renderMapPicker() {
-  mapPicker.innerHTML = Object.entries(maps).map(([id, map]) => {
-    const complete = progress.completedMaps.includes(id);
-    return `
-      <button type="button" class="map-choice ${id === selectedMapId ? "is-active" : ""}" data-map="${id}" ${waveActive || towers.length ? "disabled" : ""}>
-        <span>${map.name}</span>
-        <small>${map.difficulty} · ${map.paths.length} lane${map.paths.length > 1 ? "s" : ""}${complete ? " · cleared" : ""}</small>
-      </button>
-    `;
-  }).join("");
+function statLine(stats) {
+  const parts = [
+    `DMG ${stats.damage}`,
+    `RNG ${Math.round(stats.range)}`,
+    `RATE ${stats.fireRate.toFixed(2)}s`
+  ];
+  if (stats.splash) parts.push(`AOE ${Math.round(stats.splash)}`);
+  if (stats.chain) parts.push(`CHAIN ${stats.chain}`);
+  if (stats.pierce) parts.push(`PIERCE ${stats.pierce}`);
+  if (stats.slow) parts.push(`SLOW ${Math.round(stats.slow * 100)}%`);
+  if (stats.burn) parts.push(`BURN ${stats.burn.toFixed(1)}s`);
+  if (stats.poison) parts.push(`POISON ${stats.poison.toFixed(1)}s`);
+  if (stats.auraDamage) parts.push(`AURA x${stats.auraDamage.toFixed(2)}`);
+  return parts.join(" | ");
 }
 
-function renderTowerShop() {
-  towerShop.innerHTML = Object.entries(towerTypes).map(([id, tower]) => {
-    const unlocked = isTowerUnlocked(id);
-    return `
-      <button class="tower-choice ${id === selectedTowerType ? "is-active" : ""}" type="button" data-tower="${id}" ${unlocked ? "" : "disabled"}>
-        <span>${tower.name}</span>
-        <small>${unlocked ? `${tower.role} · ${tower.cost} bread` : `Unlock at best wave ${tower.unlockWave}`}</small>
-      </button>
-    `;
-  }).join("");
+function compareStats(before, after) {
+  const changes = [];
+  if (after.damage !== before.damage) changes.push(`damage ${before.damage} -> ${after.damage}`);
+  if (Math.round(after.range) !== Math.round(before.range)) changes.push(`range ${Math.round(before.range)} -> ${Math.round(after.range)}`);
+  if (after.fireRate.toFixed(2) !== before.fireRate.toFixed(2)) changes.push(`rate ${before.fireRate.toFixed(2)}s -> ${after.fireRate.toFixed(2)}s`);
+  if ((after.splash || 0) !== (before.splash || 0)) changes.push(`aoe ${Math.round(before.splash || 0)} -> ${Math.round(after.splash || 0)}`);
+  if ((after.chain || 0) !== (before.chain || 0)) changes.push(`chains ${(before.chain || 0)} -> ${(after.chain || 0)}`);
+  if ((after.pierce || 0) !== (before.pierce || 0)) changes.push(`pierce ${(before.pierce || 0)} -> ${(after.pierce || 0)}`);
+  return changes.slice(0, 3).join(", ") || upgradePaths.mastery.detail(0);
 }
 
-function renderInspector() {
-  const tower = selectedTower();
-  const preview = towerTypes[selectedTowerType];
-  if (!tower) {
-    towerInspector.innerHTML = `
-      <span>${preview.name}</span>
-      <small>${preview.description}</small>
-      <small><b>Strong:</b> ${preview.strong.join(", ")} · <b>Weak:</b> ${preview.weak.join(", ")}</small>
-      <small>Click an open tile to build for ${preview.cost} bread.</small>
-    `;
-    return;
-  }
-  const stats = towerStats(tower);
-  const branches = Object.entries(branchUpgrades).map(([id, branch]) => `
-    <button type="button" data-branch-tower="${id}" ${tower.branch ? "disabled" : ""}>${branch.name}</button>
-  `).join("");
-  towerInspector.innerHTML = `
-    <span>${stats.name} · Level ${tower.level}${tower.branch ? ` · ${branchUpgrades[tower.branch].name}` : ""}</span>
-    <small>${stats.description}</small>
-    <small>Damage ${stats.damage}, range ${Math.round(stats.range)}, rate ${stats.fireRate.toFixed(2)}s${stats.splash ? `, splash ${Math.round(stats.splash)}` : ""}${stats.chain ? `, chains ${stats.chain}` : ""}.</small>
-    <div class="tower-actions">
-      <button type="button" data-upgrade-tower>Upgrade · ${stats.upgradeCost}</button>
-      <button type="button" data-sell-tower>Sell · ${Math.floor(tower.spent * 0.58)}</button>
-    </div>
-    ${tower.level >= 3 ? `<small>Branch upgrade${tower.branch ? `: ${branchUpgrades[tower.branch].detail}` : ` · ${stats.branchCost} bread`}</small><div class="tower-branches">${branches}</div>` : `<small>Reach level 3 to pick a branch upgrade.</small>`}
-  `;
-}
-
-function renderEnemyIntel() {
-  const counts = enemies.reduce((map, enemy) => map.set(enemy.className, (map.get(enemy.className) || 0) + 1), new Map());
-  const active = [...counts.entries()].map(([name, count]) => `${name} x${count}`).join(" · ");
-  enemyIntel.innerHTML = `
-    <span>Enemy Intel</span>
-    <small>${active || "No enemies active. Next wave will adapt to the map."}</small>
-  `;
+function previewPathStats(tower, pathId) {
+  const clone = {
+    ...tower,
+    paths: { ...towerPathLevels(tower), [pathId]: (towerPathLevels(tower)[pathId] || 0) + 1 }
+  };
+  return towerStats(clone);
 }
 
 function upgradeTower() {
@@ -568,6 +706,7 @@ function upgradeTower() {
   const stats = towerStats(tower);
   if (bread < stats.upgradeCost) {
     setStatus(`Need ${stats.upgradeCost} bread to upgrade ${stats.name}.`);
+    audio.deny();
     return;
   }
   bread -= stats.upgradeCost;
@@ -575,23 +714,9 @@ function upgradeTower() {
   tower.level += 1;
   setStatus(`${stats.name} upgraded to level ${tower.level}.`);
   burst(tower.x, tower.y, stats.color, 24);
-  updateStats();
-  renderInspector();
-}
-
-function branchTower(branchId) {
-  const tower = selectedTower();
-  if (!tower || tower.branch || tower.level < 3) return;
-  const stats = towerStats(tower);
-  if (bread < stats.branchCost) {
-    setStatus(`Need ${stats.branchCost} bread for ${branchUpgrades[branchId].name}.`);
-    return;
-  }
-  bread -= stats.branchCost;
-  tower.spent += stats.branchCost;
-  tower.branch = branchId;
-  setStatus(`${stats.name} specialized into ${branchUpgrades[branchId].name}.`);
-  burst(tower.x, tower.y, stats.color, 34);
+  pulses.push({ x: tower.x, y: tower.y, radius: stats.range * 0.14, life: 0.44, maxLife: 0.44, color: stats.color });
+  cameraShake = Math.max(cameraShake, 2.5);
+  audio.upgrade();
   updateStats();
   renderInspector();
 }
@@ -710,7 +835,36 @@ function updateTowers(dt) {
     const target = targetFor(tower, stats);
     if (!target) continue;
     tower.cooldown = stats.fireRate;
-    shots.push({ x: tower.x, y: tower.y, targetId: target.id, sourceType: tower.type, speed: stats.projectileSpeed, damage: stats.damage, splash: stats.splash || 0, slow: stats.slow || 0, weaken: stats.weaken || 0, burn: stats.burn || 0, chain: stats.chain || 0, chainRange: stats.chainRange || 105, armorBreak: stats.armorBreak || 0, toughBonus: stats.toughBonus || 1, color: stats.color, radius: tower.type === "horn" ? 4 : 6 });
+    const spread = (stats.multiShot || 1) - 1;
+    for (let i = 0; i < (stats.multiShot || 1); i += 1) {
+      const offset = (i - spread / 2) * 5;
+      shots.push({
+        x: tower.x + offset,
+        y: tower.y - offset,
+        px: tower.x,
+        py: tower.y,
+        targetId: target.id,
+        sourceType: tower.type,
+        speed: stats.projectileSpeed,
+        damage: stats.damage,
+        splash: stats.splash || 0,
+        slow: stats.slow || 0,
+        weaken: stats.weaken || 0,
+        burn: stats.burn || 0,
+        bleed: stats.bleed || 0,
+        poison: stats.poison || 0,
+        stun: stats.stun || 0,
+        chain: stats.chain || 0,
+        chainRange: stats.chainRange || 105,
+        armorBreak: stats.armorBreak || 0,
+        shieldSplash: stats.shieldSplash || 0,
+        execute: stats.execute || 0,
+        pierce: stats.pierce || 0,
+        toughBonus: stats.toughBonus || 1,
+        color: stats.color,
+        radius: tower.type === "horn" ? 4 : 6
+      });
+    }
   }
 }
 
@@ -736,6 +890,12 @@ function applyShotEffects(enemy, shot) {
   }
   if (shot.weaken > 0) enemy.weaken = Math.max(enemy.weaken, shot.weaken);
   if (shot.burn > 0) enemy.burn = Math.max(enemy.burn, shot.burn);
+  if (shot.bleed > 0) enemy.bleed = Math.max(enemy.bleed || 0, shot.bleed);
+  if (shot.poison > 0) enemy.poison = Math.max(enemy.poison || 0, shot.poison);
+  if (shot.stun > 0) {
+    enemy.slow = Math.max(enemy.slow, shot.stun);
+    enemy.slowPower = Math.max(enemy.slowPower, 0.92);
+  }
 }
 
 function hitEnemy(enemy, shot) {
@@ -748,6 +908,7 @@ function hitEnemy(enemy, shot) {
   for (const target of affected) {
     damageEnemy(target, shot.damage * (target === enemy ? 1 : 0.58), shot);
     applyShotEffects(target, shot);
+    if (shot.execute && target.hp / Math.max(1, target.maxHp) < shot.execute) target.hp = 0;
   }
   let chainFrom = enemy;
   for (let chain = 0; chain < shot.chain; chain += 1) {
@@ -760,6 +921,8 @@ function hitEnemy(enemy, shot) {
     particles.push({ x: next.x, y: next.y, vx: 0, vy: 0, radius: 9, life: 0.18, maxLife: 0.18, color: shot.color });
   }
   burst(enemy.x, enemy.y, shot.color, shot.splash ? 16 : 6, shot.splash ? 220 : 150);
+  if (shot.splash > 64 || shot.sourceType === "relic") cameraShake = Math.max(cameraShake, 7);
+  audio.hit(shot.splash > 64 || shot.damage > 70);
 }
 
 function updateShots(dt) {
@@ -774,9 +937,17 @@ function updateShots(dt) {
     const dy = target.y - shot.y;
     const dist = Math.hypot(dx, dy) || 1;
     const step = shot.speed * dt;
+    shot.px = shot.x;
+    shot.py = shot.y;
     if (dist <= step + target.radius) {
       hitEnemy(target, shot);
-      shots.splice(i, 1);
+      shot.pierce -= 1;
+      if (shot.pierce < 0) shots.splice(i, 1);
+      else {
+        const nextTarget = enemies.find((enemy) => enemy.id !== target.id && enemy.hp > 0 && distanceSq(target, enemy) < 150 ** 2);
+        if (nextTarget) shot.targetId = nextTarget.id;
+        else shots.splice(i, 1);
+      }
       continue;
     }
     shot.x += (dx / dist) * step;
@@ -790,6 +961,10 @@ function updateEnemyStatuses(dt) {
       enemy.hp -= 8 * (enemy.resist.burn || 1) * dt;
       enemy.burn -= dt;
       if (Math.random() < dt * 8) burst(enemy.x, enemy.y, "#ff8f5c", 1, 40);
+    }
+    if (enemy.bleed > 0) {
+      enemy.hp -= 6 * dt;
+      enemy.bleed -= dt;
     }
     if (enemy.poison > 0) {
       enemy.hp -= 5 * dt;
@@ -813,6 +988,7 @@ function removeDefeatedEnemies() {
     const reward = enemy.reward;
     const scoreGain = reward * 24 + wave * 12 + Math.floor(activeMap.reward * 80);
     bread += reward;
+    waveIncome += reward;
     claimBread += Math.max(1, Math.floor(reward / 2));
     score += scoreGain;
     floater(enemy.x, enemy.y - enemy.radius - 10, `+${reward}`, "#fff29b");
@@ -858,6 +1034,8 @@ function updateWave(dt) {
     running = false;
     const bonus = Math.round((20 + wave * 5 + Math.max(0, lives - 12)) * activeMap.reward);
     bread += bonus;
+    waveIncome += bonus;
+    lastWaveIncome = waveIncome;
     claimBread += Math.max(2, Math.floor(bonus / 8));
     score += Math.round((320 + wave * 110 + lives * 18) * activeMap.reward);
     progress.bestWave = Math.max(progress.bestWave, wave);
@@ -872,7 +1050,7 @@ function updateWave(dt) {
 }
 
 function updateParticles(dt) {
-  for (const list of [particles, floaters]) {
+  for (const list of [particles, floaters, pulses]) {
     for (let i = list.length - 1; i >= 0; i -= 1) {
       const item = list[i];
       item.life -= dt;
@@ -888,6 +1066,8 @@ function updateParticles(dt) {
 function update(now) {
   const dt = Math.min(0.033, (now - lastTime) / 1000 || 0);
   lastTime = now;
+  previewPulse += dt;
+  cameraShake = Math.max(0, cameraShake - dt * 18);
   if (running && !ended) {
     updateWave(dt);
     updateTowers(dt);
@@ -1010,6 +1190,14 @@ function drawEnemies() {
 function drawShots() {
   for (const shot of shots) {
     ctx.save();
+    ctx.globalAlpha = 0.36;
+    ctx.strokeStyle = shot.color;
+    ctx.lineWidth = Math.max(2, shot.radius * 0.7);
+    ctx.beginPath();
+    ctx.moveTo(shot.px || shot.x, shot.py || shot.y);
+    ctx.lineTo(shot.x, shot.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
     ctx.fillStyle = shot.color;
     ctx.shadowColor = shot.color;
     ctx.shadowBlur = 12;
@@ -1039,6 +1227,17 @@ function drawParticles() {
     ctx.fillText(text.text, text.x, text.y);
     ctx.restore();
   }
+  for (const pulse of pulses) {
+    ctx.save();
+    const t = 1 - clamp(pulse.life / pulse.maxLife, 0, 1);
+    ctx.globalAlpha = clamp(pulse.life / pulse.maxLife, 0, 1) * 0.55;
+    ctx.strokeStyle = pulse.color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(pulse.x, pulse.y, pulse.radius + t * 54, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function drawPlacementHint() {
@@ -1055,17 +1254,28 @@ function drawPlacementHint() {
     }
   }
   if (hoverCell && canPlace(hoverCell.col, hoverCell.row)) {
-    ctx.globalAlpha = 0.2;
+    ctx.globalAlpha = 0.18 + Math.sin(previewPulse * 8) * 0.04;
     ctx.fillStyle = spec.color;
     ctx.fillRect(hoverCell.col * TILE + 4, hoverCell.row * TILE + 4, TILE - 8, TILE - 8);
     ctx.translate(hoverCell.col * TILE + TILE / 2, hoverCell.row * TILE + TILE / 2);
     drawRange(spec.range, spec.color, 0.16);
+  } else if (hoverCell && !ended) {
+    ctx.globalAlpha = 0.25 + Math.sin(previewPulse * 10) * 0.05;
+    ctx.fillStyle = "#ff7676";
+    ctx.fillRect(hoverCell.col * TILE + 4, hoverCell.row * TILE + 4, TILE - 8, TILE - 8);
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "#fff";
+    ctx.font = "900 12px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(placementProblem(hoverCell.col, hoverCell.row), hoverCell.col * TILE + TILE / 2, hoverCell.row * TILE + TILE / 2 + 4);
   }
   ctx.restore();
 }
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  if (cameraShake > 0) ctx.translate(rand(-cameraShake, cameraShake), rand(-cameraShake, cameraShake));
   ctx.drawImage(drawBackground(selectedMapId), 0, 0);
   drawPlacementHint();
   drawPathBadges();
@@ -1073,6 +1283,7 @@ function draw() {
   drawShots();
   drawEnemies();
   drawParticles();
+  ctx.restore();
   if (!running && !waveActive && !ended && wave === 1 && !towers.length) {
     ctx.save();
     ctx.fillStyle = "rgba(3, 12, 7, 0.54)";
@@ -1111,9 +1322,108 @@ function draw() {
     ctx.fillText("Vault breached", canvas.width / 2, 246);
     ctx.fillStyle = "#f7fff4";
     ctx.font = "850 18px Inter, system-ui, sans-serif";
-    ctx.fillText(`${Math.floor(score).toLocaleString()} score · ${claimBread} claimable bread`, canvas.width / 2, 282);
+    ctx.fillText(`${Math.floor(score).toLocaleString()} score - ${claimBread} claimable bread`, canvas.width / 2, 282);
     ctx.restore();
   }
+}
+
+function renderMapPicker() {
+  mapPicker.innerHTML = Object.entries(maps).map(([id, map]) => {
+    const complete = progress.completedMaps.includes(id);
+    return `
+      <button type="button" class="map-choice ${id === selectedMapId ? "is-active" : ""}" data-map="${id}" ${waveActive || towers.length ? "disabled" : ""}>
+        <span>${map.name}</span>
+        <small>${map.difficulty} - ${map.paths.length} lane${map.paths.length > 1 ? "s" : ""}${complete ? " - cleared" : ""}</small>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderTowerShop() {
+  towerShop.innerHTML = Object.entries(towerTypes).map(([id, tower]) => {
+    const unlocked = isTowerUnlocked(id);
+    return `
+      <button class="tower-choice ${id === selectedTowerType ? "is-active" : ""}" type="button" data-tower="${id}" ${unlocked ? "" : "disabled"}>
+        <span>${tower.name}</span>
+        <small>${unlocked ? `${tower.role} - ${tower.cost} bread` : `Unlock at best wave ${tower.unlockWave}`}</small>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderInspector() {
+  const tower = selectedTower();
+  const preview = towerTypes[selectedTowerType];
+  if (!tower) {
+    towerInspector.innerHTML = `
+      <span>${preview.name}</span>
+      <small>${preview.description}</small>
+      <small><b>Strong:</b> ${preview.strong.join(", ")} - <b>Weak:</b> ${preview.weak.join(", ")}</small>
+      <small>${statLine({ ...preview, splash: preview.splash || 0, chain: preview.chain || 0, pierce: preview.pierce || 0, slow: preview.slow || 0, fireRate: preview.fireRate })}</small>
+      <small>Click an open tile to build for ${preview.cost} bread.</small>
+    `;
+    return;
+  }
+  const stats = towerStats(tower);
+  const pathButtons = Object.entries(upgradePaths).map(([id, path]) => {
+    const result = canUpgradePath(tower, id);
+    const current = towerPathLevels(tower)[id] || 0;
+    const nextStats = current < 4 ? previewPathStats(tower, id) : stats;
+    const compare = current < 4 ? compareStats(stats, nextStats) : "Path complete";
+    return `
+      <button type="button" data-upgrade-path="${id}" style="--path-color:${path.color}" ${result.ok ? "" : "disabled"}>
+        <span>${path.name} ${current}/4</span>
+        <small>${path.tiers[current] || "Complete"} - ${result.cost || pathUpgradeCost(tower, id)} bread</small>
+        <small>${result.ok ? compare : result.reason}</small>
+      </button>
+    `;
+  }).join("");
+  const pathSummary = Object.entries(towerPathLevels(tower)).map(([id, level]) => `${upgradePaths[id].name} ${level}`).join(" / ");
+  towerInspector.innerHTML = `
+    <span>${stats.name} - L${tower.level} - ${pathSummary}</span>
+    <small>${stats.description}</small>
+    <small>${statLine(stats)}</small>
+    <small>Value ${tower.spent} bread - Sell ${Math.floor(tower.spent * 0.58)} - Efficiency ${(Math.max(1, stats.damage) / Math.max(1, tower.spent) * 100).toFixed(1)}</small>
+    <div class="tower-paths">${pathButtons}</div>
+    <div class="tower-actions">
+      <button type="button" data-upgrade-tower>Basic Tier - ${stats.upgradeCost}</button>
+      <button type="button" data-sell-tower>Sell - ${Math.floor(tower.spent * 0.58)}</button>
+    </div>
+  `;
+}
+
+function renderEnemyIntel() {
+  const counts = enemies.reduce((map, enemy) => map.set(enemy.className, (map.get(enemy.className) || 0) + 1), new Map());
+  const active = [...counts.entries()].map(([name, count]) => `${name} x${count}`).join(" - ");
+  enemyIntel.innerHTML = `
+    <span>Enemy Intel</span>
+    <small>${active || `No enemies active. Last income: ${lastWaveIncome} bread. Next wave will adapt to the map.`}</small>
+  `;
+}
+
+function upgradeTowerPath(pathId) {
+  const tower = selectedTower();
+  if (!tower) return;
+  const result = canUpgradePath(tower, pathId);
+  const cost = pathUpgradeCost(tower, pathId);
+  if (!result.ok) {
+    setStatus(`${upgradePaths[pathId].name} path unavailable: ${result.reason}.`);
+    audio.deny();
+    return;
+  }
+  bread -= cost;
+  tower.spent += cost;
+  towerPathLevels(tower)[pathId] += 1;
+  tower.pulse = 0.42;
+  const stats = towerStats(tower);
+  setStatus(`${stats.name} ${upgradePaths[pathId].name} upgraded to tier ${towerPathLevels(tower)[pathId]}.`);
+  burst(tower.x, tower.y, upgradePaths[pathId].color, 30, 240);
+  pulses.push({ x: tower.x, y: tower.y, radius: stats.range * 0.15, life: 0.5, maxLife: 0.5, color: upgradePaths[pathId].color });
+  cameraShake = Math.max(cameraShake, 3);
+  audio.upgrade();
+  updateStats();
+  renderInspector();
+  renderTowerShop();
 }
 
 mapPicker.addEventListener("click", (event) => {
@@ -1157,8 +1467,8 @@ canvas.addEventListener("click", (event) => {
 
 towerInspector.addEventListener("click", (event) => {
   if (event.target.closest("[data-upgrade-tower]")) upgradeTower();
-  const branchButton = event.target.closest("[data-branch-tower]");
-  if (branchButton) branchTower(branchButton.dataset.branchTower);
+  const pathButton = event.target.closest("[data-upgrade-path]");
+  if (pathButton) upgradeTowerPath(pathButton.dataset.upgradePath);
   if (event.target.closest("[data-sell-tower]")) sellTower();
   draw();
 });
