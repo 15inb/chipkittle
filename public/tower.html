@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chipkittle Tower Defense</title>
-  <meta name="description" content="Build ritual towers, defend the path, and keep the bread vault alive.">
+  <title>Chipkittle Tower Defense Disabled</title>
+  <meta name="description" content="Chipkittle Tower Defense is currently disabled.">
   <link rel="icon" type="image/png" href="/notativelogotransparent.png">
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/site.css">
@@ -31,70 +31,11 @@
     </header>
 
     <section class="page-head game-head">
-      <p class="eyebrow">Den defense</p>
-      <h1>Chipkittle Tower Defense</h1>
-      <p>Pick a map, place squirrel-made towers, and stop scampering little disasters from reaching the bread vault.</p>
-    </section>
-
-    <section class="game-shell tower-shell" aria-label="Chipkittle Tower Defense game">
-      <div class="game-stage">
-        <canvas id="towerCanvas" width="960" height="540" aria-label="Chipkittle Tower Defense playfield"></canvas>
-      </div>
-      <aside class="game-panel tower-panel">
-        <div class="tower-stats-grid">
-          <div class="game-stat"><span>Score</span><strong id="scoreValue">0</strong></div>
-          <div class="game-stat"><span>Bread</span><strong id="breadValue">105</strong></div>
-          <div class="game-stat"><span>Lives</span><strong id="livesValue">24</strong></div>
-          <div class="game-stat"><span>Wave</span><strong id="waveValue">1</strong></div>
-        </div>
-
-        <label>
-          Player name
-          <input id="playerName" maxlength="24" autocomplete="nickname" placeholder="Chipkittle name">
-        </label>
-
-        <div class="tower-section">
-          <span>Map</span>
-          <div class="map-picker" id="mapPicker" aria-label="Map selection"></div>
-        </div>
-
-        <div class="tower-section">
-          <span>Towers</span>
-          <div class="tower-shop" id="towerShop" aria-label="Tower shop"></div>
-        </div>
-
-        <div class="game-controls">
-          <button class="button primary" type="button" id="startWave">Start Wave</button>
-          <button class="button secondary" type="button" id="resetGame">Reset</button>
-        </div>
-
-        <div class="tower-inspector" id="towerInspector">
-          <span>No tower selected</span>
-          <small>Pick a tower type, then click an open tile beside the path.</small>
-        </div>
-
-        <div class="tower-inspector enemy-intel" id="enemyIntel">
-          <span>Enemy Intel</span>
-          <small>No enemies active.</small>
-        </div>
-
-        <div class="game-status" id="statusText">Build before wave 1. The bread vault is watching.</div>
-        <div class="claim-card" id="claimCard">
-          <span>Discord claim</span>
-          <small>Defend the vault, then lose or finish to get a claim code.</small>
-        </div>
-        <div class="leaderboard">
-          <div class="leaderboard-head">
-            <span>Leaderboard</span>
-            <button type="button" id="refreshLeaderboard">Refresh</button>
-          </div>
-          <ol id="leaderboardList"></ol>
-          <small class="game-status" id="leaderboardStatus" hidden></small>
-        </div>
-      </aside>
+      <p class="eyebrow">Den defense paused</p>
+      <h1>Tower Defense is disabled</h1>
+      <p>The little squirrel construction crew has been politely escorted off the public games page for now.</p>
+      <a class="button primary" href="/game">Back to Games</a>
     </section>
   </main>
-
-  <script type="module" src="/tower.js"></script>
 </body>
 </html>

@@ -53,7 +53,7 @@
     },
     {
       "source": "/tower",
-      "destination": "/tower.html"
+      "destination": "/game.html"
     },
     {
       "source": "/relic",
