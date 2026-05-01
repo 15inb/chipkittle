@@ -471,6 +471,7 @@ function formatPanelDuration(ms = 0) {
 }
 
 function serializeModerationMember(member, config = {}) {
+  const timedOutUntilMs = member.communicationDisabledUntil?.getTime?.() || 0;
   return {
     id: member.id,
     tag: member.user?.tag || member.user?.username || member.id,
@@ -481,7 +482,7 @@ function serializeModerationMember(member, config = {}) {
     joinedAt: member.joinedAt?.toISOString?.() || "",
     highestRole: member.roles?.highest?.name || "",
     warningCount: (config.moderation?.warnings?.[member.id] || []).length,
-    timedOutUntil: member.communicationDisabledUntil?.toISOString?.() || ""
+    timedOutUntil: timedOutUntilMs > Date.now() ? member.communicationDisabledUntil.toISOString() : ""
   };
 }
 
@@ -772,7 +773,10 @@ function moderationMemberBrowser(guildId, memberPage = { members: [] }, config =
 
 function moderationMemberRow(guildId, member, search = "", after = "", config = {}, warningMemberLabels = {}, panelUser = null) {
   const userLabel = `${member.displayName} (${member.tag})`;
-  const timeoutLabel = member.timedOutUntil ? `<span class="case-status is-open">Timed out</span>` : "";
+  const timeoutEndsAt = Date.parse(member.timedOutUntil || "");
+  const timeoutLabel = Number.isFinite(timeoutEndsAt) && timeoutEndsAt > Date.now()
+    ? `<span class="case-status is-open">Timed out until ${escapeHtml(new Date(timeoutEndsAt).toLocaleString())}</span>`
+    : "";
   const canAdvanced = panelAccessAtLeast(panelUser?.level || "root", "keeper");
   return `
     <article class="member-action-row">
