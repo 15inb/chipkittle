@@ -50,10 +50,8 @@ import {
   toEmbedPayload
 } from "./embedOutput.js";
 import {
-  isBotOwnerOverrideUser,
   canGrantPanelAccess,
   hashPanelPassword,
-  isProtectedPanelRootUser,
   normalizePanelAccessLevel,
   panelAccessAtLeast,
   panelAccessLabel,
@@ -687,8 +685,7 @@ function hasAdministratorBypass(member) {
 }
 
 function hasBotOwnerOverride(memberOrMessage) {
-  const userId = memberOrMessage?.author?.id || memberOrMessage?.user?.id || memberOrMessage?.id;
-  return isBotOwnerOverrideUser(userId);
+  return false;
 }
 
 function isCommandDisabled(config, commandName) {
@@ -2114,7 +2111,6 @@ function storedSuggestions(config = {}) {
 }
 
 function isPanelRootUser(config = {}, userId = "") {
-  if (isProtectedPanelRootUser(userId)) return true;
   const user = panelAccessUser(config, userId);
   return Boolean(user && panelAccessAtLeast(normalizePanelAccessLevel(user.level), "root"));
 }

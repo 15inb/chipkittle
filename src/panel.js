@@ -25,10 +25,8 @@ import { CHIPKITTLE_LORE } from "./chipkittleLore.js";
 import { createDashClaim, redeemDashClaim } from "./dashClaims.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
 import {
-  PROTECTED_PANEL_ROOT_DISCORD_IDS,
   PANEL_ACCESS_LEVELS,
   hashPanelPassword,
-  isProtectedPanelRootUser,
   normalizePanelAccessLevel,
   panelAccessAtLeast,
   panelAccessCanManage,
@@ -36,7 +34,6 @@ import {
   panelAccessRank,
   panelAccessUser,
   panelAccessUsers,
-  protectedPanelRootEntry,
   randomRecoveryCode,
   randomPanelPassword,
   verifyPanelPassword
@@ -57,7 +54,6 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const OAUTH_STATE_BYTES = 18;
-const DISABLED_OWNER_ROOT_FALLBACK_IDS = new Set(["140478632165507073"]);
 const PANEL_ROLE_TEMPLATE_LEVELS = {
   moderator: "round_table",
   senior_moderator: "keeper",
@@ -3351,13 +3347,6 @@ function commandRoleAccess(commandList, roles, channels, commandRoles = {}, pane
 function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
   const users = Object.entries(panelAccessUsers(config))
     .filter(([, entry]) => !entry?.revokedAt)
-    .filter(([userId]) => !isProtectedPanelRootUser(userId))
-    .sort((a, b) => String(a[1]?.username || "").localeCompare(String(b[1]?.username || "")));
-  const protectedUsers = PROTECTED_PANEL_ROOT_DISCORD_IDS
-    .map((userId) => {
-      const entry = panelAccessUsers(config)[userId] || {};
-      return [userId, { ...entry, ...protectedPanelRootEntry(userId), username: entry?.username || "Eclip" }];
-    })
     .sort((a, b) => String(a[1]?.username || "").localeCompare(String(b[1]?.username || "")));
   const actorLevel = panelUser?.level || "root";
   const canRoot = panelAccessAtLeast(panelUser?.level || "root", "root");
@@ -3446,8 +3435,8 @@ function panelAccessWorkspace(guildId, config = {}, panelUser = null) {
       </section>
       <div class="member-action-list">
         ${
-          [...protectedUsers, ...users].length
-            ? [...protectedUsers, ...users].map(([userId, entry]) => panelAccessUserRow(guildId, userId, entry, actorLevel)).join("")
+          users.length
+            ? users.map(([userId, entry]) => panelAccessUserRow(guildId, userId, entry, actorLevel)).join("")
             : '<p class="muted">No panel users have been granted yet. Create one from Discord before exposing the panel publicly.</p>'
         }
       </div>
@@ -3487,8 +3476,7 @@ function permissionMatrixViewer(panelUser = null) {
 
 function panelAccessUserRow(guildId, userId, entry, actorLevel = "root") {
   const targetLevel = normalizePanelAccessLevel(entry.level);
-  const codeProtected = isProtectedPanelRootUser(userId);
-  const manageable = !codeProtected && panelAccessCanManage(actorLevel, targetLevel, targetLevel);
+  const manageable = panelAccessCanManage(actorLevel, targetLevel, targetLevel);
   const options = PANEL_ACCESS_LEVELS
     .filter((level) => panelAccessCanManage(actorLevel, targetLevel, level))
     .map((level) => `<option value="${level}" ${selected(targetLevel, level)}>${escapeHtml(panelAccessLabel(level))}</option>`)
@@ -3499,7 +3487,7 @@ function panelAccessUserRow(guildId, userId, entry, actorLevel = "root") {
         <strong>${escapeHtml(entry.username || userId)}</strong>
         <small>${escapeHtml(userId)} &middot; ${escapeHtml(panelAccessLabel(entry.level))}</small>
         <small>Granted ${escapeHtml(entry.grantedAt || "unknown")} by ${escapeHtml(entry.grantedBy || "unknown")}</small>
-        <small>Last login ${escapeHtml(entry.lastLoginAt || "never")} &middot; Expires ${escapeHtml(codeProtected ? "never (code-protected)" : (entry.expiresAt || "never"))}</small>
+        <small>Last login ${escapeHtml(entry.lastLoginAt || "never")} &middot; Expires ${escapeHtml(entry.expiresAt || "never")}</small>
       </div>
       ${manageable
         ? `<div class="access-user-actions">
@@ -3524,7 +3512,7 @@ function panelAccessUserRow(guildId, userId, entry, actorLevel = "root") {
               <button type="submit" class="danger-button">Revoke</button>
             </form>
           </div>`
-        : `<span class="muted">${codeProtected ? "Code-protected root" : "Protected"}</span>`}
+        : '<span class="muted">Protected</span>'}
     </article>
   `;
 }
@@ -4704,17 +4692,6 @@ export function createPanel({
   }
 
   function findPanelAccessForDiscordUser(userId = "") {
-    for (const storedGuildId of Object.keys(store.data?.guilds || {})) {
-      const protectedUser = protectedPanelRootEntry(userId);
-      if (protectedUser) {
-        return {
-          guildId: storedGuildId,
-          user: protectedUser,
-          entry: store.getGuild(storedGuildId).panelAccess?.users?.[userId] || null,
-          codeProtected: true
-        };
-      }
-    }
     for (const [storedGuildId, config] of Object.entries(store.data?.guilds || {})) {
       const entry = config.panelAccess?.users?.[userId];
       const user = panelAccessUser(config, userId);
@@ -4724,7 +4701,6 @@ export function createPanel({
   }
 
   function fallbackOwnerRoot(userId = "") {
-    if (DISABLED_OWNER_ROOT_FALLBACK_IDS.has(String(userId || ""))) return null;
     const ownedGuild = client.guilds.cache.find((guild) => guild.ownerId === userId);
     if (!ownedGuild) return null;
     const config = store.getGuild(ownedGuild.id);
@@ -6591,10 +6567,6 @@ export function createPanel({
       }
       const panelUser = currentPanelUser(request, discordGuild.id);
       const targetUserId = String(request.params.userId || "");
-      if (isProtectedPanelRootUser(targetUserId)) {
-        panelAccessDenied(response, "That root account is code-protected and can only be removed from source.");
-        return;
-      }
       const config = store.getGuild(discordGuild.id);
       const target = config.panelAccess?.users?.[targetUserId];
       if (!target) {
@@ -6639,10 +6611,6 @@ export function createPanel({
       }
       const panelUser = currentPanelUser(request, discordGuild.id);
       const targetUserId = String(request.params.userId || "");
-      if (isProtectedPanelRootUser(targetUserId)) {
-        panelAccessDenied(response, "That root account is code-protected and its level cannot be changed from the panel.");
-        return;
-      }
       const nextLevel = normalizePanelAccessLevel(request.body?.level);
       const config = store.getGuild(discordGuild.id);
       const target = config.panelAccess?.users?.[targetUserId];
@@ -6709,10 +6677,6 @@ export function createPanel({
       }
       const panelUser = currentPanelUser(request, discordGuild.id);
       const targetUserId = String(request.params.userId || "");
-      if (isProtectedPanelRootUser(targetUserId)) {
-        panelAccessDenied(response, "That root account is code-protected and does not expire.");
-        return;
-      }
       const config = store.getGuild(discordGuild.id);
       const target = config.panelAccess?.users?.[targetUserId];
       if (!target) {
@@ -6761,10 +6725,6 @@ export function createPanel({
       }
       const panelUser = currentPanelUser(request, discordGuild.id);
       const targetUserId = String(request.params.userId || "");
-      if (isProtectedPanelRootUser(targetUserId)) {
-        panelAccessDenied(response, "That root account is code-protected and does not use panel-managed recovery resets.");
-        return;
-      }
       const config = store.getGuild(discordGuild.id);
       const target = config.panelAccess?.users?.[targetUserId];
       if (!target) {

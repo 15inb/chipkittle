@@ -1,8 +1,6 @@
 import crypto from "node:crypto";
 
 export const PANEL_ACCESS_LEVELS = ["round_table", "keeper", "artifact_contributor", "root"];
-export const PROTECTED_PANEL_ROOT_DISCORD_IDS = ["140478632165507073"];
-export const BOT_OWNER_OVERRIDE_DISCORD_IDS = [...PROTECTED_PANEL_ROOT_DISCORD_IDS];
 
 export const PANEL_ACCESS_LABELS = {
   round_table: "Round Table",
@@ -75,43 +73,9 @@ export function panelAccessUsers(config = {}) {
   return config.panelAccess?.users || {};
 }
 
-export function isProtectedPanelRootUser(userId = "") {
-  return PROTECTED_PANEL_ROOT_DISCORD_IDS.includes(String(userId || ""));
-}
-
-export function isBotOwnerOverrideUser(userId = "") {
-  return BOT_OWNER_OVERRIDE_DISCORD_IDS.includes(String(userId || ""));
-}
-
-export function protectedPanelRootEntry(userId = "") {
-  const normalizedUserId = String(userId || "");
-  if (!isProtectedPanelRootUser(normalizedUserId)) return null;
-  return {
-    userId: normalizedUserId,
-    username: "Eclip",
-    level: "root",
-    grantedBy: "code-protected-root",
-    grantedAt: "hardcoded",
-    expiresAt: "",
-    lastLoginAt: "",
-    codeProtected: true
-  };
-}
-
 export function panelAccessUser(config = {}, userId = "") {
   const normalizedUserId = String(userId || "");
-  const protectedEntry = protectedPanelRootEntry(normalizedUserId);
   const entry = panelAccessUsers(config)[normalizedUserId];
-  if (protectedEntry) {
-    return {
-      ...protectedEntry,
-      username: String(entry?.username || protectedEntry.username || ""),
-      grantedBy: String(entry?.grantedBy || protectedEntry.grantedBy || ""),
-      grantedAt: String(entry?.grantedAt || protectedEntry.grantedAt || ""),
-      expiresAt: "",
-      lastLoginAt: String(entry?.lastLoginAt || protectedEntry.lastLoginAt || "")
-    };
-  }
   if (!entry || entry.revokedAt) return null;
   if (entry.expiresAt && Date.parse(entry.expiresAt) <= Date.now()) return null;
   return {
