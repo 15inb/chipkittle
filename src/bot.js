@@ -126,7 +126,7 @@ async function recordAiUsage(store, guildId, usage = {}) {
   });
 }
 
-export function createBot({ store, publicUrl, clientId, guildId, token, ai, defaultAiModel }) {
+export function createBot({ store, publicUrl, clientId, guildId, token, ai, defaultAiModel, slashCommandScope = "global" }) {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -165,7 +165,8 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
       clientId,
       guildId,
       guilds: readyClient.guilds.cache,
-      commandList
+      commandList,
+      scope: slashCommandScope
     }).catch((error) => {
       console.error("Slash command registration failed:", error);
     });
@@ -174,12 +175,13 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
 
   client.on(Events.GuildCreate, async (guild) => {
     await store.ensureGuild(guild.id);
-    if (!guildId || guildId === guild.id) {
+    if (slashCommandScope === "guild" && (!guildId || guildId === guild.id)) {
       await registerSlashCommands({
         token,
         clientId,
         guildId: guild.id,
-        commandList
+        commandList,
+        scope: "guild"
       }).catch((error) => {
         console.error(`Slash command registration failed for guild ${guild.id}:`, error);
       });

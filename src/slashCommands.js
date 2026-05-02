@@ -1,6 +1,119 @@
-import { Collection, REST, Routes, SlashCommandBuilder } from "discord.js";
+import {
+  ApplicationIntegrationType,
+  Collection,
+  InteractionContextType,
+  REST,
+  Routes,
+  SlashCommandBuilder
+} from "discord.js";
 
 const SLOW_COMMANDS = new Set(["ask", "chipify", "caption", "gif", "gifedit", "threatscan", "chipthreat"]);
+const MAX_SLASH_COMMANDS = 100;
+const SLASH_CATEGORY_PRIORITY = new Map([
+  ["General", 0],
+  ["Utility", 1],
+  ["Chipkittle", 2],
+  ["Gambling", 3],
+  ["Games", 4],
+  ["Community", 5],
+  ["Applications", 6],
+  ["Info", 7],
+  ["Fun", 8],
+  ["Dating", 9],
+  ["AI", 10],
+  ["Moderation", 11],
+  ["Config", 12]
+]);
+const LOW_PRIORITY_SLASH_COMMANDS = new Set([
+  "economyaudit",
+  "loancapsweep",
+  "breadset",
+  "breadadd",
+  "breadtake",
+  "giftitem",
+  "config",
+  "healthcheck",
+  "oauthcheck",
+  "configdoctor",
+  "permissionaudit",
+  "securitycheck",
+  "commandhealth",
+  "panelusers",
+  "configsummary",
+  "cooldownaudit",
+  "prunecooldowns",
+  "prioritystatus",
+  "grantaccess",
+  "setprefix",
+  "setwelcome",
+  "testwelcome",
+  "autorole",
+  "logchannel",
+  "automod",
+  "blockword",
+  "unblockword",
+  "recordchannel",
+  "suggestiondm",
+  "blockedwords",
+  "commandaccess",
+  "modsetup",
+  "modsummary",
+  "modlogstatus",
+  "aichannel",
+  "aiblacklist",
+  "aimodel",
+  "airatelimit",
+  "aipersonality",
+  "airoles",
+  "aiclearmemory",
+  "aibudget",
+  "airesetusage",
+  "aichaos",
+  "ailorestrict",
+  "airesponselength",
+  "aichannelpersona",
+  "aipreview",
+  "inventorytop",
+  "badgeboard",
+  "itemowners",
+  "vouchesfor",
+  "whovouched",
+  "topvouched",
+  "questfor",
+  "ranklist",
+  "randomrank"
+]);
+const PORTABLE_USER_INSTALL_COMMANDS = new Set([
+  "artifact",
+  "botinfo",
+  "caption",
+  "chipfact",
+  "chipify",
+  "chipkittle",
+  "echo",
+  "fun",
+  "gif",
+  "gifedit",
+  "help",
+  "invite",
+  "ping",
+  "remind",
+  "thetruth",
+  "timestamp",
+  "uptime"
+]);
+
+function slashCommandPriority(command) {
+  const categoryRank = SLASH_CATEGORY_PRIORITY.get(command.category || "Other") ?? 50;
+  const adminPenalty = LOW_PRIORITY_SLASH_COMMANDS.has(command.name) ? 100 : 0;
+  return categoryRank + adminPenalty;
+}
+
+function slashCommandList(commandList) {
+  return [...commandList]
+    .sort((a, b) => slashCommandPriority(a) - slashCommandPriority(b) || a.name.localeCompare(b.name))
+    .slice(0, MAX_SLASH_COMMANDS);
+}
 
 function slashDescription(command) {
   return String(command.description || "Run a Chipkittle command.").slice(0, 100);
@@ -197,10 +310,18 @@ function addGifSubcommands(builder) {
 }
 
 export function buildSlashCommands(commandList) {
-  return commandList.map((command) => {
+  return slashCommandList(commandList).map((command) => {
     const builder = new SlashCommandBuilder()
       .setName(command.name)
       .setDescription(slashDescription(command));
+
+    if (typeof builder.setIntegrationTypes === "function") {
+      builder.setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall);
+    }
+
+    if (typeof builder.setContexts === "function") {
+      builder.setContexts(InteractionContextType.Guild);
+    }
 
     if (command.name === "remind") {
       return addReminderOptions(builder).toJSON();
@@ -249,7 +370,12 @@ async function registerGuildSlashCommands(rest, clientId, guildId, body) {
   console.log(`Registered ${body.length} slash command(s) for guild ${guildId}.`);
 }
 
-export async function registerSlashCommands({ token, clientId, guildId, guilds, commandList }) {
+async function registerGlobalSlashCommands(rest, clientId, body) {
+  await rest.put(Routes.applicationCommands(clientId), { body });
+  console.log(`Registered ${body.length} global slash command(s).`);
+}
+
+export async function registerSlashCommands({ token, clientId, guildId, guilds, commandList, scope = "global" }) {
   if (!token || !clientId) {
     console.warn("Slash commands were not registered because DISCORD_TOKEN or CLIENT_ID is missing.");
     return;
@@ -257,6 +383,13 @@ export async function registerSlashCommands({ token, clientId, guildId, guilds, 
 
   const rest = new REST({ version: "10" }).setToken(token);
   const body = buildSlashCommands(commandList);
+
+  const normalizedScope = String(scope || "global").toLowerCase();
+
+  if (normalizedScope === "global") {
+    await registerGlobalSlashCommands(rest, clientId, body);
+    return;
+  }
 
   if (guildId) {
     await registerGuildSlashCommands(rest, clientId, guildId, body);
@@ -269,8 +402,7 @@ export async function registerSlashCommands({ token, clientId, guildId, guilds, 
     return;
   }
 
-  await rest.put(Routes.applicationCommands(clientId), { body });
-  console.log(`Registered ${body.length} slash command(s) globally.`);
+  await registerGlobalSlashCommands(rest, clientId, body);
 }
 
 function parseMentions(input, guild) {
@@ -278,6 +410,8 @@ function parseMentions(input, guild) {
   const members = new Collection();
   const roles = new Collection();
   const channels = new Collection();
+
+  if (!guild) return { users, members, roles, channels };
 
   for (const match of input.matchAll(/<@!?(\d+)>/g)) {
     const userId = match[1];
@@ -379,7 +513,7 @@ function createInteractionMessage(interaction, input) {
     createdTimestamp: interaction.createdTimestamp,
     author: interaction.user,
     member: interaction.member,
-    guild: interaction.guild,
+    guild: interaction.guild || null,
     channel: interaction.channel,
     channelId: interaction.channelId,
     attachments,
@@ -389,14 +523,23 @@ function createInteractionMessage(interaction, input) {
     reply,
     hasSlashReply: () => firstReplySent,
     delete: async () => {},
-    url: `https://discord.com/channels/${interaction.guildId}/${interaction.channelId}`
+    url: `https://discord.com/channels/${interaction.guildId || "@me"}/${interaction.channelId}`
   };
 }
 
 export async function handleSlashCommand(interaction, { handleCommandByName, store }) {
-  if (!interaction.isChatInputCommand() || !interaction.guild) return false;
+  if (!interaction.isChatInputCommand()) return false;
 
-  const config = store.getGuild(interaction.guild.id);
+  const installedInGuild = interaction.guildId && interaction.client.guilds.cache.has(interaction.guildId);
+  if (!installedInGuild && !PORTABLE_USER_INSTALL_COMMANDS.has(interaction.commandName)) {
+    await interaction.reply({
+      content: "That Chipkittle command needs the bot installed in this server. Use the server install link from `/invite`, then try again.",
+      ephemeral: true
+    });
+    return true;
+  }
+
+  const config = store.getGuild(interaction.guildId || "user-install");
   const input = inputForInteraction(interaction);
   const message = createInteractionMessage(interaction, input.trim());
 

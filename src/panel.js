@@ -2901,11 +2901,17 @@ function loginPage(error = "", discordUrl = "", oauthInfo = {}) {
   });
 }
 
-function inviteUrl(clientId) {
+function botInviteUrl(clientId) {
   if (!clientId) return "";
 
   const permissions = "361048837200";
-  return `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=${permissions}&scope=bot%20applications.commands`;
+  return `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=${permissions}&scope=bot%20applications.commands&integration_type=0`;
+}
+
+function userInstallUrl(clientId) {
+  if (!clientId) return "";
+
+  return `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&scope=applications.commands&integration_type=1`;
 }
 
 function accountFlash(code = "") {
@@ -3024,7 +3030,8 @@ function accountPage({ panelUser, sessions = [], currentSessionId = "", flash = 
 }
 
 function dashboardPage({ guilds, client, clientId, ai, commandList, flash }) {
-  const botInviteUrl = inviteUrl(clientId);
+  const guildInstallUrl = botInviteUrl(clientId);
+  const appInstallUrl = userInstallUrl(clientId);
 
   return layout({
     title: "Bot status",
@@ -3034,8 +3041,11 @@ function dashboardPage({ guilds, client, clientId, ai, commandList, flash }) {
       <section class="page-heading">
         <p class="eyebrow">Control room</p>
         <h1>Bot Status</h1>
-        <p class="muted">This panel is set up for one Discord server. Invite the bot, then refresh this page to configure it.</p>
-        ${botInviteUrl ? `<a class="primary-link" href="${botInviteUrl}" target="_blank" rel="noreferrer">Invite bot</a>` : ""}
+        <p class="muted">Chipkittle can be installed into multiple Discord servers. Server installs unlock moderation, economy, AI channel config, and the panel; user installs expose supported slash commands through Discord's app menu.</p>
+        <div class="hero-actions">
+          ${guildInstallUrl ? `<a class="primary-link" href="${guildInstallUrl}" target="_blank" rel="noreferrer">Invite to Server</a>` : ""}
+          ${appInstallUrl ? `<a class="primary-link secondary-link" href="${appInstallUrl}" target="_blank" rel="noreferrer">Install App Commands</a>` : ""}
+        </div>
       </section>
       <section class="metrics">
         <div>
@@ -3044,7 +3054,7 @@ function dashboardPage({ guilds, client, clientId, ai, commandList, flash }) {
         </div>
         <div>
           <span>${guilds.length}</span>
-          <strong>Connected server</strong>
+          <strong>Connected servers</strong>
         </div>
         <div>
           <span>${Math.round(process.uptime() / 60)}m</span>

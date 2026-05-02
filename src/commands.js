@@ -3058,9 +3058,11 @@ define({
       return;
     }
 
-    await ctx.message.reply(
-      `Invite link: https://discord.com/oauth2/authorize?client_id=${ctx.clientId}&permissions=361048837200&scope=bot%20applications.commands`
-    );
+    const clientId = encodeURIComponent(ctx.clientId);
+    await ctx.message.reply([
+      `Server install: https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=361048837200&scope=bot%20applications.commands&integration_type=0`,
+      `App command install: https://discord.com/oauth2/authorize?client_id=${clientId}&scope=applications.commands&integration_type=1`
+    ].join("\n"));
   }
 });
 

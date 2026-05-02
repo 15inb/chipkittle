@@ -12,6 +12,7 @@ const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const discordClientSecret = process.env.DISCORD_CLIENT_SECRET || "";
 const guildId = process.env.GUILD_ID;
+const slashCommandScope = String(process.env.SLASH_COMMAND_SCOPE || "global").toLowerCase();
 const defaultAiModel = process.env.OPENAI_MODEL || "gpt-5.2";
 const panelPassword = process.env.PANEL_PASSWORD || "";
 const allowLegacyPanelPasswordLogin = String(process.env.ALLOW_LEGACY_PANEL_PASSWORD_LOGIN || "").toLowerCase() === "true";
@@ -36,7 +37,7 @@ const ai = new AiService({
   apiKey: process.env.OPENAI_API_KEY,
   defaultModel: defaultAiModel
 });
-const client = createBot({ store, publicUrl, clientId, guildId, token, ai, defaultAiModel });
+const client = createBot({ store, publicUrl, clientId, guildId, token, ai, defaultAiModel, slashCommandScope });
 const app = createPanel({
   client,
   store,
