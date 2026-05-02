@@ -103,10 +103,15 @@ const PORTABLE_USER_INSTALL_COMMANDS = new Set([
   "uptime"
 ]);
 
+function isPortableUserInstallCommand(command) {
+  return PORTABLE_USER_INSTALL_COMMANDS.has(command.name);
+}
+
 function slashCommandPriority(command) {
+  const portableRank = isPortableUserInstallCommand(command) ? -10 : 0;
   const categoryRank = SLASH_CATEGORY_PRIORITY.get(command.category || "Other") ?? 50;
   const adminPenalty = LOW_PRIORITY_SLASH_COMMANDS.has(command.name) ? 100 : 0;
-  return categoryRank + adminPenalty;
+  return portableRank + categoryRank + adminPenalty;
 }
 
 function slashCommandList(commandList) {
@@ -315,12 +320,22 @@ export function buildSlashCommands(commandList) {
       .setName(command.name)
       .setDescription(slashDescription(command));
 
+    const portable = isPortableUserInstallCommand(command);
+
     if (typeof builder.setIntegrationTypes === "function") {
-      builder.setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall);
+      if (portable) {
+        builder.setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall);
+      } else {
+        builder.setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
+      }
     }
 
     if (typeof builder.setContexts === "function") {
-      builder.setContexts(InteractionContextType.Guild);
+      if (portable) {
+        builder.setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel);
+      } else {
+        builder.setContexts(InteractionContextType.Guild);
+      }
     }
 
     if (command.name === "remind") {
