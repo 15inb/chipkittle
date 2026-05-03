@@ -513,17 +513,25 @@ function createInteractionMessage(interaction, input) {
   const attachments = resolvedAttachmentCollection(interaction.options);
   let firstReplySent = false;
 
+  function initialReplyHandle() {
+    return {
+      edit: (payload) => interaction.editReply(normalizeReplyPayload(payload)),
+      delete: () => interaction.deleteReply().catch(() => {})
+    };
+  }
+
   async function reply(payload) {
     const options = normalizeReplyPayload(payload);
     if (interaction.deferred && !firstReplySent) {
       firstReplySent = true;
-      return interaction.editReply(options);
+      await interaction.editReply(options);
+      return initialReplyHandle();
     }
 
     if (!interaction.replied && !interaction.deferred) {
       firstReplySent = true;
       await interaction.reply(options);
-      return interaction.fetchReply();
+      return initialReplyHandle();
     }
     firstReplySent = true;
     return interaction.followUp(options);

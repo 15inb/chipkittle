@@ -8,6 +8,7 @@ import ffmpegPath from "ffmpeg-static";
 const MEDIA_TMP_DIR = path.join(tmpdir(), "chipkittle-media");
 const MAX_GIF_DIMENSION = 720;
 const DEFAULT_STATIC_GIF_SECONDS = 3;
+const FFMPEG_TIMEOUT_MS = 45_000;
 
 function extFromMimeType(mimeType) {
   if (mimeType === "image/gif") return ".gif";
@@ -129,21 +130,37 @@ async function runFfmpeg(args) {
   }
 
   await new Promise((resolve, reject) => {
-    const child = spawn(ffmpegPath, args, { windowsHide: true });
+    const child = spawn(ffmpegPath, ["-nostdin", ...args], { windowsHide: true });
     let stderr = "";
+    let timedOut = false;
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      callback(value);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, FFMPEG_TIMEOUT_MS);
 
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
     child.on("error", (error) => {
-      reject(new Error(`Could not start ffmpeg: ${error.message}`));
+      finish(reject, new Error(`Could not start ffmpeg: ${error.message}`));
     });
     child.on("close", (code) => {
-      if (code === 0) {
-        resolve();
+      if (timedOut) {
+        finish(reject, new Error(`Media editing timed out after ${Math.round(FFMPEG_TIMEOUT_MS / 1000)} seconds. Try a smaller or shorter file.`));
         return;
       }
-      reject(new Error(`ffmpeg exited with code ${code}: ${stderr.trim() || "unknown error"}`));
+      if (code === 0) {
+        finish(resolve);
+        return;
+      }
+      finish(reject, new Error(`ffmpeg exited with code ${code}: ${stderr.trim() || "unknown error"}`));
     });
   });
 }

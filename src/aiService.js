@@ -3,6 +3,7 @@ import { chipkittlePrompt } from "./chipkittleLore.js";
 import { neutralizeMentions } from "./discordSafety.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
+const CHIPIFY_TIMEOUT_MS = 120_000;
 const CHIPIFY_PROMPT = [
   "Edit the provided image into a Chipkittle costume version of the subject.",
   "Preserve the subject's real face, facial expression, skin tone, age, identity, body shape, body size, pose, camera angle, and composition as closely as possible.",
@@ -67,6 +68,26 @@ function parseJsonObject(text = "") {
     } catch {
       return null;
     }
+  }
+}
+
+async function withAbortTimeout(label, timeoutMs, task) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await task(controller.signal);
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" ||
+      error?.name === "APIConnectionTimeoutError" ||
+      error?.code === "ABORT_ERR" ||
+      error?.code === "ETIMEDOUT" ||
+      String(error?.message || "").toLowerCase().includes("timeout");
+    if (timedOut) {
+      throw new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)} seconds. Try a smaller image, or try again in a minute.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -331,7 +352,7 @@ export class AiService {
       type: mimeType || "image/png"
     });
 
-    const response = await this.client.images.edit({
+    const response = await withAbortTimeout("Chipify image generation", CHIPIFY_TIMEOUT_MS, (signal) => this.client.images.edit({
       model: "gpt-image-1",
       image,
       prompt: CHIPIFY_PROMPT,
@@ -340,7 +361,10 @@ export class AiService {
       quality: "medium",
       output_format: "png",
       user: userId
-    });
+    }, {
+      signal,
+      timeout: CHIPIFY_TIMEOUT_MS
+    }));
 
     const b64 = response.data?.[0]?.b64_json;
     if (!b64) {
