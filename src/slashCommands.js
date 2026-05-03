@@ -499,10 +499,18 @@ function inputForInteraction(interaction) {
   return interaction.options.getString("input") || "";
 }
 
+function resolvedAttachmentCollection(options) {
+  const resolved = options.resolved?.attachments;
+  if (!resolved) return new Collection();
+  if (resolved instanceof Collection) return resolved;
+  if (Array.isArray(resolved)) return new Collection(resolved);
+  return new Collection(Object.entries(resolved));
+}
+
 function createInteractionMessage(interaction, input) {
   const content = `/${interaction.commandName}${input ? ` ${input}` : ""}`;
   const mentions = parseMentions(input, interaction.guild);
-  const attachments = new Collection(interaction.options.resolved?.attachments || []);
+  const attachments = resolvedAttachmentCollection(interaction.options);
   let firstReplySent = false;
 
   async function reply(payload) {

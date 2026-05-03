@@ -1246,9 +1246,56 @@ function targetRole(message) {
   return message.mentions.roles.first();
 }
 
+function attachmentUrl(attachment = {}) {
+  return String(attachment.url || attachment.attachment || attachment.proxyURL || attachment.proxy_url || "");
+}
+
+function attachmentName(attachment = {}) {
+  return String(attachment.name || attachment.filename || "media");
+}
+
+function attachmentContentType(attachment = {}) {
+  return String(attachment.contentType || attachment.content_type || "").split(";")[0].toLowerCase();
+}
+
+function attachmentSize(attachment = {}) {
+  return Math.max(0, Number(attachment.size) || 0);
+}
+
+function slashAttachmentOption(options, ...names) {
+  if (!options) return null;
+
+  for (const name of names) {
+    try {
+      const attachment = options.getAttachment?.(name, false);
+      if (attachment) return attachment;
+    } catch {
+      // Some interaction contexts throw for missing option names.
+    }
+  }
+
+  const resolved = options.resolved?.attachments;
+  const queue = Array.isArray(options.data) ? [...options.data] : [];
+  while (queue.length) {
+    const option = queue.shift();
+    if (Array.isArray(option?.options)) queue.push(...option.options);
+    if (!names.includes(option?.name)) continue;
+
+    const value = String(option.value || "");
+    const resolvedAttachment = value && resolved?.get?.(value);
+    if (resolvedAttachment) return resolvedAttachment;
+
+    if (option.attachment) return option.attachment;
+  }
+
+  if (resolved?.first) return resolved.first() || null;
+  if (resolved?.values) return [...resolved.values()][0] || null;
+  return null;
+}
+
 function isSupportedImageAttachment(attachment) {
-  const contentType = attachment.contentType?.toLowerCase() || "";
-  const extension = attachment.name?.split(".").pop()?.toLowerCase();
+  const contentType = attachmentContentType(attachment);
+  const extension = attachmentName(attachment).split(".").pop()?.toLowerCase();
   return (
     IMAGE_CONTENT_TYPES.has(contentType) ||
     ["png", "jpg", "jpeg", "webp"].includes(extension)
@@ -1256,8 +1303,8 @@ function isSupportedImageAttachment(attachment) {
 }
 
 function isSupportedMediaAttachment(attachment) {
-  const contentType = attachment.contentType?.toLowerCase() || "";
-  const extension = attachment.name?.split(".").pop()?.toLowerCase();
+  const contentType = attachmentContentType(attachment);
+  const extension = attachmentName(attachment).split(".").pop()?.toLowerCase();
   return (
     MEDIA_CONTENT_TYPES.has(contentType) ||
     ["png", "jpg", "jpeg", "webp", "gif"].includes(extension)
@@ -1265,8 +1312,8 @@ function isSupportedMediaAttachment(attachment) {
 }
 
 function isGifAttachment(attachment) {
-  const contentType = attachment.contentType?.toLowerCase() || "";
-  const extension = attachment.name?.split(".").pop()?.toLowerCase();
+  const contentType = attachmentContentType(attachment);
+  const extension = attachmentName(attachment).split(".").pop()?.toLowerCase();
   return GIF_CONTENT_TYPES.has(contentType) || extension === "gif";
 }
 
@@ -1290,17 +1337,23 @@ async function findMediaAttachment(message) {
 }
 
 async function downloadAttachment(attachment) {
-  if (attachment.size && attachment.size > MAX_CHIPIFY_IMAGE_BYTES) {
+  if (attachmentSize(attachment) > MAX_CHIPIFY_IMAGE_BYTES) {
     throw new Error("That image is too large. Please use an image under 20 MB.");
   }
 
-  const response = await fetch(attachment.url);
+  const url = attachmentUrl(attachment);
+  if (!url) {
+    throw new Error("Discord did not provide a downloadable image URL. Try attaching the file directly again.");
+  }
+
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error("I could not download that image from Discord.");
   }
 
-  const contentType = response.headers.get("content-type") || attachment.contentType || "image/png";
-  if (!isSupportedImageAttachment({ contentType, name: attachment.name })) {
+  const contentType = response.headers.get("content-type") || attachmentContentType(attachment) || "image/png";
+  const filename = attachmentName(attachment) || "chipify.png";
+  if (!isSupportedImageAttachment({ contentType, name: filename })) {
     throw new Error("Please use a PNG, JPG, or WebP image.");
   }
 
@@ -1312,22 +1365,28 @@ async function downloadAttachment(attachment) {
   return {
     buffer: Buffer.from(arrayBuffer),
     mimeType: contentType.split(";")[0],
-    filename: attachment.name || "chipify.png"
+    filename
   };
 }
 
 async function downloadMediaAttachment(attachment) {
-  if (attachment.size && attachment.size > MAX_MEDIA_BYTES) {
+  if (attachmentSize(attachment) > MAX_MEDIA_BYTES) {
     throw new Error("That file is too large. Please use media under 25 MB.");
   }
 
-  const response = await fetch(attachment.url);
+  const url = attachmentUrl(attachment);
+  if (!url) {
+    throw new Error("Discord did not provide a downloadable media URL. Try attaching the file directly again.");
+  }
+
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error("I could not download that file from Discord.");
   }
 
-  const contentType = (response.headers.get("content-type") || attachment.contentType || "").split(";")[0].toLowerCase();
-  if (!isSupportedMediaAttachment({ contentType, name: attachment.name })) {
+  const contentType = (response.headers.get("content-type") || attachmentContentType(attachment) || "").split(";")[0].toLowerCase();
+  const filename = attachmentName(attachment) || "media.png";
+  if (!isSupportedMediaAttachment({ contentType, name: filename })) {
     throw new Error("Please use a PNG, JPG, WebP, or GIF.");
   }
 
@@ -1339,7 +1398,7 @@ async function downloadMediaAttachment(attachment) {
   return {
     buffer: Buffer.from(arrayBuffer),
     mimeType: contentType || "image/png",
-    filename: attachment.name || "media.png"
+    filename
   };
 }
 
@@ -1355,7 +1414,7 @@ function slashGifOptions(ctx) {
   if (!slashOptions) return null;
 
   const subcommand = slashOptions.getSubcommand();
-  const attachment = slashOptions.getAttachment("file");
+  const attachment = slashAttachmentOption(slashOptions, "file");
   return {
     subcommand,
     attachment,
@@ -4925,7 +4984,7 @@ define({
       return;
     }
 
-    const attachment = await findImageAttachment(ctx.message);
+    const attachment = slashAttachmentOption(ctx.message.slashOptions, "image", "file") || await findImageAttachment(ctx.message);
     if (!attachment) {
       await ctx.message.reply(`Attach an image with \`${usage(ctx.config, this)}\`, or reply to an image with \`${ctx.config.prefix}chipify\`.`);
       return;
@@ -4977,7 +5036,7 @@ define({
   usage: "caption text or top text | bottom text",
   async run(ctx) {
     const slashOptions = ctx.message.slashOptions;
-    const attachment = slashOptions?.getAttachment("file") || await findMediaAttachment(ctx.message);
+    const attachment = slashAttachmentOption(slashOptions, "file") || await findMediaAttachment(ctx.message);
     if (!attachment) {
       await ctx.message.reply("Attach an image or GIF, or reply to one, and give me some caption text.");
       return;
@@ -5022,7 +5081,7 @@ define({
   usage: "gif [attach image or reply to image]",
   async run(ctx) {
     const slashOptions = ctx.message.slashOptions;
-    const attachment = slashOptions?.getAttachment("file") || await findMediaAttachment(ctx.message);
+    const attachment = slashAttachmentOption(slashOptions, "file") || await findMediaAttachment(ctx.message);
     if (!attachment) {
       await ctx.message.reply("Attach or reply to an image/GIF first.");
       return;
