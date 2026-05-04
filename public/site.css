@@ -1100,6 +1100,303 @@ a {
   width: fit-content;
 }
 
+.casino-card {
+  --game-card-art: radial-gradient(circle at 74% 18%, rgba(255, 218, 82, 0.92), transparent 18%),
+    radial-gradient(circle at 18% 72%, rgba(38, 196, 99, 0.62), transparent 20%),
+    url("/assets/chipkittle-hero.png");
+}
+
+.casino-page {
+  --casino-panel: rgba(7, 17, 12, 0.78);
+  --casino-border: rgba(252, 221, 142, 0.26);
+  --casino-gold: #f6c85d;
+  --casino-green: #6bff83;
+}
+
+.casino-head {
+  padding-bottom: 18px;
+}
+
+.casino-account {
+  width: fit-content;
+  max-width: min(760px, calc(100vw - 40px));
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+  padding: 12px 14px;
+  border: 1px solid var(--casino-border);
+  border-radius: 999px;
+  background: rgba(6, 15, 10, 0.72);
+  color: #f6f1dd;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(18px);
+}
+
+.casino-account img {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.casino-account span {
+  display: grid;
+  gap: 2px;
+}
+
+.casino-account small {
+  color: rgba(246, 241, 221, 0.72);
+}
+
+.casino-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 0 clamp(20px, 5vw, 80px) clamp(64px, 8vw, 110px);
+}
+
+.casino-table {
+  min-height: 420px;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  position: relative;
+  overflow: hidden;
+  padding: clamp(20px, 3vw, 30px);
+  border: 1px solid var(--casino-border);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(255, 220, 119, 0.08), transparent 32%),
+    var(--casino-panel);
+  color: #f8f4e6;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.blackjack-table {
+  grid-column: 1 / -1;
+}
+
+.casino-table::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  background: radial-gradient(circle at 78% 18%, rgba(107, 255, 131, 0.18), transparent 28%);
+}
+
+.casino-table-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+}
+
+.casino-table h2 {
+  margin: 4px 0 0;
+  font-size: clamp(30px, 4vw, 54px);
+  line-height: 0.95;
+}
+
+.casino-table-head > strong {
+  min-width: 92px;
+  text-align: right;
+  color: var(--casino-gold);
+  font-size: 26px;
+}
+
+.casino-table-head > strong.win {
+  color: var(--casino-green);
+}
+
+.casino-table-head > strong.loss {
+  color: #ff7777;
+}
+
+.slot-machine {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(255, 255, 255, 0.06));
+}
+
+.slot-reel {
+  min-height: 128px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px solid rgba(246, 200, 93, 0.28);
+  background:
+    radial-gradient(circle at 50% 24%, rgba(255, 244, 186, 0.18), transparent 32%),
+    #101b12;
+  font-size: clamp(44px, 8vw, 74px);
+  box-shadow: inset 0 0 34px rgba(0, 0, 0, 0.42);
+}
+
+.slot-reel.spinning {
+  filter: blur(1px);
+  transform: translateY(-2px);
+}
+
+.slot-reel.pop {
+  animation: slotPop 280ms ease-out;
+}
+
+@keyframes slotPop {
+  0% { transform: scale(0.9); }
+  65% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.casino-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.casino-controls label {
+  display: grid;
+  gap: 6px;
+  color: rgba(248, 244, 230, 0.72);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.casino-controls input {
+  width: 160px;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid rgba(246, 200, 93, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff8dc;
+  font: inherit;
+  font-weight: 800;
+}
+
+.casino-status {
+  min-height: 48px;
+  margin: 0;
+  color: rgba(248, 244, 230, 0.76);
+  line-height: 1.45;
+}
+
+.crash-stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(107, 255, 131, 0.16);
+  background: rgba(0, 0, 0, 0.34);
+}
+
+.crash-stage canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.crash-badge {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(8, 17, 11, 0.78);
+  color: var(--casino-green);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.blackjack-felt {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid rgba(107, 255, 131, 0.18);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(107, 255, 131, 0.13), transparent 30%),
+    linear-gradient(145deg, #102317, #07100b);
+}
+
+.hand-row {
+  display: grid;
+  gap: 10px;
+}
+
+.hand-row > span {
+  color: rgba(248, 244, 230, 0.78);
+  font-weight: 900;
+}
+
+.card-row {
+  min-height: 126px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.playing-card {
+  width: 82px;
+  height: 116px;
+  display: grid;
+  align-content: space-between;
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff9e8;
+  color: #10120f;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+}
+
+.playing-card b {
+  font-size: 24px;
+}
+
+.playing-card small {
+  justify-self: end;
+  font-size: 30px;
+}
+
+.red-card {
+  color: #c72c3c;
+}
+
+.hidden-card {
+  place-items: center;
+  background: linear-gradient(135deg, #1f5d34, #111912);
+  color: var(--casino-gold);
+  font-size: 34px;
+  font-weight: 900;
+}
+
+.blackjack-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.blackjack-actions button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(246, 200, 93, 0.26);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff8dc;
+  font: inherit;
+  font-weight: 900;
+}
+
+.casino-page button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
 .game-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
@@ -3296,6 +3593,14 @@ a {
 }
 
 @media (max-width: 1060px) {
+  .casino-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .blackjack-table {
+    grid-column: auto;
+  }
+
   .relax-room {
     grid-template-columns: 1fr;
   }
@@ -3307,6 +3612,41 @@ a {
 }
 
 @media (max-width: 680px) {
+  .casino-account {
+    width: 100%;
+    border-radius: 18px;
+    align-items: flex-start;
+  }
+
+  .casino-grid {
+    padding-inline: 16px;
+  }
+
+  .slot-machine {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .slot-reel {
+    min-height: 96px;
+  }
+
+  .casino-controls,
+  .casino-controls label,
+  .casino-controls input,
+  .casino-controls .button {
+    width: 100%;
+  }
+
+  .card-row {
+    min-height: 102px;
+  }
+
+  .playing-card {
+    width: 66px;
+    height: 94px;
+  }
+
   .relax-page {
     padding-inline: 18px;
   }

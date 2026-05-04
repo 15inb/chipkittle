@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chipkittle Bread Casino</title>
+  <meta name="description" content="Visual Chipkittle gambling games using bread currency only.">
+  <link rel="icon" type="image/png" href="/ckmascot.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <main class="site-shell interior casino-page">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <img src="/ckmascot.png" alt="">
+        <span>chipkittle</span>
+      </a>
+      <nav aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/commands">Commands</a>
+        <a href="/game">Games</a>
+        <a href="/members">Members</a>
+        <a href="/status">Status</a>
+        <a href="https://discord.gg/zTZwmmCqGc" target="_blank" rel="noreferrer">Discord</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Use dark mode">Dark</button>
+        <a class="nav-button" href="https://panel.chipkittle.com">Panel</a>
+      </div>
+    </header>
+
+    <section class="page-head casino-head">
+      <p class="eyebrow">Bread only</p>
+      <h1>Chipkittle Casino</h1>
+      <p>Slots, crash, and blackjack for fake Discord bread. No real money, no refunds, no explanation from the mascot.</p>
+      <div class="casino-account" id="casinoAccount">
+        <span>Checking your bread wallet...</span>
+      </div>
+    </section>
+
+    <section class="casino-grid" aria-label="Bread casino games">
+      <article class="casino-table slots-table">
+        <div class="casino-table-head">
+          <div>
+            <p class="eyebrow">Visual reels</p>
+            <h2>Loaf Slots</h2>
+          </div>
+          <strong id="slotsNet">0</strong>
+        </div>
+        <div class="slot-machine" aria-label="Slot reels">
+          <div class="slot-reel" id="slotA">🍞</div>
+          <div class="slot-reel" id="slotB">🌰</div>
+          <div class="slot-reel" id="slotC">🍃</div>
+        </div>
+        <form class="casino-controls" id="slotsForm">
+          <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
+          <button class="button primary" type="submit">Spin</button>
+        </form>
+        <p class="casino-status" id="slotsStatus">Triple symbols pay big. Two of a kind pays a little. The crown is suspicious.</p>
+      </article>
+
+      <article class="casino-table crash-table">
+        <div class="casino-table-head">
+          <div>
+            <p class="eyebrow">Multiplier panic</p>
+            <h2>Bread Crash</h2>
+          </div>
+          <strong id="crashReadout">1.00x</strong>
+        </div>
+        <div class="crash-stage">
+          <canvas id="crashCanvas" width="760" height="320" aria-label="Crash multiplier graph"></canvas>
+          <div class="crash-badge" id="crashBadge">armed</div>
+        </div>
+        <form class="casino-controls split-controls" id="crashForm">
+          <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
+          <label>Cash out <input name="target" inputmode="decimal" value="2.00"></label>
+          <button class="button primary" type="submit">Launch</button>
+        </form>
+        <p class="casino-status" id="crashStatus">Choose a cash-out multiplier. If the altar cracks first, the bread vanishes.</p>
+      </article>
+
+      <article class="casino-table blackjack-table">
+        <div class="casino-table-head">
+          <div>
+            <p class="eyebrow">Dealer ritual</p>
+            <h2>Blackjack</h2>
+          </div>
+          <strong id="blackjackValue">21?</strong>
+        </div>
+        <div class="blackjack-felt">
+          <div class="hand-row">
+            <span>Dealer <b id="dealerValue">0</b></span>
+            <div class="card-row" id="dealerCards"></div>
+          </div>
+          <div class="hand-row">
+            <span>You <b id="playerValue">0</b></span>
+            <div class="card-row" id="playerCards"></div>
+          </div>
+        </div>
+        <form class="casino-controls" id="blackjackForm">
+          <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
+          <button class="button primary" type="submit">Deal</button>
+        </form>
+        <div class="blackjack-actions">
+          <button type="button" id="hitButton">Hit</button>
+          <button type="button" id="standButton">Stand</button>
+          <button type="button" id="doubleButton">Double</button>
+        </div>
+        <p class="casino-status" id="blackjackStatus">Start a hand. Dealer stands on 17. Blackjack pays 3:2.</p>
+      </article>
+    </section>
+  </main>
+  <script type="module" src="/casino.js"></script>
+</body>
+</html>

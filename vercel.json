@@ -28,6 +28,10 @@
       "destination": "/dash.html"
     },
     {
+      "source": "/casino",
+      "destination": "/casino.html"
+    },
+    {
       "source": "/8ball",
       "destination": "/8ball.html"
     },
