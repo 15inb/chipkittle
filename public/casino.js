@@ -39,9 +39,14 @@ function setAccount(payload = state) {
     `;
     return;
   }
+  const wallet = Number.isFinite(Number(state.wallet)) ? Number(state.wallet) : null;
+  const bank = Number.isFinite(Number(state.bank)) ? Number(state.bank) : null;
+  const accountDetail = wallet !== null || bank !== null
+    ? `${fmt(state.balance)} available · wallet ${fmt(wallet || 0)} · bank ${fmt(bank || 0)} · max bet ${fmt(state.maxBet)}`
+    : `${fmt(state.balance)} bread available · max bet ${fmt(state.maxBet)}`;
   account.innerHTML = `
     <img src="${state.user.avatarUrl || "/ckmascot.png"}" alt="">
-    <span><b>${state.user.displayName || "Chipkittle member"}</b><small>${fmt(state.balance)} bread available · max bet ${fmt(state.maxBet)}</small></span>
+    <span><b>${state.user.displayName || "Chipkittle member"}</b><small>${accountDetail}</small></span>
   `;
 }
 
@@ -124,7 +129,7 @@ slotsForm.addEventListener("submit", async (event) => {
       slotsNet.textContent = `${payload.net >= 0 ? "+" : ""}${fmt(payload.net)}`;
       slotsNet.className = payload.net >= 0 ? "win" : "loss";
       slotsStatus.textContent = `${payload.result.label}. Payout ${fmt(payload.payout)} bread. Balance ${fmt(payload.balance)}.`;
-      setAccount({ balance: payload.balance });
+      setAccount({ balance: payload.balance, wallet: payload.wallet, bank: payload.bank });
     }, 1100);
   } catch (error) {
     slotsStatus.textContent = error.message || "Slots failed.";
@@ -206,7 +211,7 @@ crashForm.addEventListener("submit", async (event) => {
         crashReadout.textContent = `${point.toFixed(2)}x`;
         crashBadge.textContent = payload.net >= 0 ? "cashed" : "crashed";
         crashStatus.textContent = `${payload.result.label} Net ${payload.net >= 0 ? "+" : ""}${fmt(payload.net)} bread. Balance ${fmt(payload.balance)}.`;
-        setAccount({ balance: payload.balance });
+        setAccount({ balance: payload.balance, wallet: payload.wallet, bank: payload.bank });
       }
     }
     requestAnimationFrame(step);
@@ -238,7 +243,7 @@ function renderBlackjack(hand) {
   blackjackStatus.textContent = hand.result || `Bet ${fmt(hand.bet)} bread. Choose hit, stand, or double.`;
   syncBlackjackButtons();
   if (hand.status === "finished") {
-    setAccount({ balance: hand.balance });
+    setAccount({ balance: hand.balance, wallet: hand.wallet, bank: hand.bank });
   }
 }
 
@@ -248,7 +253,7 @@ blackjackForm.addEventListener("submit", async (event) => {
     const payload = await api("/api/public/casino/blackjack/start", { bet: formBet(blackjackForm) });
     renderBlackjack(payload.blackjack);
     if (payload.blackjack?.status === "playing") {
-      setAccount({ balance: payload.blackjack.balance });
+      setAccount({ balance: payload.blackjack.balance, wallet: payload.blackjack.wallet, bank: payload.blackjack.bank });
     }
   } catch (error) {
     blackjackStatus.textContent = error.message || "Blackjack failed.";

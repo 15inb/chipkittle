@@ -2455,9 +2455,44 @@ function websiteCasinoBalance(economy = {}, userId = "") {
   return Math.max(Math.floor(Number(economy.balances?.[userId] ?? WEBSITE_CASINO_STARTING_BREAD) || 0), 0);
 }
 
+function websiteCasinoBankBalance(economy = {}, userId = "") {
+  return Math.max(Math.floor(Number(economy.bankBalances?.[userId] || 0) || 0), 0);
+}
+
+function websiteCasinoAvailableBread(economy = {}, userId = "") {
+  return websiteCasinoBalance(economy, userId) + websiteCasinoBankBalance(economy, userId);
+}
+
 function websiteCasinoSetBalance(economy = {}, userId = "", amount = 0) {
   economy.balances ||= {};
   economy.balances[userId] = Math.max(Math.floor(Number(amount) || 0), 0);
+}
+
+function websiteCasinoSetBankBalance(economy = {}, userId = "", amount = 0) {
+  economy.bankBalances ||= {};
+  economy.bankBalances[userId] = Math.max(Math.floor(Number(amount) || 0), 0);
+}
+
+function websiteCasinoSpendBread(economy = {}, userId = "", amount = 0) {
+  let remaining = Math.max(Math.floor(Number(amount) || 0), 0);
+  const wallet = websiteCasinoBalance(economy, userId);
+  const fromWallet = Math.min(wallet, remaining);
+  websiteCasinoSetBalance(economy, userId, wallet - fromWallet);
+  remaining -= fromWallet;
+  const bank = websiteCasinoBankBalance(economy, userId);
+  const fromBank = Math.min(bank, remaining);
+  websiteCasinoSetBankBalance(economy, userId, bank - fromBank);
+  remaining -= fromBank;
+  return {
+    fromWallet,
+    fromBank,
+    spent: fromWallet + fromBank,
+    shortfall: remaining
+  };
+}
+
+function websiteCasinoAddWalletBread(economy = {}, userId = "", amount = 0) {
+  websiteCasinoSetBalance(economy, userId, websiteCasinoBalance(economy, userId) + Math.max(Math.floor(Number(amount) || 0), 0));
 }
 
 function websiteCasinoCooldown(economy = {}, userId = "", cooldownMs = 0) {
@@ -2497,7 +2532,9 @@ function websiteCasinoRecord(economy = {}, userId = "", { game = "Website Casino
     payout: grossPayout,
     net,
     details,
-    balance: websiteCasinoBalance(economy, userId),
+    balance: websiteCasinoAvailableBread(economy, userId),
+    wallet: websiteCasinoBalance(economy, userId),
+    bank: websiteCasinoBankBalance(economy, userId),
     createdAt: new Date().toISOString()
   });
   economy.transactions = economy.transactions.slice(-WEBSITE_CASINO_LOG_LIMIT);
@@ -2512,7 +2549,7 @@ function websiteCasinoBet(rawBet, balance, economy = {}) {
       ? Math.min(Math.floor(balance / 2), settings.maxBreadBet)
       : Math.floor(Number(text.replaceAll(",", "")));
   if (!Number.isFinite(amount) || amount < 1) return { ok: false, error: "Bet at least 1 bread." };
-  if (amount > balance) return { ok: false, error: `You only have ${balance.toLocaleString()} bread.` };
+  if (amount > balance) return { ok: false, error: `You only have ${balance.toLocaleString()} available bread.` };
   if (amount > settings.maxBreadBet) return { ok: false, error: `Max website casino bet is ${settings.maxBreadBet.toLocaleString()} bread.` };
   return { ok: true, amount };
 }
@@ -2598,6 +2635,8 @@ function publicBlackjackPayload(session = {}) {
     result: session.result || "",
     payout: Math.max(Math.floor(Number(session.payout) || 0), 0),
     balance: Math.max(Math.floor(Number(session.balance) || 0), 0),
+    wallet: Math.max(Math.floor(Number(session.wallet) || 0), 0),
+    bank: Math.max(Math.floor(Number(session.bank) || 0), 0),
     canDouble: session.status === "playing" && (session.player || []).length === 2 && !session.doubled
   };
 }
@@ -5283,7 +5322,10 @@ export function createPanel({
         displayName: verified.member.displayName,
         avatarUrl: verified.member.user.displayAvatarURL({ extension: "png", size: 64 })
       },
-      balance: websiteCasinoBalance(economy, verified.member.id),
+      balance: websiteCasinoAvailableBread(economy, verified.member.id),
+      wallet: websiteCasinoBalance(economy, verified.member.id),
+      bank: websiteCasinoBankBalance(economy, verified.member.id),
+      availableBread: websiteCasinoAvailableBread(economy, verified.member.id),
       maxBet: settings.maxBreadBet,
       cooldownSeconds: Math.ceil(settings.gamblingCooldownMs / 1000),
       updatedAt: new Date().toISOString()
@@ -5305,6 +5347,7 @@ export function createPanel({
       const economy = {
         ...(config.economy || {}),
         balances: { ...(config.economy?.balances || {}) },
+        bankBalances: { ...(config.economy?.bankBalances || {}) },
         cooldowns: {
           ...(config.economy?.cooldowns || {}),
           gambling: { ...(config.economy?.cooldowns?.gambling || {}) }
@@ -5313,7 +5356,7 @@ export function createPanel({
         transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : []
       };
       const userId = verified.member.id;
-      const balance = websiteCasinoBalance(economy, userId);
+      const balance = websiteCasinoAvailableBread(economy, userId);
       const bet = websiteCasinoBet(request.body?.bet, balance, economy);
       if (!bet.ok) {
         response.status(400).json({ error: bet.error });
@@ -5341,8 +5384,13 @@ export function createPanel({
       }
 
       websiteCasinoSetCooldown(economy, userId);
-      const nextBalance = balance - bet.amount + result.payout;
-      websiteCasinoSetBalance(economy, userId, nextBalance);
+      const spend = websiteCasinoSpendBread(economy, userId, bet.amount);
+      if (spend.shortfall > 0) {
+        response.status(400).json({ error: "You do not have enough available bread." });
+        return;
+      }
+      websiteCasinoAddWalletBread(economy, userId, result.payout);
+      const nextBalance = websiteCasinoAvailableBread(economy, userId);
       websiteCasinoRecord(economy, userId, {
         game: `Website ${game}`,
         bet: bet.amount,
@@ -5357,6 +5405,8 @@ export function createPanel({
         payout: result.payout,
         net: result.payout - bet.amount,
         balance: nextBalance,
+        wallet: websiteCasinoBalance(economy, userId),
+        bank: websiteCasinoBankBalance(economy, userId),
         result,
         updatedAt: new Date().toISOString()
       });
@@ -5375,6 +5425,7 @@ export function createPanel({
       const economy = {
         ...(config.economy || {}),
         balances: { ...(config.economy?.balances || {}) },
+        bankBalances: { ...(config.economy?.bankBalances || {}) },
         cooldowns: {
           ...(config.economy?.cooldowns || {}),
           gambling: { ...(config.economy?.cooldowns?.gambling || {}) }
@@ -5383,7 +5434,7 @@ export function createPanel({
         transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : []
       };
       const userId = verified.member.id;
-      const balance = websiteCasinoBalance(economy, userId);
+      const balance = websiteCasinoAvailableBread(economy, userId);
       const bet = websiteCasinoBet(request.body?.bet, balance, economy);
       if (!bet.ok) {
         response.status(400).json({ error: bet.error });
@@ -5396,6 +5447,11 @@ export function createPanel({
       }
 
       const deck = blackjackDeck();
+      const spend = websiteCasinoSpendBread(economy, userId, bet.amount);
+      if (spend.shortfall > 0) {
+        response.status(400).json({ error: "You do not have enough available bread." });
+        return;
+      }
       const session = {
         id: crypto.randomBytes(8).toString("hex"),
         guildId: verified.guildId,
@@ -5406,12 +5462,13 @@ export function createPanel({
         dealer: [drawBlackjack(deck), drawBlackjack(deck)],
         status: "playing",
         payout: 0,
-        balance: balance - bet.amount,
+        balance: websiteCasinoAvailableBread(economy, userId),
+        wallet: websiteCasinoBalance(economy, userId),
+        bank: websiteCasinoBankBalance(economy, userId),
         createdAt: Date.now(),
         doubled: false
       };
       websiteCasinoSetCooldown(economy, userId);
-      websiteCasinoSetBalance(economy, userId, session.balance);
       const playerValue = blackjackValue(session.player);
       const dealerValue = blackjackValue(session.dealer);
       if (playerValue === 21 || dealerValue === 21) {
@@ -5426,8 +5483,10 @@ export function createPanel({
           session.result = "Dealer blackjack. The table took the loaf.";
           session.payout = 0;
         }
-        session.balance += session.payout;
-        websiteCasinoSetBalance(economy, userId, session.balance);
+        websiteCasinoAddWalletBread(economy, userId, session.payout);
+        session.balance = websiteCasinoAvailableBread(economy, userId);
+        session.wallet = websiteCasinoBalance(economy, userId);
+        session.bank = websiteCasinoBankBalance(economy, userId);
         websiteCasinoRecord(economy, userId, { game: "Website Blackjack", bet: bet.amount, payout: session.payout, details: session.result });
       } else {
         websiteBlackjackSessions.set(session.id, session);
@@ -5462,6 +5521,7 @@ export function createPanel({
       const economy = {
         ...(config.economy || {}),
         balances: { ...(config.economy?.balances || {}) },
+        bankBalances: { ...(config.economy?.bankBalances || {}) },
         stats: { ...(config.economy?.stats || {}) },
         transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : []
       };
@@ -5471,13 +5531,19 @@ export function createPanel({
           response.status(400).json({ error: "You can only double on the first decision." });
           return;
         }
-        const balance = websiteCasinoBalance(economy, userId);
+        const balance = websiteCasinoAvailableBread(economy, userId);
         if (balance < session.bet) {
           response.status(400).json({ error: "You need enough bread to double." });
           return;
         }
-        websiteCasinoSetBalance(economy, userId, balance - session.bet);
-        session.balance = balance - session.bet;
+        const spend = websiteCasinoSpendBread(economy, userId, session.bet);
+        if (spend.shortfall > 0) {
+          response.status(400).json({ error: "You need enough available bread to double." });
+          return;
+        }
+        session.balance = websiteCasinoAvailableBread(economy, userId);
+        session.wallet = websiteCasinoBalance(economy, userId);
+        session.bank = websiteCasinoBankBalance(economy, userId);
         session.bet *= 2;
         session.doubled = true;
         session.player.push(drawBlackjack(session.deck));
@@ -5512,9 +5578,10 @@ export function createPanel({
       }
 
       if (session.status === "finished") {
-        const current = websiteCasinoBalance(economy, userId);
-        session.balance = current + session.payout;
-        websiteCasinoSetBalance(economy, userId, session.balance);
+        websiteCasinoAddWalletBread(economy, userId, session.payout);
+        session.balance = websiteCasinoAvailableBread(economy, userId);
+        session.wallet = websiteCasinoBalance(economy, userId);
+        session.bank = websiteCasinoBankBalance(economy, userId);
         websiteCasinoRecord(economy, userId, { game: "Website Blackjack", bet: session.bet, payout: session.payout, details: session.result });
         websiteBlackjackSessions.delete(session.id);
       } else {
