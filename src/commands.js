@@ -85,6 +85,7 @@ const GIF_CONTENT_TYPES = new Set(["image/gif"]);
 const MEDIA_CONTENT_TYPES = new Set([...IMAGE_CONTENT_TYPES, ...GIF_CONTENT_TYPES]);
 const MAX_CHIPIFY_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
+const UNLIMITED_MEDIA_BYTES = Number.POSITIVE_INFINITY;
 const PLAIN_OUTPUT_COMMANDS = new Set(["ask", "chipify", "gif", "caption"]);
 const MAX_REMINDER_TIMEOUT_MS = 2_147_000_000;
 const PROFILE_BIO_MAX = 220;
@@ -798,6 +799,11 @@ function requirePanelRoot(ctx) {
   return false;
 }
 
+function isRootPanelMember(config = {}, userId = "") {
+  const user = panelAccessUser(config, userId);
+  return Boolean(user && normalizePanelAccessLevel(user.level) === "root");
+}
+
 const ROOT_ONLY_ECONOMY_COMMANDS = new Set([
   "breadset",
   "breadadd",
@@ -1369,9 +1375,18 @@ async function downloadAttachment(attachment) {
   };
 }
 
-async function downloadMediaAttachment(attachment) {
-  if (attachmentSize(attachment) > MAX_MEDIA_BYTES) {
-    throw new Error("That file is too large. Please use media under 25 MB.");
+function formatMediaLimit(maxBytes = MAX_MEDIA_BYTES) {
+  if (!Number.isFinite(maxBytes)) return "the Discord upload limit";
+  return `${Math.floor(maxBytes / 1024 / 1024)} MB`;
+}
+
+function mediaLimitForContext(ctx) {
+  return isRootPanelMember(ctx.config, ctx.message.author.id) ? UNLIMITED_MEDIA_BYTES : MAX_MEDIA_BYTES;
+}
+
+async function downloadMediaAttachment(attachment, { maxBytes = MAX_MEDIA_BYTES } = {}) {
+  if (attachmentSize(attachment) > maxBytes) {
+    throw new Error(`That file is too large. Please use media under ${formatMediaLimit(maxBytes)}.`);
   }
 
   const url = attachmentUrl(attachment);
@@ -1391,8 +1406,8 @@ async function downloadMediaAttachment(attachment) {
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  if (arrayBuffer.byteLength > MAX_MEDIA_BYTES) {
-    throw new Error("That file is too large. Please use media under 25 MB.");
+  if (arrayBuffer.byteLength > maxBytes) {
+    throw new Error(`That file is too large. Please use media under ${formatMediaLimit(maxBytes)}.`);
   }
 
   return {
@@ -5058,7 +5073,7 @@ define({
 
     const status = await ctx.message.reply("Captioning media...");
     try {
-      const media = await downloadMediaAttachment(attachment);
+      const media = await downloadMediaAttachment(attachment, { maxBytes: mediaLimitForContext(ctx) });
       const output = await captionMedia(media, { topText, bottomText });
       const file = new AttachmentBuilder(output.buffer, { name: output.filename });
       await status.edit({
@@ -5090,7 +5105,7 @@ define({
     const status = await ctx.message.reply("Converting that media to GIF...");
 
     try {
-      const media = await downloadMediaAttachment(attachment);
+      const media = await downloadMediaAttachment(attachment, { maxBytes: mediaLimitForContext(ctx) });
       const output = await convertToGif(media);
       const file = new AttachmentBuilder(output.buffer, { name: output.filename });
       await status.edit({
@@ -5128,7 +5143,7 @@ define({
     const status = await ctx.message.reply(`Running \`${subcommand}\` on that media...`);
 
     try {
-      const media = await downloadMediaAttachment(attachment);
+      const media = await downloadMediaAttachment(attachment, { maxBytes: mediaLimitForContext(ctx) });
       let output;
 
       if (subcommand === "caption") {
