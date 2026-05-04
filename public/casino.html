@@ -30,86 +30,151 @@
       </div>
     </header>
 
-    <section class="page-head casino-head">
-      <p class="eyebrow">Bread only</p>
-      <h1>Chipkittle Casino</h1>
-      <p>Slots, crash, and blackjack for fake Discord bread. No real money, no refunds, no explanation from the mascot.</p>
+    <section class="casino-hero">
+      <div>
+        <p class="eyebrow">Bread only</p>
+        <h1>Chipkittle Casino</h1>
+        <p>Slots, crash, and blackjack for fake Discord bread. No real money. No mercy from the felt.</p>
+      </div>
       <div class="casino-account" id="casinoAccount">
         <span>Checking your bread wallet...</span>
       </div>
     </section>
 
-    <section class="casino-grid" aria-label="Bread casino games">
-      <article class="casino-table slots-table">
-        <div class="casino-table-head">
-          <div>
-            <p class="eyebrow">Visual reels</p>
-            <h2>Loaf Slots</h2>
-          </div>
-          <strong id="slotsNet">0</strong>
-        </div>
-        <div class="slot-machine" aria-label="Slot reels">
-          <div class="slot-reel" id="slotA">🍞</div>
-          <div class="slot-reel" id="slotB">🌰</div>
-          <div class="slot-reel" id="slotC">🍃</div>
-        </div>
-        <form class="casino-controls" id="slotsForm">
-          <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
-          <button class="button primary" type="submit">Spin</button>
-        </form>
-        <p class="casino-status" id="slotsStatus">Triple symbols pay big. Two of a kind pays a little. The crown is suspicious.</p>
-      </article>
-
-      <article class="casino-table crash-table">
-        <div class="casino-table-head">
-          <div>
-            <p class="eyebrow">Multiplier panic</p>
-            <h2>Bread Crash</h2>
-          </div>
-          <strong id="crashReadout">1.00x</strong>
-        </div>
-        <div class="crash-stage">
-          <canvas id="crashCanvas" width="760" height="320" aria-label="Crash multiplier graph"></canvas>
-          <div class="crash-badge" id="crashBadge">armed</div>
-        </div>
-        <form class="casino-controls split-controls" id="crashForm">
-          <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
-          <label>Cash out <input name="target" inputmode="decimal" value="2.00"></label>
-          <button class="button primary" type="submit">Launch</button>
-        </form>
-        <p class="casino-status" id="crashStatus">Choose a cash-out multiplier. If the altar cracks first, the bread vanishes.</p>
-      </article>
-
-      <article class="casino-table blackjack-table">
-        <div class="casino-table-head">
-          <div>
-            <p class="eyebrow">Dealer ritual</p>
-            <h2>Blackjack</h2>
-          </div>
-          <strong id="blackjackValue">21?</strong>
-        </div>
-        <div class="blackjack-felt">
-          <div class="hand-row">
-            <span>Dealer <b id="dealerValue">0</b></span>
-            <div class="card-row" id="dealerCards"></div>
-          </div>
-          <div class="hand-row">
-            <span>You <b id="playerValue">0</b></span>
-            <div class="card-row" id="playerCards"></div>
-          </div>
-        </div>
-        <form class="casino-controls" id="blackjackForm">
-          <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
-          <button class="button primary" type="submit">Deal</button>
-        </form>
-        <div class="blackjack-actions">
-          <button type="button" id="hitButton">Hit</button>
-          <button type="button" id="standButton">Stand</button>
-          <button type="button" id="doubleButton">Double</button>
-        </div>
-        <p class="casino-status" id="blackjackStatus">Start a hand. Dealer stands on 17. Blackjack pays 3:2.</p>
-      </article>
+    <section class="casino-toolbar" aria-label="Casino controls">
+      <label>Client seed
+        <input id="clientSeed" autocomplete="off" spellcheck="false" value="chipkittle">
+      </label>
+      <button type="button" class="casino-pill" id="soundToggle">Sound on</button>
+      <button type="button" class="casino-pill" id="dailyRewardButton">Daily crumbs</button>
+      <button type="button" class="casino-pill" id="repeatBetButton">Repeat bet</button>
+      <p id="proofText">Provably fair seeds appear after each round.</p>
     </section>
+
+    <section class="casino-layout" aria-label="Bread casino games">
+      <div class="casino-main">
+        <article class="casino-table slots-table">
+          <div class="casino-table-head">
+            <div>
+              <p class="eyebrow">Physics reels</p>
+              <h2>Loaf Slots</h2>
+            </div>
+            <strong id="slotsNet">0</strong>
+          </div>
+          <div class="slot-machine" aria-label="Slot reels">
+            <div class="slot-reel" id="slotA" data-tier="common">&#127838;</div>
+            <div class="slot-reel" id="slotB" data-tier="common">&#127792;</div>
+            <div class="slot-reel" id="slotC" data-tier="rare">&#127811;</div>
+            <div class="slot-payline" id="slotPayline"></div>
+          </div>
+          <div class="casino-chip-row" data-target="slotsForm">
+            <button type="button" data-chip="25">25</button>
+            <button type="button" data-chip="100">100</button>
+            <button type="button" data-chip="500">500</button>
+            <button type="button" data-chip="1000">1k</button>
+            <button type="button" data-chip="all">All</button>
+          </div>
+          <form class="casino-controls" id="slotsForm">
+            <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
+            <label class="casino-check"><input type="checkbox" name="auto"> Auto</label>
+            <button class="button primary" type="submit">Spin</button>
+          </form>
+          <p class="casino-status" id="slotsStatus">Symbol rarity matters. Crowns can trigger suspicious bonus crumbs.</p>
+        </article>
+
+        <article class="casino-table crash-table">
+          <div class="casino-table-head">
+            <div>
+              <p class="eyebrow">Live curve</p>
+              <h2>Bread Crash</h2>
+            </div>
+            <strong id="crashReadout">1.00x</strong>
+          </div>
+          <div class="crash-stage">
+            <canvas id="crashCanvas" width="760" height="320" aria-label="Crash multiplier graph"></canvas>
+            <div class="crash-badge" id="crashBadge">armed</div>
+            <div class="crash-markers" id="crashMarkers"></div>
+          </div>
+          <div class="casino-chip-row" data-target="crashForm">
+            <button type="button" data-chip="25">25</button>
+            <button type="button" data-chip="100">100</button>
+            <button type="button" data-chip="500">500</button>
+            <button type="button" data-chip="1000">1k</button>
+            <button type="button" data-chip="half">Half</button>
+          </div>
+          <form class="casino-controls split-controls" id="crashForm">
+            <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
+            <label>Auto cashout <input name="target" inputmode="decimal" value="2.00"></label>
+            <button class="button primary" type="submit">Launch</button>
+          </form>
+          <p class="casino-status" id="crashStatus">Smooth curve, auto cashout, recent markers. Still bread peril.</p>
+        </article>
+
+        <article class="casino-table blackjack-table">
+          <div class="casino-table-head">
+            <div>
+              <p class="eyebrow">Table flow</p>
+              <h2>Blackjack</h2>
+            </div>
+            <strong id="blackjackValue">21?</strong>
+          </div>
+          <div class="blackjack-felt">
+            <div class="hand-row">
+              <span>Dealer <b id="dealerValue">0</b></span>
+              <div class="card-row" id="dealerCards"></div>
+            </div>
+            <div class="hand-row">
+              <span>You <b id="playerValue">0</b></span>
+              <div class="card-row" id="playerCards"></div>
+            </div>
+          </div>
+          <div class="casino-chip-row" data-target="blackjackForm">
+            <button type="button" data-chip="25">25</button>
+            <button type="button" data-chip="100">100</button>
+            <button type="button" data-chip="500">500</button>
+            <button type="button" data-chip="1000">1k</button>
+            <button type="button" data-chip="all">All</button>
+          </div>
+          <form class="casino-controls" id="blackjackForm">
+            <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
+            <button class="button primary" type="submit">Deal</button>
+          </form>
+          <div class="blackjack-actions">
+            <button type="button" id="hitButton">Hit</button>
+            <button type="button" id="standButton">Stand</button>
+            <button type="button" id="doubleButton">Double</button>
+            <button type="button" id="splitButton">Split</button>
+            <button type="button" id="insuranceButton">Insurance</button>
+          </div>
+          <p class="casino-status" id="blackjackStatus">Dealer stands on 17. Blackjack pays 3:2. Split if the table permits.</p>
+        </article>
+      </div>
+
+      <aside class="casino-side">
+        <section class="casino-panel">
+          <div class="casino-panel-head">
+            <h2>Recent rounds</h2>
+            <span>live feed</span>
+          </div>
+          <div class="casino-feed" id="recentRounds"></div>
+        </section>
+        <section class="casino-panel">
+          <div class="casino-panel-head">
+            <h2>Leaderboard</h2>
+            <span>net bread</span>
+          </div>
+          <div class="casino-feed" id="casinoLeaderboard"></div>
+        </section>
+        <section class="casino-panel">
+          <div class="casino-panel-head">
+            <h2>Achievements</h2>
+            <span>progression</span>
+          </div>
+          <div class="achievement-grid" id="casinoAchievements"></div>
+        </section>
+      </aside>
+    </section>
+    <div class="casino-toast" id="casinoToast" aria-live="polite"></div>
   </main>
   <script type="module" src="/casino.js"></script>
 </body>

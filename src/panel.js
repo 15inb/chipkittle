@@ -224,12 +224,12 @@ const WEBSITE_CASINO_SESSION_MS = 5 * 60 * 1000;
 const WEBSITE_CASINO_STARTING_BREAD = 500;
 const WEBSITE_CASINO_LOG_LIMIT = 60;
 const WEBSITE_CASINO_SYMBOLS = [
-  { id: "loaf", icon: "🍞", label: "Loaf", weight: 28 },
-  { id: "nut", icon: "🌰", label: "Acorn", weight: 24 },
-  { id: "leaf", icon: "🍃", label: "Leaf", weight: 20 },
-  { id: "spark", icon: "✦", label: "Spark", weight: 14 },
-  { id: "horn", icon: "♈", label: "Horn", weight: 9 },
-  { id: "crown", icon: "♛", label: "Crown", weight: 5 }
+  { id: "loaf", icon: "\u{1F35E}", label: "Loaf", tier: "common", weight: 28 },
+  { id: "nut", icon: "\u{1F330}", label: "Acorn", tier: "common", weight: 24 },
+  { id: "leaf", icon: "\u{1F343}", label: "Leaf", tier: "rare", weight: 20 },
+  { id: "spark", icon: "\u2726", label: "Spark", tier: "rare", weight: 14 },
+  { id: "horn", icon: "\u2648", label: "Horn", tier: "epic", weight: 9 },
+  { id: "crown", icon: "\u265B", label: "Crown", tier: "legendary", weight: 5 }
 ];
 const WEBSITE_CASINO_SLOT_PAYOUTS = {
   loaf: 3,
@@ -2451,6 +2451,120 @@ function websiteCasinoEconomySettings(economy = {}) {
   };
 }
 
+function websiteCasinoState(economy = {}) {
+  economy.websiteCasino ||= {};
+  economy.websiteCasino.history = Array.isArray(economy.websiteCasino.history) ? economy.websiteCasino.history.slice(-40) : [];
+  economy.websiteCasino.achievements ||= {};
+  economy.websiteCasino.dailyClaims ||= {};
+  economy.websiteCasino.nonces ||= {};
+  return economy.websiteCasino;
+}
+
+function casinoDayKey(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+function casinoPublicRound(round = {}) {
+  return {
+    id: String(round.id || ""),
+    game: String(round.game || ""),
+    displayName: String(round.displayName || "Chipkittle").slice(0, 40),
+    bet: Math.max(Math.floor(Number(round.bet) || 0), 0),
+    payout: Math.max(Math.floor(Number(round.payout) || 0), 0),
+    net: Math.floor(Number(round.net) || 0),
+    label: String(round.label || ""),
+    multiplier: Number(round.multiplier || 0),
+    createdAt: String(round.createdAt || "")
+  };
+}
+
+function casinoPublicAchievement(id = "", unlockedAt = "") {
+  const catalog = {
+    first_spin: ["First Spin", "Played a website casino game."],
+    big_win: ["Big Bread Moment", "Won at least 5x a bet."],
+    crash_cashout: ["Left Before The Noise", "Won a crash round."],
+    blackjack_21: ["Twenty-One Den Witness", "Landed a 21 in blackjack."],
+    split_hand: ["Two Hands, One Problem", "Split a blackjack hand."],
+    daily_claim: ["Daily Crumb", "Claimed the website casino daily reward."]
+  };
+  const [name, detail] = catalog[id] || [id, "Unlocked."];
+  return { id, name, description: detail, unlockedAt };
+}
+
+function casinoLeaderboard(economy = {}, limit = 10) {
+  return Object.entries(economy.stats || {})
+    .map(([userId, stats]) => ({
+      userId,
+      net: Math.floor(Number(stats.profit) || 0),
+      profit: Math.floor(Number(stats.profit) || 0),
+      wagered: Math.max(Math.floor(Number(stats.wagered) || 0), 0),
+      gamesPlayed: Math.max(Math.floor(Number(stats.gamesPlayed) || 0), 0),
+      biggestWin: Math.max(Math.floor(Number(stats.biggestWin) || 0), 0)
+    }))
+    .filter((entry) => entry.gamesPlayed > 0 || entry.wagered > 0)
+    .sort((a, b) => b.profit - a.profit || b.biggestWin - a.biggestWin)
+    .slice(0, limit);
+}
+
+function casinoProof({ game = "", userId = "", clientSeed = "", nonce = 0 } = {}) {
+  const serverSeed = crypto.randomBytes(24).toString("hex");
+  const payload = `${game}:${userId}:${clientSeed || "chipkittle"}:${nonce}:${serverSeed}`;
+  const digest = crypto.createHash("sha256").update(payload).digest("hex");
+  return {
+    serverSeed,
+    serverSeedHash: crypto.createHash("sha256").update(serverSeed).digest("hex"),
+    clientSeed: String(clientSeed || "chipkittle").slice(0, 80),
+    nonce,
+    digest
+  };
+}
+
+function casinoUnitInterval(proof, index = 0) {
+  const digest = crypto.createHash("sha256").update(`${proof.digest}:${index}`).digest("hex");
+  return Number.parseInt(digest.slice(0, 13), 16) / 0x1fffffffffffff;
+}
+
+function casinoWeightedSymbol(proof, index = 0) {
+  const totalWeight = WEBSITE_CASINO_SYMBOLS.reduce((sum, symbol) => sum + symbol.weight, 0);
+  let roll = casinoUnitInterval(proof, index) * totalWeight;
+  for (const symbol of WEBSITE_CASINO_SYMBOLS) {
+    roll -= symbol.weight;
+    if (roll <= 0) return symbol;
+  }
+  return WEBSITE_CASINO_SYMBOLS[0];
+}
+
+function nextCasinoProof(economy = {}, userId = "", game = "", clientSeed = "") {
+  const state = websiteCasinoState(economy);
+  state.nonces[userId] = Math.max(Math.floor(Number(state.nonces[userId]) || 0), 0) + 1;
+  return casinoProof({ game, userId, clientSeed, nonce: state.nonces[userId] });
+}
+
+function unlockCasinoAchievement(economy = {}, userId = "", id = "") {
+  const state = websiteCasinoState(economy);
+  state.achievements[userId] ||= {};
+  if (state.achievements[userId][id]) return null;
+  state.achievements[userId][id] = new Date().toISOString();
+  return casinoPublicAchievement(id, state.achievements[userId][id]);
+}
+
+function recordWebsiteCasinoRound(economy = {}, userId = "", round = {}) {
+  const state = websiteCasinoState(economy);
+  state.history.unshift({
+    id: round.id || crypto.randomBytes(5).toString("hex"),
+    userId,
+    game: round.game,
+    displayName: round.displayName,
+    bet: round.bet,
+    payout: round.payout,
+    net: round.net,
+    label: round.label,
+    multiplier: round.multiplier,
+    createdAt: new Date().toISOString()
+  });
+  state.history = state.history.slice(0, 40);
+}
+
 function websiteCasinoBalance(economy = {}, userId = "") {
   return Math.max(Math.floor(Number(economy.balances?.[userId] ?? WEBSITE_CASINO_STARTING_BREAD) || 0), 0);
 }
@@ -2554,42 +2668,43 @@ function websiteCasinoBet(rawBet, balance, economy = {}) {
   return { ok: true, amount };
 }
 
-function weightedCasinoSymbol() {
-  const totalWeight = WEBSITE_CASINO_SYMBOLS.reduce((sum, symbol) => sum + symbol.weight, 0);
-  let roll = Math.random() * totalWeight;
-  for (const symbol of WEBSITE_CASINO_SYMBOLS) {
-    roll -= symbol.weight;
-    if (roll <= 0) return symbol;
-  }
-  return WEBSITE_CASINO_SYMBOLS[0];
-}
-
-function resolveWebsiteSlots(bet = 0) {
-  const reels = [weightedCasinoSymbol(), weightedCasinoSymbol(), weightedCasinoSymbol()];
+function resolveWebsiteSlots(bet = 0, proof = casinoProof()) {
+  const reels = [casinoWeightedSymbol(proof, 0), casinoWeightedSymbol(proof, 1), casinoWeightedSymbol(proof, 2)];
   const ids = reels.map((symbol) => symbol.id);
   let multiplier = 0;
   let label = "The reels coughed politely.";
+  let payline = [];
+  let bonus = null;
   if (ids[0] === ids[1] && ids[1] === ids[2]) {
     multiplier = WEBSITE_CASINO_SLOT_PAYOUTS[ids[0]] || 3;
     label = `Triple ${reels[0].label}`;
+    payline = [0, 1, 2];
   } else if (new Set(ids).size === 2) {
     multiplier = 1.35;
     label = "Two of a kind";
+    payline = ids[0] === ids[1] ? [0, 1] : ids[1] === ids[2] ? [1, 2] : [0, 2];
   } else if (ids.includes("crown") && ids.includes("horn")) {
     multiplier = 2.2;
     label = "Royal horn omen";
+    payline = ids.map((id, index) => ["crown", "horn"].includes(id) ? index : -1).filter((index) => index >= 0);
+  }
+  if (ids.includes("crown") && casinoUnitInterval(proof, 9) > 0.82) {
+    const bonusMultiplier = 1 + Math.floor(casinoUnitInterval(proof, 10) * 4);
+    multiplier += bonusMultiplier;
+    bonus = { name: "Crown bonus", multiplier: bonusMultiplier };
+    label = `${label} + Crown bonus`;
   }
   const payout = Math.floor(bet * multiplier);
-  return { reels, multiplier, payout, label };
+  return { reels, multiplier, payout, label, payline, bonus };
 }
 
-function crashPoint() {
+function crashPoint(proof = casinoProof()) {
   const houseEdge = 0.94;
-  const roll = Math.max(Math.random(), 0.0001);
+  const roll = Math.max(casinoUnitInterval(proof, 0), 0.0001);
   return Math.min(Math.max(Math.floor((houseEdge / roll) * 100) / 100, 1), 250);
 }
 
-function blackjackDeck() {
+function blackjackDeck(proof = casinoProof()) {
   const ranks = [
     ["A", 11],
     ["2", 2],
@@ -2605,12 +2720,16 @@ function blackjackDeck() {
     ["Q", 10],
     ["K", 10]
   ];
-  return ["♠", "♥", "♦", "♣"].flatMap((suit) => ranks.map(([rank, value]) => ({ rank, value, suit })));
+  const deck = ["\u2660", "\u2665", "\u2666", "\u2663"].flatMap((suit) => ranks.map(([rank, value]) => ({ rank, value, suit })));
+  for (let index = deck.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(casinoUnitInterval(proof, index) * (index + 1));
+    [deck[index], deck[swapIndex]] = [deck[swapIndex], deck[index]];
+  }
+  return deck;
 }
 
 function drawBlackjack(deck = []) {
-  const index = Math.floor(Math.random() * deck.length);
-  return deck.splice(index, 1)[0];
+  return deck.shift();
 }
 
 function blackjackValue(hand = []) {
@@ -2629,6 +2748,7 @@ function publicBlackjackPayload(session = {}) {
     status: session.status,
     bet: session.bet,
     player: session.player || [],
+    splitHands: Array.isArray(session.splitHands) ? session.splitHands : [],
     dealer: session.status === "playing" ? [session.dealer?.[0]].filter(Boolean) : (session.dealer || []),
     playerValue: blackjackValue(session.player || []),
     dealerValue: session.status === "playing" ? blackjackValue([session.dealer?.[0]].filter(Boolean)) : blackjackValue(session.dealer || []),
@@ -2637,7 +2757,9 @@ function publicBlackjackPayload(session = {}) {
     balance: Math.max(Math.floor(Number(session.balance) || 0), 0),
     wallet: Math.max(Math.floor(Number(session.wallet) || 0), 0),
     bank: Math.max(Math.floor(Number(session.bank) || 0), 0),
-    canDouble: session.status === "playing" && (session.player || []).length === 2 && !session.doubled
+    canDouble: session.status === "playing" && (session.player || []).length === 2 && !session.doubled,
+    canSplit: session.status === "playing" && (session.player || []).length === 2 && session.player[0]?.rank === session.player[1]?.rank && !session.split,
+    canInsurance: session.status === "playing" && session.dealer?.[0]?.rank === "A" && !session.insuranceOffered
   };
 }
 
@@ -5315,6 +5437,9 @@ export function createPanel({
     const config = store.getGuild(verified.guildId);
     const economy = config.economy || {};
     const settings = websiteCasinoEconomySettings(economy);
+    const casinoState = websiteCasinoState(economy);
+    const userAchievements = casinoState.achievements?.[verified.member.id] || {};
+    const dailyKey = casinoDayKey();
     response.json({
       authenticated: true,
       user: {
@@ -5328,8 +5453,57 @@ export function createPanel({
       availableBread: websiteCasinoAvailableBread(economy, verified.member.id),
       maxBet: settings.maxBreadBet,
       cooldownSeconds: Math.ceil(settings.gamblingCooldownMs / 1000),
+      recentRounds: casinoState.history.slice(0, 12).map(casinoPublicRound),
+      leaderboard: casinoLeaderboard(economy).map((entry, index) => ({ ...entry, rank: index + 1 })),
+      achievements: Object.entries(userAchievements).map(([id, unlockedAt]) => casinoPublicAchievement(id, unlockedAt)),
+      dailyReward: {
+        available: casinoState.dailyClaims?.[verified.member.id] !== dailyKey,
+        amount: 250,
+        day: dailyKey
+      },
       updatedAt: new Date().toISOString()
     });
+  });
+
+  app.post("/api/public/casino/daily", async (request, response) => {
+    setPublicApiHeaders(response);
+    try {
+      const verified = await websiteCasinoUser(request, response);
+      if (!verified) return;
+      const config = store.getGuild(verified.guildId);
+      const economy = {
+        ...(config.economy || {}),
+        balances: { ...(config.economy?.balances || {}) },
+        bankBalances: { ...(config.economy?.bankBalances || {}) },
+        stats: { ...(config.economy?.stats || {}) },
+        transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : [],
+        websiteCasino: { ...(config.economy?.websiteCasino || {}) }
+      };
+      const casinoState = websiteCasinoState(economy);
+      const userId = verified.member.id;
+      const dailyKey = casinoDayKey();
+      if (casinoState.dailyClaims[userId] === dailyKey) {
+        response.status(429).json({ error: "The daily bread crumb has already been claimed today." });
+        return;
+      }
+      const amount = 250;
+      casinoState.dailyClaims[userId] = dailyKey;
+      websiteCasinoAddWalletBread(economy, userId, amount);
+      const achievement = unlockCasinoAchievement(economy, userId, "daily_claim");
+      await store.updateGuild(verified.guildId, { economy });
+      response.json({
+        ok: true,
+        amount,
+        balance: websiteCasinoAvailableBread(economy, userId),
+        wallet: websiteCasinoBalance(economy, userId),
+        bank: websiteCasinoBankBalance(economy, userId),
+        achievement,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Website casino daily failed:", error);
+      response.status(500).json({ error: "The daily reward jammed." });
+    }
   });
 
   app.post("/api/public/casino/play", async (request, response) => {
@@ -5353,7 +5527,8 @@ export function createPanel({
           gambling: { ...(config.economy?.cooldowns?.gambling || {}) }
         },
         stats: { ...(config.economy?.stats || {}) },
-        transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : []
+        transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : [],
+        websiteCasino: { ...(config.economy?.websiteCasino || {}) }
       };
       const userId = verified.member.id;
       const balance = websiteCasinoAvailableBread(economy, userId);
@@ -5368,12 +5543,13 @@ export function createPanel({
         return;
       }
 
+      const proof = nextCasinoProof(economy, userId, game, request.body?.clientSeed);
       let result;
       if (game === "slots") {
-        result = resolveWebsiteSlots(bet.amount);
+        result = resolveWebsiteSlots(bet.amount, proof);
       } else {
         const targetMultiplier = Math.min(Math.max(Number(request.body?.targetMultiplier) || 2, 1.05), 25);
-        const point = crashPoint();
+        const point = crashPoint(proof);
         const won = targetMultiplier <= point;
         result = {
           targetMultiplier,
@@ -5397,6 +5573,20 @@ export function createPanel({
         payout: result.payout,
         details: result.label
       });
+      const unlocked = [
+        unlockCasinoAchievement(economy, userId, "first_spin"),
+        result.payout >= bet.amount * 5 ? unlockCasinoAchievement(economy, userId, "big_win") : null,
+        game === "crash" && result.payout > bet.amount ? unlockCasinoAchievement(economy, userId, "crash_cashout") : null
+      ].filter(Boolean);
+      recordWebsiteCasinoRound(economy, userId, {
+        game,
+        displayName: verified.member.displayName,
+        bet: bet.amount,
+        payout: result.payout,
+        net: result.payout - bet.amount,
+        label: result.label,
+        multiplier: result.multiplier || result.targetMultiplier || 0
+      });
       await store.updateGuild(verified.guildId, { economy });
       response.json({
         ok: true,
@@ -5408,6 +5598,16 @@ export function createPanel({
         wallet: websiteCasinoBalance(economy, userId),
         bank: websiteCasinoBankBalance(economy, userId),
         result,
+        proof: {
+          serverSeed: proof.serverSeed,
+          serverSeedHash: proof.serverSeedHash,
+          clientSeed: proof.clientSeed,
+          nonce: proof.nonce,
+          digest: proof.digest
+        },
+        achievements: unlocked,
+        recentRounds: websiteCasinoState(economy).history.slice(0, 12).map(casinoPublicRound),
+        leaderboard: casinoLeaderboard(economy).map((entry, index) => ({ ...entry, rank: index + 1 })),
         updatedAt: new Date().toISOString()
       });
     } catch (error) {
@@ -5431,7 +5631,8 @@ export function createPanel({
           gambling: { ...(config.economy?.cooldowns?.gambling || {}) }
         },
         stats: { ...(config.economy?.stats || {}) },
-        transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : []
+        transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : [],
+        websiteCasino: { ...(config.economy?.websiteCasino || {}) }
       };
       const userId = verified.member.id;
       const balance = websiteCasinoAvailableBread(economy, userId);
@@ -5446,7 +5647,8 @@ export function createPanel({
         return;
       }
 
-      const deck = blackjackDeck();
+      const proof = nextCasinoProof(economy, userId, "blackjack", request.body?.clientSeed);
+      const deck = blackjackDeck(proof);
       const spend = websiteCasinoSpendBread(economy, userId, bet.amount);
       if (spend.shortfall > 0) {
         response.status(400).json({ error: "You do not have enough available bread." });
@@ -5454,6 +5656,7 @@ export function createPanel({
       }
       const session = {
         id: crypto.randomBytes(8).toString("hex"),
+        proof,
         guildId: verified.guildId,
         userId,
         deck,
@@ -5488,11 +5691,32 @@ export function createPanel({
         session.wallet = websiteCasinoBalance(economy, userId);
         session.bank = websiteCasinoBankBalance(economy, userId);
         websiteCasinoRecord(economy, userId, { game: "Website Blackjack", bet: bet.amount, payout: session.payout, details: session.result });
+        recordWebsiteCasinoRound(economy, userId, {
+          game: "blackjack",
+          displayName: verified.member.displayName,
+          bet: bet.amount,
+          payout: session.payout,
+          net: session.payout - bet.amount,
+          label: session.result,
+          multiplier: bet.amount ? session.payout / bet.amount : 0
+        });
+        if (playerValue === 21) unlockCasinoAchievement(economy, userId, "blackjack_21");
       } else {
         websiteBlackjackSessions.set(session.id, session);
       }
       await store.updateGuild(verified.guildId, { economy });
-      response.json({ ok: true, blackjack: publicBlackjackPayload(session), updatedAt: new Date().toISOString() });
+      response.json({
+        ok: true,
+        blackjack: publicBlackjackPayload(session),
+        proof: {
+          serverSeedHash: proof.serverSeedHash,
+          clientSeed: proof.clientSeed,
+          nonce: proof.nonce
+        },
+        recentRounds: websiteCasinoState(economy).history.slice(0, 12).map(casinoPublicRound),
+        leaderboard: casinoLeaderboard(economy).map((entry, index) => ({ ...entry, rank: index + 1 })),
+        updatedAt: new Date().toISOString()
+      });
     } catch (error) {
       console.error("Website blackjack start failed:", error);
       response.status(500).json({ error: "Blackjack failed to start." });
@@ -5523,10 +5747,72 @@ export function createPanel({
         balances: { ...(config.economy?.balances || {}) },
         bankBalances: { ...(config.economy?.bankBalances || {}) },
         stats: { ...(config.economy?.stats || {}) },
-        transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : []
+        transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : [],
+        websiteCasino: { ...(config.economy?.websiteCasino || {}) }
       };
       const userId = verified.member.id;
-      if (action === "double") {
+      if (action === "insurance") {
+        if (session.dealer?.[0]?.rank !== "A" || session.insuranceOffered) {
+          response.status(400).json({ error: "Insurance is only available against a dealer ace." });
+          return;
+        }
+        const insuranceBet = Math.max(1, Math.floor(session.bet / 2));
+        if (websiteCasinoAvailableBread(economy, userId) < insuranceBet) {
+          response.status(400).json({ error: "You need enough available bread for insurance." });
+          return;
+        }
+        websiteCasinoSpendBread(economy, userId, insuranceBet);
+        session.balance = websiteCasinoAvailableBread(economy, userId);
+        session.wallet = websiteCasinoBalance(economy, userId);
+        session.bank = websiteCasinoBankBalance(economy, userId);
+        session.insuranceOffered = true;
+        session.insuranceBet = insuranceBet;
+        if (blackjackValue(session.dealer) === 21) {
+          session.status = "finished";
+          session.result = "Insurance paid. Dealer had blackjack.";
+          session.payout = insuranceBet * 3;
+        }
+      } else if (action === "split") {
+        if ((session.player || []).length !== 2 || session.player[0]?.rank !== session.player[1]?.rank || session.split) {
+          response.status(400).json({ error: "You can only split matching first cards." });
+          return;
+        }
+        if (websiteCasinoAvailableBread(economy, userId) < session.bet) {
+          response.status(400).json({ error: "You need enough available bread to split." });
+          return;
+        }
+        websiteCasinoSpendBread(economy, userId, session.bet);
+        const hands = [
+          [session.player[0], drawBlackjack(session.deck)],
+          [session.player[1], drawBlackjack(session.deck)]
+        ];
+        while (blackjackValue(session.dealer) < 17) {
+          session.dealer.push(drawBlackjack(session.deck));
+        }
+        const dealerValue = blackjackValue(session.dealer);
+        let splitPayout = 0;
+        const summaries = hands.map((hand, index) => {
+          const value = blackjackValue(hand);
+          if (value > 21) return `hand ${index + 1} bust`;
+          if (dealerValue > 21 || value > dealerValue) {
+            splitPayout += session.bet * 2;
+            return `hand ${index + 1} wins`;
+          }
+          if (value === dealerValue) {
+            splitPayout += session.bet;
+            return `hand ${index + 1} pushes`;
+          }
+          return `hand ${index + 1} loses`;
+        });
+        session.split = true;
+        session.splitHands = hands;
+        session.player = hands.flat();
+        session.status = "finished";
+        session.bet *= 2;
+        session.payout = splitPayout;
+        session.result = `Split resolved: ${summaries.join(", ")}.`;
+        unlockCasinoAchievement(economy, userId, "split_hand");
+      } else if (action === "double") {
         if ((session.player || []).length !== 2 || session.doubled) {
           response.status(400).json({ error: "You can only double on the first decision." });
           return;
@@ -5583,12 +5869,35 @@ export function createPanel({
         session.wallet = websiteCasinoBalance(economy, userId);
         session.bank = websiteCasinoBankBalance(economy, userId);
         websiteCasinoRecord(economy, userId, { game: "Website Blackjack", bet: session.bet, payout: session.payout, details: session.result });
+        recordWebsiteCasinoRound(economy, userId, {
+          game: "blackjack",
+          displayName: verified.member.displayName,
+          bet: session.bet,
+          payout: session.payout,
+          net: session.payout - session.bet,
+          label: session.result,
+          multiplier: session.bet ? session.payout / session.bet : 0
+        });
+        if (blackjackValue(session.player) === 21) unlockCasinoAchievement(economy, userId, "blackjack_21");
         websiteBlackjackSessions.delete(session.id);
       } else {
         websiteBlackjackSessions.set(session.id, session);
       }
       await store.updateGuild(verified.guildId, { economy });
-      response.json({ ok: true, blackjack: publicBlackjackPayload(session), updatedAt: new Date().toISOString() });
+      response.json({
+        ok: true,
+        blackjack: publicBlackjackPayload(session),
+        proof: session.status === "finished" && session.proof ? {
+          serverSeed: session.proof.serverSeed,
+          serverSeedHash: session.proof.serverSeedHash,
+          clientSeed: session.proof.clientSeed,
+          nonce: session.proof.nonce,
+          digest: session.proof.digest
+        } : undefined,
+        recentRounds: websiteCasinoState(economy).history.slice(0, 12).map(casinoPublicRound),
+        leaderboard: casinoLeaderboard(economy).map((entry, index) => ({ ...entry, rank: index + 1 })),
+        updatedAt: new Date().toISOString()
+      });
     } catch (error) {
       console.error("Website blackjack action failed:", error);
       response.status(500).json({ error: "Blackjack action failed." });
