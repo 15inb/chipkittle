@@ -1690,6 +1690,147 @@ a {
   border-radius: 20px;
 }
 
+.crash-countdown,
+.crash-center-readout,
+.crash-overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.crash-countdown {
+  top: 14px;
+  width: min(420px, calc(100% - 40px));
+  display: grid;
+  gap: 8px;
+  text-align: center;
+  color: #fff6c9;
+  font-weight: 950;
+}
+
+.crash-countdown span {
+  height: 6px;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f6c85d, #6bff83);
+  box-shadow: 0 0 18px rgba(107, 255, 131, 0.4);
+}
+
+.crash-center-readout {
+  top: 38%;
+  display: grid;
+  gap: 6px;
+  text-align: center;
+  text-shadow: 0 8px 26px rgba(0,0,0,0.55);
+}
+
+.crash-center-readout strong {
+  color: #9dff6b;
+  font-size: clamp(2.4rem, 7vw, 5.6rem);
+  line-height: 0.9;
+}
+
+.crash-center-readout span {
+  color: rgba(255, 246, 214, 0.82);
+  font-weight: 850;
+}
+
+.crash-overlay {
+  top: 46%;
+  opacity: 0;
+  border: 1px solid rgba(255, 95, 95, 0.42);
+  border-radius: 16px;
+  background: rgba(59, 4, 4, 0.78);
+  color: #ffd0d0;
+  padding: 12px 18px;
+  font-size: clamp(1.4rem, 4vw, 3rem);
+  font-weight: 1000;
+  letter-spacing: 0.04em;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.crash-overlay.show {
+  opacity: 1;
+  transform: translateX(-50%) scale(1.03);
+}
+
+.crash-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.crash-bet-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(246, 200, 93, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.crash-bet-panel[data-state="active"] {
+  border-color: rgba(107, 255, 131, 0.5);
+  box-shadow: 0 0 24px rgba(107, 255, 131, 0.1);
+}
+
+.crash-bet-panel[data-state="cashed"] {
+  border-color: rgba(157, 255, 107, 0.5);
+}
+
+.crash-bet-panel[data-state="queued"] {
+  border-color: rgba(246, 200, 93, 0.48);
+}
+
+.crash-bet-panel > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.crash-bet-panel strong {
+  color: #fff4c4;
+}
+
+.crash-bet-panel span,
+.crash-bet-panel small {
+  color: rgba(255, 246, 214, 0.68);
+}
+
+.crash-bet-panel label {
+  display: grid;
+  gap: 6px;
+  color: rgba(248, 244, 230, 0.72);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.crash-bet-panel input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(246, 200, 93, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff8dc;
+  font: inherit;
+  font-weight: 850;
+}
+
+.casino-secondary-button {
+  min-height: 40px;
+  border: 1px solid rgba(246, 200, 93, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.075);
+  color: #fff4c4;
+  font: inherit;
+  font-weight: 900;
+}
+
 .crash-badge {
   animation: casino-pulse 1.4s ease infinite;
 }
@@ -1750,6 +1891,43 @@ a {
   font-size: 0.78rem;
   font-weight: 800;
   animation: casino-pop 260ms ease;
+}
+
+.casino-modal {
+  border: 0;
+  border-radius: 22px;
+  padding: 0;
+  background: transparent;
+  color: #fff4c4;
+}
+
+.casino-modal::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.casino-modal-card {
+  width: min(640px, calc(100vw - 28px));
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid rgba(246, 200, 93, 0.3);
+  border-radius: 22px;
+  background: #07110c;
+  box-shadow: 0 30px 90px rgba(0,0,0,0.45);
+}
+
+.casino-modal-card pre {
+  max-height: 280px;
+  overflow: auto;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(0,0,0,0.35);
+  color: #9dff6b;
+  white-space: pre-wrap;
+}
+
+.casino-modal-close {
+  justify-self: end;
 }
 
 .blackjack-felt {
@@ -4087,6 +4265,14 @@ a {
 
   .slot-reel {
     min-height: 96px;
+  }
+
+  .crash-panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .crash-center-readout {
+    top: 32%;
   }
 
   .casino-controls,

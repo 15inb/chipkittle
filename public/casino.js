@@ -25,14 +25,24 @@ const slotsStatus = document.querySelector("#slotsStatus");
 const slotsNet = document.querySelector("#slotsNet");
 const slotPayline = document.querySelector("#slotPayline");
 const slotEls = ["#slotA", "#slotB", "#slotC"].map((selector) => document.querySelector(selector));
-const crashForm = document.querySelector("#crashForm");
+const slotsPaytableButton = document.querySelector("#slotsPaytableButton");
+const slotsPaytableModal = document.querySelector("#slotsPaytableModal");
+const crashPanels = [...document.querySelectorAll(".crash-bet-panel")];
 const crashStatus = document.querySelector("#crashStatus");
 const crashReadout = document.querySelector("#crashReadout");
 const crashBadge = document.querySelector("#crashBadge");
 const crashCanvas = document.querySelector("#crashCanvas");
 const crashMarkers = document.querySelector("#crashMarkers");
-const crashActionButton = document.querySelector("#crashActionButton");
 const crashLiveFeed = document.querySelector("#crashLiveFeed");
+const crashCountdown = document.querySelector("#crashCountdown");
+const crashCenterReadout = document.querySelector("#crashCenterReadout");
+const crashOverlay = document.querySelector("#crashOverlay");
+const crashVerifyButton = document.querySelector("#crashVerifyButton");
+const crashProofModal = document.querySelector("#crashProofModal");
+const crashProofData = document.querySelector("#crashProofData");
+const copyProofButton = document.querySelector("#copyProofButton");
+const sessionStats = document.querySelector("#sessionStats");
+const transactionHistory = document.querySelector("#transactionHistory");
 const blackjackForm = document.querySelector("#blackjackForm");
 const blackjackStatus = document.querySelector("#blackjackStatus");
 const dealerCards = document.querySelector("#dealerCards");
@@ -55,6 +65,9 @@ let crashFrame = 0;
 let crashPollTimer = 0;
 let crashServerOffset = 0;
 let crashFeedTimer = 0;
+let lastCrashProof = null;
+let sessionTotals = { wagered: 0, won: 0, biggestWin: 0, bestCrash: 0 };
+let transactionLog = [];
 let busy = false;
 let audioContext = null;
 const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || false;
@@ -68,11 +81,12 @@ function loadPrefs() {
       sound: true,
       clientSeed: "chipkittle",
       bets: { slotsForm: "100", crashForm: "100", blackjackForm: "100" },
+      crashPanels: { A: { bet: "100", target: "2.00" }, B: { bet: "100", target: "3.00" } },
       target: "2.00",
       ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
     };
   } catch {
-    return { sound: true, clientSeed: "chipkittle", bets: { slotsForm: "100", crashForm: "100", blackjackForm: "100" }, target: "2.00" };
+    return { sound: true, clientSeed: "chipkittle", bets: { slotsForm: "100", crashForm: "100", blackjackForm: "100" }, crashPanels: { A: { bet: "100", target: "2.00" }, B: { bet: "100", target: "3.00" } }, target: "2.00" };
   }
 }
 
@@ -120,6 +134,22 @@ function showToast(message, type = "neutral") {
   toast.dataset.type = type;
   toast.classList.add("show");
   setTimeout(() => toast.classList.remove("show"), 2600);
+}
+
+function recordTransaction(game, bet, payout, net) {
+  const entry = {
+    game,
+    bet: Math.max(Math.floor(Number(bet) || 0), 0),
+    payout: Math.max(Math.floor(Number(payout) || 0), 0),
+    net: Math.floor(Number(net) || 0),
+    time: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+  };
+  transactionLog.unshift(entry);
+  transactionLog = transactionLog.slice(0, 20);
+  sessionTotals.wagered += entry.bet;
+  sessionTotals.won += entry.payout;
+  sessionTotals.biggestWin = Math.max(sessionTotals.biggestWin, entry.net);
+  updateSidePanels();
 }
 
 function pulseBalance(nextBalance) {
@@ -170,6 +200,9 @@ function updateSidePanels(payload = {}) {
     payload.achievements.forEach((item) => merged.set(item.id, item));
     state.achievements = [...merged.values()];
   }
+  if (payload.activeCrash) {
+    adoptCrashRound(payload.activeCrash, false);
+  }
 
   recentRounds.innerHTML = (state.recentRounds || []).length
     ? state.recentRounds.map((round) => `
@@ -198,6 +231,23 @@ function updateSidePanels(payload = {}) {
       </article>
     `).join("")
     : `<p class="casino-empty">Achievements unlock while playing.</p>`;
+
+  sessionStats.innerHTML = `
+    <article class="casino-feed-item"><strong>Total wagered</strong><span>${fmt(sessionTotals.wagered)} bread</span></article>
+    <article class="casino-feed-item"><strong>Total won</strong><span>${fmt(sessionTotals.won)} bread</span></article>
+    <article class="casino-feed-item ${sessionTotals.won - sessionTotals.wagered >= 0 ? "win" : "loss"}"><strong>Net</strong><span>${sessionTotals.won - sessionTotals.wagered >= 0 ? "+" : ""}${fmt(sessionTotals.won - sessionTotals.wagered)}</span></article>
+    <article class="casino-feed-item"><strong>Best crash</strong><span>${sessionTotals.bestCrash.toFixed(2)}x</span></article>
+  `;
+
+  transactionHistory.innerHTML = transactionLog.length
+    ? transactionLog.slice(0, 8).map((entry) => `
+      <article class="casino-feed-item ${entry.net >= 0 ? "win" : "loss"}">
+        <strong>${escapeHtml(entry.game)} ${entry.net >= 0 ? "+" : ""}${fmt(entry.net)}</strong>
+        <span>Bet ${fmt(entry.bet)} | paid ${fmt(entry.payout)}</span>
+        <small>${escapeHtml(entry.time)}</small>
+      </article>
+    `).join("")
+    : `<p class="casino-empty">No transactions in this tab yet.</p>`;
 }
 
 function updateProof(proof = null) {
@@ -249,7 +299,6 @@ function syncBlackjackButtons() {
 function setButtons(disabled) {
   busy = disabled;
   document.querySelectorAll(".casino-controls button, .casino-chip-row button").forEach((button) => {
-    if (button.id === "crashActionButton" && crashRound?.status === "active") return;
     button.disabled = disabled;
   });
   repeatBetButton.disabled = disabled;
@@ -306,8 +355,9 @@ slotsForm.addEventListener("submit", async (event) => {
       setTimeout(() => {
         applyNet(slotsNet, payload.net);
         slotsStatus.textContent = `${payload.result.label}. Payout ${fmt(payload.payout)} bread.`;
-        pulseBalance(payload.balance);
-        setAccount({ wallet: payload.wallet, bank: payload.bank });
+      pulseBalance(payload.balance);
+      setAccount({ wallet: payload.wallet, bank: payload.bank });
+      recordTransaction("Slots", payload.bet, payload.payout, payload.net);
       updateProof(payload.proof);
       updateSidePanels(payload);
         if (payload.net > 0) tone("win");
@@ -330,17 +380,86 @@ function crashMultiplierAt(elapsedMs = 0) {
   return Math.max(1, Math.floor((1 + Math.pow(seconds / 1.2, 1.72)) * 100) / 100);
 }
 
-function setCrashInputsLocked(locked) {
-  crashForm.querySelectorAll("input").forEach((input) => {
-    input.disabled = locked;
-  });
-  document.querySelectorAll(".casino-chip-row[data-target='crashForm'] button").forEach((button) => {
-    button.disabled = locked;
-  });
-}
-
 function crashNow() {
   return Date.now() + crashServerOffset;
+}
+
+function panelForm(panel = "A") {
+  return crashPanels.find((form) => form.dataset.panel === panel);
+}
+
+function panelValues(panel = "A") {
+  const form = panelForm(panel);
+  return {
+    bet: String(form?.elements.bet?.value || "0"),
+    target: Number(form?.elements.target?.value || 0)
+  };
+}
+
+function saveCrashPanelPrefs(panel = "A") {
+  prefs.crashPanels ||= {};
+  prefs.crashPanels[panel] = panelValues(panel);
+  savePrefs();
+}
+
+function activePanelBet(panel = "A") {
+  return crashRound?.bets?.[panel] || null;
+}
+
+function queuedPanelBet(panel = "A") {
+  return crashRound?.queued?.[panel] || null;
+}
+
+function setCrashPanelUi() {
+  crashPanels.forEach((form) => {
+    const panel = form.dataset.panel;
+    const bet = activePanelBet(panel);
+    const queued = queuedPanelBet(panel);
+    const active = crashRound?.status === "active";
+    const betting = crashRound?.status === "betting";
+    const finished = crashRound?.status === "finished";
+    const action = form.querySelector("[data-panel-action]");
+    const cancel = form.querySelector("[data-panel-cancel]");
+    const stateEl = form.querySelector("[data-panel-state]");
+    const result = form.querySelector("[data-panel-result]");
+    const inputs = form.querySelectorAll("input");
+    const chips = form.querySelectorAll("[data-chip]");
+    inputs.forEach((input) => { input.disabled = Boolean(bet && !finished); });
+    chips.forEach((button) => { button.disabled = Boolean(bet && !finished); });
+    cancel.disabled = !(bet && betting) && !queued;
+    if (bet?.status === "cashed") {
+      action.textContent = `Cashed @ ${Number(bet.cashoutMultiplier || 0).toFixed(2)}x`;
+      action.disabled = true;
+      stateEl.textContent = "Cashed-out bet";
+      result.textContent = `Payout ${fmt(bet.payout)} | profit ${fmt(bet.payout - bet.amount)}`;
+      form.dataset.state = "cashed";
+    } else if (bet && active) {
+      const multiplier = Number(crashRound?.multiplier || 1);
+      action.textContent = `Cash Out at ${multiplier.toFixed(2)}x`;
+      action.disabled = false;
+      stateEl.textContent = `Current round bet: ${fmt(bet.amount)}`;
+      result.textContent = `Potential ${fmt(Math.floor(bet.amount * multiplier))} | profit ${fmt(Math.floor(bet.amount * multiplier) - bet.amount)}`;
+      form.dataset.state = "active";
+    } else if (bet && betting) {
+      action.textContent = "Bet Placed";
+      action.disabled = true;
+      stateEl.textContent = `Current round bet: ${fmt(bet.amount)}`;
+      result.textContent = `Auto cashout ${Number(bet.autoCashout || 0).toFixed(2)}x`;
+      form.dataset.state = "placed";
+    } else if (queued) {
+      action.textContent = "Queued Next Round";
+      action.disabled = true;
+      stateEl.textContent = "Queued next-round bet";
+      result.textContent = `Bet ${escapeHtml(queued.amount)} | auto ${Number(queued.autoCashout || 0).toFixed(2)}x`;
+      form.dataset.state = "queued";
+    } else {
+      action.textContent = active ? "Bet for Next Round" : "Place Bet";
+      action.disabled = false;
+      stateEl.textContent = active ? "Queue for next round" : "No current bet";
+      result.textContent = "No bet placed.";
+      form.dataset.state = "idle";
+    }
+  });
 }
 
 function drawCrash(progress, shown, target = 2, done = false, won = false, cashout = 0, crashPoint = 0) {
@@ -353,36 +472,43 @@ function drawCrash(progress, shown, target = 2, done = false, won = false, casho
   gradient.addColorStop(1, "rgba(2, 8, 5, 0.98)");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
+  const maxShown = Math.max(shown, target, cashout, crashPoint, 2);
   ctx.strokeStyle = "rgba(246, 200, 93, 0.1)";
   ctx.lineWidth = 1;
-  for (let x = 0; x < width; x += 76) {
+  for (let i = 0; i <= 5; i += 1) {
+    const label = 1 + ((maxShown - 1) / 5) * i;
+    const y = height - 34 - (i / 5) * (height - 78);
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
+    ctx.moveTo(28, y);
+    ctx.lineTo(width - 24, y);
     ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.font = "700 12px system-ui";
+    ctx.fillText(`${label.toFixed(1)}x`, 32, y - 5);
   }
-  for (let y = 0; y < height; y += 64) {
+  for (let i = 0; i <= 6; i += 1) {
+    const x = 28 + (i / 6) * (width - 70);
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
+    ctx.moveTo(x, 20);
+    ctx.lineTo(x, height - 26);
     ctx.stroke();
   }
   ctx.shadowColor = done && !won ? "#ff6b6b" : "#9dff6b";
-  ctx.shadowBlur = 18;
+  ctx.shadowBlur = 24;
   ctx.strokeStyle = done && !won ? "#ff6b6b" : "#9dff6b";
   ctx.lineWidth = 5;
   ctx.beginPath();
   ctx.moveTo(28, height - 34);
-  const steps = 90;
+  const steps = reduceMotion ? 24 : 110;
   for (let i = 0; i <= steps * progress; i += 1) {
     const t = i / steps;
     const x = 28 + t * (width - 70);
-    const y = height - 34 - Math.pow(t, 1.86) * (height - 78);
+    const curveValue = 1 + (maxShown - 1) * Math.pow(t, 1.86);
+    const y = height - 34 - ((curveValue - 1) / Math.max(maxShown - 1, 0.1)) * (height - 78);
     ctx.lineTo(x, y);
   }
   ctx.stroke();
   ctx.shadowBlur = 0;
-  const maxShown = Math.max(shown, target, cashout, crashPoint, 1.2);
   const targetX = Math.min(28 + ((target - 1) / Math.max(maxShown - 1, 0.1)) * (width - 70), width - 38);
   ctx.strokeStyle = "rgba(246, 200, 93, 0.7)";
   ctx.setLineDash([8, 8]);
@@ -418,6 +544,11 @@ function drawCrash(progress, shown, target = 2, done = false, won = false, casho
   }
 }
 
+function renderCrashOverlay(text = "") {
+  crashOverlay.textContent = text;
+  crashOverlay.classList.toggle("show", Boolean(text));
+}
+
 function renderCrashMarkers(rounds = []) {
   const crashRounds = rounds.filter((round) => round.game === "crash").slice(0, 5);
   crashMarkers.innerHTML = crashRounds.map((round) => `
@@ -425,19 +556,28 @@ function renderCrashMarkers(rounds = []) {
   `).join("");
 }
 
+const crashPeople = [
+  { name: "ByteFox", bet: 250, risk: 1.7 },
+  { name: "MandoMilk", bet: 100, risk: 1.4 },
+  { name: "Nova", bet: 500, risk: 2.8 },
+  { name: "Loafgrim", bet: 50, risk: 1.25 },
+  { name: "Tuski", bet: 1000, risk: 3.5 },
+  { name: "CK Biscuit", bet: 300, risk: 2.1 }
+];
+
 function fakeCrashFeed(phase = "betting", multiplier = 1) {
-  const names = ["Nahrkiin", "Tuski", "Loafgrim", "CK Biscuit", "Garvifn", "Horn User", "Bread Clerk"];
-  const name = names[Math.floor(Math.random() * names.length)];
-  const bet = [25, 50, 100, 250, 500, 1000][Math.floor(Math.random() * 6)];
+  const player = crashPeople[Math.floor(Math.random() * crashPeople.length)];
   const text = phase === "betting"
-    ? `${name} placed ${bet} bread`
-    : multiplier > 1
-      ? `${name} cashed at ${(Math.max(1.05, multiplier - Math.random() * 0.4)).toFixed(2)}x`
-      : `${name} is staring at the graph`;
+    ? `${player.name} bet ${player.bet}`
+    : phase === "lost"
+      ? `${player.name} lost ${player.bet}`
+      : multiplier >= player.risk
+        ? `${player.name} cashed out @ ${Math.min(multiplier, player.risk + Math.random() * 0.35).toFixed(2)}x`
+        : `${player.name} is holding ${player.bet}`;
   const item = document.createElement("span");
   item.textContent = text;
   crashLiveFeed.prepend(item);
-  while (crashLiveFeed.children.length > 5) crashLiveFeed.lastElementChild.remove();
+  while (crashLiveFeed.children.length > 8) crashLiveFeed.lastElementChild.remove();
 }
 
 function clearCrashTimers() {
@@ -449,19 +589,29 @@ function clearCrashTimers() {
   crashFeedTimer = 0;
 }
 
-function updateCrashButton(label, disabled = false) {
-  crashActionButton.textContent = label;
-  crashActionButton.disabled = disabled;
+function adoptCrashRound(crash, announce = true) {
+  if (!crash) return;
+  crashRound = { ...crash, multiplier: Number(crash.multiplier || 1) };
+  crashServerOffset = Number(crash.serverNow || Date.now()) - Date.now();
+  updateProof(crash.proof);
+  setCrashPanelUi();
+  if (announce) showToast("Crash round restored.", "neutral");
+  if (crash.status === "betting") renderCrashCountdown();
+  if (crash.status === "active") startCrashAnimation();
 }
 
 function renderCrashCountdown() {
   if (!crashRound) return;
   const remaining = Math.max(0, crashRound.startsAt - crashNow());
   crashBadge.textContent = "betting";
-  updateCrashButton(`Round starts in ${(remaining / 1000).toFixed(1)}s`, true);
+  crashCountdown.querySelector("strong").textContent = `Next round starts in ${(remaining / 1000).toFixed(1)}s`;
+  crashCountdown.querySelector("span").style.width = `${Math.max(0, Math.min(100, 100 - (remaining / 3200) * 100))}%`;
   crashReadout.textContent = "1.00x";
-  crashStatus.textContent = `Bet locked: ${fmt(crashRound.bet)} bread. Server hash ${crashRound.proof?.serverSeedHash?.slice(0, 14) || "pending"}...`;
+  crashCenterReadout.querySelector("strong").textContent = "1.00x";
+  crashCenterReadout.querySelector("span").textContent = "Bets are locked for the current round.";
+  crashStatus.textContent = `Server hash ${crashRound.proof?.serverSeedHash?.slice(0, 14) || "pending"}...`;
   drawCrash(0, 1, Number(crashRound.autoCashout || prefs.target || 2));
+  setCrashPanelUi();
   if (remaining <= 0) {
     startCrashAnimation();
     return;
@@ -476,21 +626,27 @@ async function settleCrashRound() {
     finishCrashRound(payload);
   } catch (error) {
     crashStatus.textContent = error.message || "Crash settlement failed.";
-    updateCrashButton("Place Bet", false);
-    setCrashInputsLocked(false);
     crashRound = null;
+    setCrashPanelUi();
   }
 }
 
-async function cashOutCrash() {
+async function cashOutCrash(panel = "A") {
   if (!crashRound || crashRound.status !== "active") return;
-  updateCrashButton("Cashing out...", true);
+  const form = panelForm(panel);
+  const action = form?.querySelector("[data-panel-action]");
+  if (action) action.textContent = "Cashing out...";
   try {
-    const payload = await api("/api/public/casino/crash/action", { sessionId: crashRound.sessionId, action: "cashout" });
-    finishCrashRound(payload);
+    const payload = await api("/api/public/casino/crash/action", { sessionId: crashRound.sessionId, action: "cashout", panel });
+    crashRound = { ...payload.crash, multiplier: crashRound.multiplier || 1 };
+    pulseBalance(payload.balance);
+    setAccount({ wallet: payload.wallet, bank: payload.bank });
+    setCrashPanelUi();
+    showToast(payload.message || `Panel ${panel} cashed out.`, "win");
+    tone("win");
   } catch (error) {
     crashStatus.textContent = error.message || "Cashout failed.";
-    updateCrashButton(`Cash Out at ${crashRound.multiplier?.toFixed(2) || "1.00"}x`, false);
+    setCrashPanelUi();
   }
 }
 
@@ -499,8 +655,10 @@ function startCrashAnimation() {
   clearCrashTimers();
   crashRound.status = "active";
   crashBadge.textContent = "live";
-  setCrashInputsLocked(true);
-  updateCrashButton("Cash Out at 1.00x", false);
+  crashCountdown.querySelector("strong").textContent = "Round live";
+  crashCountdown.querySelector("span").style.width = "100%";
+  renderCrashOverlay("");
+  setCrashPanelUi();
   crashStatus.textContent = "Multiplier is live. Cash out before the graph snaps.";
   crashFeedTimer = setInterval(() => fakeCrashFeed("active", crashRound?.multiplier || 1), 1450);
   crashPollTimer = setInterval(async () => {
@@ -520,13 +678,18 @@ function startCrashAnimation() {
     const multiplier = crashMultiplierAt(elapsed);
     crashRound.multiplier = multiplier;
     crashReadout.textContent = `${multiplier.toFixed(2)}x`;
-    updateCrashButton(`Cash Out at ${multiplier.toFixed(2)}x`, false);
+    crashCenterReadout.querySelector("strong").textContent = `${multiplier.toFixed(2)}x`;
+    const activeBets = Object.values(crashRound.bets || {}).filter((bet) => bet.status === "placed");
+    const potential = activeBets.reduce((sum, bet) => sum + Math.floor(bet.amount * multiplier), 0);
+    const wagered = activeBets.reduce((sum, bet) => sum + bet.amount, 0);
+    crashCenterReadout.querySelector("span").textContent = activeBets.length ? `Potential ${fmt(potential)} | profit ${fmt(potential - wagered)}` : "All active bets cashed out.";
     drawCrash(Math.min(elapsed / 9000, 1), multiplier, Number(crashRound.autoCashout || prefs.target || 2));
-    const target = Number(crashRound.autoCashout || 0);
-    if (target >= 1.05 && multiplier >= target) {
-      cashOutCrash();
-      return;
-    }
+    Object.entries(crashRound.bets || {}).forEach(([panel, bet]) => {
+      if (bet.status === "placed" && Number(bet.autoCashout || 0) >= 1.05 && multiplier >= Number(bet.autoCashout)) {
+        cashOutCrash(panel);
+      }
+    });
+    setCrashPanelUi();
     crashFrame = requestAnimationFrame(tick);
   };
   crashFrame = requestAnimationFrame(tick);
@@ -535,11 +698,13 @@ function startCrashAnimation() {
 function finishCrashRound(payload = {}) {
   clearCrashTimers();
   const crash = payload.crash || {};
-  crashRound = null;
+  crashRound = { ...crash, status: "finished" };
   const won = Number(payload.payout || 0) > 0;
   crashBadge.textContent = won ? "cashed" : "crashed";
   crashReadout.textContent = `${Number(crash.crashPoint || crash.multiplier || 1).toFixed(2)}x`;
-  updateCrashButton(won ? `Cashed at ${Number(crash.cashoutMultiplier || 1).toFixed(2)}x` : `Crashed at ${Number(crash.crashPoint || 1).toFixed(2)}x`, true);
+  crashCenterReadout.querySelector("strong").textContent = `CRASHED @ ${Number(crash.crashPoint || 1).toFixed(2)}x`;
+  crashCenterReadout.querySelector("span").textContent = won ? `Final payout ${fmt(payload.payout)} | net ${payload.net >= 0 ? "+" : ""}${fmt(payload.net)}` : `Lost ${fmt(crash.bet || 0)} bread.`;
+  renderCrashOverlay(`CRASHED @ ${Number(crash.crashPoint || 1).toFixed(2)}x`);
   drawCrash(1, Number(crash.crashPoint || crash.multiplier || 1), Number(crash.autoCashout || prefs.target || 2), true, won, Number(crash.cashoutMultiplier || 0), Number(crash.crashPoint || 0));
   crashStatus.textContent = crash.result || (won ? `Cashed out for +${fmt(payload.payout)}.` : `Crashed. Lost ${fmt(crash.bet)}.`);
   pulseBalance(payload.balance);
@@ -547,47 +712,92 @@ function finishCrashRound(payload = {}) {
   updateProof(crash.proof || payload.proof);
   updateSidePanels(payload);
   renderCrashMarkers(payload.recentRounds || []);
-  fakeCrashFeed(won ? "active" : "crashed", Number(crash.crashPoint || 1));
+  fakeCrashFeed(won ? "active" : "lost", Number(crash.crashPoint || 1));
+  lastCrashProof = crash.proof || payload.proof || null;
+  crashVerifyButton.disabled = !lastCrashProof;
+  sessionTotals.bestCrash = Math.max(sessionTotals.bestCrash, Number(crash.cashoutMultiplier || 0));
+  recordTransaction("Crash", crash.bet || 0, payload.payout || 0, payload.net || 0);
   tone(won ? "win" : "loss");
+  const queuedForNextRound = { ...(crash.queued || {}) };
   setTimeout(() => {
-    updateCrashButton("Place Bet", false);
-    setCrashInputsLocked(false);
+    crashRound = { queued: queuedForNextRound };
+    setCrashPanelUi();
     crashBadge.textContent = "armed";
+    renderCrashOverlay("");
+    startQueuedCrashBets();
   }, reduceMotion ? 300 : 1400);
 }
 
-crashForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (crashRound?.status === "active") {
-    cashOutCrash();
-    return;
-  }
-  if (busy || crashRound) return;
+async function placeCrashBet(panel = "A") {
+  const form = panelForm(panel);
+  if (!form) return;
+  saveCrashPanelPrefs(panel);
   tone("click");
-  updateCrashButton("Locking bet...", true);
   crashStatus.textContent = "Locking bet and asking the server for a hidden crash point...";
   try {
-    const target = Number(new FormData(crashForm).get("target") || 2);
     const payload = await api("/api/public/casino/crash/start", {
-      autoCashout: target,
-      ...betPayload(crashForm)
+      panel,
+      bet: panelValues(panel).bet,
+      autoCashout: panelValues(panel).target,
+      clientSeed: clientSeedInput.value.trim() || "chipkittle"
     });
-    crashRound = { ...payload.crash, multiplier: 1 };
-    crashServerOffset = Number(payload.crash?.serverNow || Date.now()) - Date.now();
-    setAccount({ balance: payload.balance, wallet: payload.wallet, bank: payload.bank });
-    updateProof(payload.crash?.proof);
+    adoptCrashRound(payload.crash, false);
+    if (payload.balance !== undefined) setAccount({ balance: payload.balance, wallet: payload.wallet, bank: payload.bank });
     updateSidePanels(payload);
-    setCrashInputsLocked(true);
+    showToast(payload.message || (payload.queued ? `Panel ${panel} queued for next round.` : `Panel ${panel} bet placed.`), payload.queued ? "neutral" : "win");
     fakeCrashFeed("betting");
-    crashFeedTimer = setInterval(() => fakeCrashFeed("betting"), 900);
-    renderCrashCountdown();
   } catch (error) {
     crashStatus.textContent = error.message || "Crash failed.";
     crashBadge.textContent = "jammed";
-    updateCrashButton("Place Bet", false);
-    setCrashInputsLocked(false);
+    setCrashPanelUi();
     tone("loss");
   }
+}
+
+async function cancelCrashBet(panel = "A") {
+  const queued = queuedPanelBet(panel);
+  if (queued && !activePanelBet(panel)) {
+    delete crashRound.queued[panel];
+    showToast(`Panel ${panel} queued bet cancelled.`, "neutral");
+    setCrashPanelUi();
+    return;
+  }
+  if (!crashRound?.sessionId) return;
+  try {
+    const payload = await api("/api/public/casino/crash/action", { sessionId: crashRound.sessionId, action: "cancel", panel });
+    if (payload.crash) adoptCrashRound(payload.crash, false);
+    else crashRound = null;
+    if (payload.balance !== undefined) setAccount({ balance: payload.balance, wallet: payload.wallet, bank: payload.bank });
+    setCrashPanelUi();
+    showToast(payload.message || `Panel ${panel} bet cancelled.`, "neutral");
+  } catch (error) {
+    crashStatus.textContent = error.message || "Cancel failed.";
+  }
+}
+
+function startQueuedCrashBets() {
+  const queued = crashRound?.queued || {};
+  crashRound = null;
+  Object.keys(queued).forEach((panel) => {
+    const form = panelForm(panel);
+    if (!form) return;
+    form.elements.bet.value = queued[panel].amount;
+    form.elements.target.value = queued[panel].autoCashout || form.elements.target.value;
+    setTimeout(() => placeCrashBet(panel), panel === "A" ? 100 : 350);
+  });
+}
+
+crashPanels.forEach((form) => {
+  const panel = form.dataset.panel;
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (activePanelBet(panel)?.status === "placed" && crashRound?.status === "active") {
+      cashOutCrash(panel);
+      return;
+    }
+    placeCrashBet(panel);
+  });
+  form.querySelector("[data-panel-cancel]").addEventListener("click", () => cancelCrashBet(panel));
 });
 
 function cardHtml(card, hidden = false, index = 0) {
@@ -619,6 +829,7 @@ function renderBlackjack(hand = {}) {
   if (hand.status === "finished") {
     pulseBalance(hand.balance);
     setAccount({ wallet: hand.wallet, bank: hand.bank });
+    recordTransaction("Blackjack", hand.bet || 0, hand.payout || 0, (hand.payout || 0) - (hand.bet || 0));
   }
 }
 
@@ -664,11 +875,17 @@ document.querySelectorAll(".casino-chip-row").forEach((row) => {
   row.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-chip]");
     if (!button) return;
-    const form = document.querySelector(`#${row.dataset.target}`);
+    const form = row.dataset.panelChips
+      ? panelForm(row.dataset.panelChips)
+      : document.querySelector(`#${row.dataset.target}`);
     const input = form?.querySelector("input[name='bet']");
     if (!input) return;
     input.value = button.dataset.chip;
-    prefs.bets[form.id] = input.value;
+    if (row.dataset.panelChips) {
+      saveCrashPanelPrefs(row.dataset.panelChips);
+    } else {
+      prefs.bets[form.id] = input.value;
+    }
     savePrefs();
     tone("click");
   });
@@ -691,8 +908,11 @@ dailyRewardButton.addEventListener("click", async () => {
 
 repeatBetButton.addEventListener("click", () => {
   slotsForm.querySelector("input[name='bet']").value = prefs.bets.slotsForm || "100";
-  crashForm.querySelector("input[name='bet']").value = prefs.bets.crashForm || "100";
-  crashForm.querySelector("input[name='target']").value = prefs.target || "2.00";
+  crashPanels.forEach((form) => {
+    const panel = form.dataset.panel;
+    form.elements.bet.value = prefs.crashPanels?.[panel]?.bet || "100";
+    form.elements.target.value = prefs.crashPanels?.[panel]?.target || (panel === "A" ? "2.00" : "3.00");
+  });
   blackjackForm.querySelector("input[name='bet']").value = prefs.bets.blackjackForm || "100";
   showToast("Last bets restored.", "neutral");
   tone("click");
@@ -706,6 +926,36 @@ soundToggle.addEventListener("click", () => {
 });
 
 clientSeedInput.addEventListener("change", savePrefs);
+slotsPaytableButton.addEventListener("click", () => slotsPaytableModal.showModal());
+document.querySelector("[data-paytable-close]")?.addEventListener("click", () => slotsPaytableModal.close());
+crashPanels.forEach((form) => {
+  form.addEventListener("change", () => saveCrashPanelPrefs(form.dataset.panel));
+});
+crashVerifyButton.addEventListener("click", () => {
+  if (!lastCrashProof) return;
+  crashProofData.textContent = JSON.stringify(lastCrashProof, null, 2);
+  crashProofModal.showModal();
+});
+document.querySelector("[data-proof-close]")?.addEventListener("click", () => crashProofModal.close());
+copyProofButton.addEventListener("click", async () => {
+  if (!lastCrashProof) return;
+  await navigator.clipboard?.writeText(JSON.stringify(lastCrashProof, null, 2));
+  showToast("Proof data copied.", "neutral");
+});
+document.addEventListener("keydown", (event) => {
+  const tag = document.activeElement?.tagName?.toLowerCase();
+  if (["input", "textarea", "select"].includes(tag)) return;
+  if (event.key === " " && crashRound?.status === "active") {
+    event.preventDefault();
+    cashOutCrash("A");
+  } else if (event.key === "Enter" && !crashRound) {
+    event.preventDefault();
+    placeCrashBet("A");
+  } else if (event.key === "Escape") {
+    if (crashProofModal.open) crashProofModal.close();
+    else if (queuedPanelBet("A")) cancelCrashBet("A");
+  }
+});
 hitButton.addEventListener("click", () => blackjackAction("hit"));
 standButton.addEventListener("click", () => blackjackAction("stand"));
 doubleButton.addEventListener("click", () => blackjackAction("double"));
@@ -713,8 +963,11 @@ splitButton.addEventListener("click", () => blackjackAction("split"));
 insuranceButton.addEventListener("click", () => blackjackAction("insurance"));
 
 slotsForm.querySelector("input[name='bet']").value = prefs.bets.slotsForm || "100";
-crashForm.querySelector("input[name='bet']").value = prefs.bets.crashForm || "100";
-crashForm.querySelector("input[name='target']").value = prefs.target || "2.00";
+crashPanels.forEach((form) => {
+  const panel = form.dataset.panel;
+  form.elements.bet.value = prefs.crashPanels?.[panel]?.bet || "100";
+  form.elements.target.value = prefs.crashPanels?.[panel]?.target || (panel === "A" ? "2.00" : "3.00");
+});
 blackjackForm.querySelector("input[name='bet']").value = prefs.bets.blackjackForm || "100";
 drawCrash(0, 1, 2);
 renderBlackjack({ status: "idle", player: [], dealer: [], playerValue: 0, dealerValue: 0, bet: 0, payout: 0, balance: 0 });

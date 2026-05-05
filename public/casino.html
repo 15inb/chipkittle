@@ -80,6 +80,7 @@
             <button class="button primary" type="submit">Spin</button>
           </form>
           <p class="casino-status" id="slotsStatus">Symbol rarity matters. Crowns can trigger suspicious bonus crumbs.</p>
+          <button class="casino-secondary-button" id="slotsPaytableButton" type="button">Paytable</button>
         </article>
 
         <article class="casino-table crash-table">
@@ -93,22 +94,58 @@
           <div class="crash-stage">
             <canvas id="crashCanvas" width="760" height="320" aria-label="Crash multiplier graph"></canvas>
             <div class="crash-badge" id="crashBadge">armed</div>
+            <div class="crash-countdown" id="crashCountdown">
+              <strong>Ready</strong>
+              <span></span>
+            </div>
+            <div class="crash-center-readout" id="crashCenterReadout">
+              <strong>1.00x</strong>
+              <span>Potential payout appears live.</span>
+            </div>
+            <div class="crash-overlay" id="crashOverlay"></div>
             <div class="crash-markers" id="crashMarkers"></div>
           </div>
-          <div class="casino-chip-row" data-target="crashForm">
-            <button type="button" data-chip="25">25</button>
-            <button type="button" data-chip="100">100</button>
-            <button type="button" data-chip="500">500</button>
-            <button type="button" data-chip="1000">1k</button>
-            <button type="button" data-chip="half">Half</button>
+          <div class="crash-panel-grid">
+            <form class="crash-bet-panel" data-panel="A">
+              <div>
+                <strong>Bet Panel A</strong>
+                <span data-panel-state>A steady loaf stance.</span>
+              </div>
+              <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
+              <label>Auto cashout <input name="target" inputmode="decimal" value="2.00"></label>
+              <div class="casino-chip-row" data-panel-chips="A">
+                <button type="button" data-chip="25">25</button>
+                <button type="button" data-chip="100">100</button>
+                <button type="button" data-chip="500">500</button>
+                <button type="button" data-chip="1000">1k</button>
+                <button type="button" data-chip="half">Half</button>
+              </div>
+              <button class="button primary" data-panel-action type="submit">Place Bet</button>
+              <button class="casino-secondary-button" data-panel-cancel type="button">Cancel Bet</button>
+              <small data-panel-result>No bet placed.</small>
+            </form>
+            <form class="crash-bet-panel" data-panel="B">
+              <div>
+                <strong>Bet Panel B</strong>
+                <span data-panel-state>A second questionable decision.</span>
+              </div>
+              <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
+              <label>Auto cashout <input name="target" inputmode="decimal" value="3.00"></label>
+              <div class="casino-chip-row" data-panel-chips="B">
+                <button type="button" data-chip="25">25</button>
+                <button type="button" data-chip="100">100</button>
+                <button type="button" data-chip="500">500</button>
+                <button type="button" data-chip="1000">1k</button>
+                <button type="button" data-chip="half">Half</button>
+              </div>
+              <button class="button primary" data-panel-action type="submit">Place Bet</button>
+              <button class="casino-secondary-button" data-panel-cancel type="button">Cancel Bet</button>
+              <small data-panel-result>No bet placed.</small>
+            </form>
           </div>
-          <form class="casino-controls split-controls" id="crashForm">
-            <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
-            <label>Auto cashout <input name="target" inputmode="decimal" value="2.00"></label>
-            <button class="button primary" id="crashActionButton" type="submit">Place Bet</button>
-          </form>
           <div class="crash-live-feed" id="crashLiveFeed" aria-label="Crash player feed"></div>
           <p class="casino-status" id="crashStatus">Smooth curve, auto cashout, recent markers. Still bread peril.</p>
+          <button class="casino-secondary-button" id="crashVerifyButton" type="button" disabled>Verify last round</button>
         </article>
 
         <article class="casino-table blackjack-table">
@@ -173,8 +210,47 @@
           </div>
           <div class="achievement-grid" id="casinoAchievements"></div>
         </section>
+        <section class="casino-panel">
+          <div class="casino-panel-head">
+            <h2>Session</h2>
+            <span>this tab</span>
+          </div>
+          <div class="casino-feed" id="sessionStats"></div>
+        </section>
+        <section class="casino-panel">
+          <div class="casino-panel-head">
+            <h2>Transactions</h2>
+            <span>recent</span>
+          </div>
+          <div class="casino-feed" id="transactionHistory"></div>
+        </section>
       </aside>
     </section>
+    <dialog class="casino-modal" id="crashProofModal">
+      <div class="casino-modal-card">
+        <button type="button" class="casino-modal-close" data-proof-close>Close</button>
+        <h2>Verify this Crash round</h2>
+        <p>The server commits to a hidden seed hash before the round. After the crash, the server seed is revealed so the result can be recomputed from server seed, client seed, nonce, and game id.</p>
+        <pre id="crashProofData"></pre>
+        <button type="button" class="button primary" id="copyProofButton">Copy proof data</button>
+      </div>
+    </dialog>
+    <dialog class="casino-modal" id="slotsPaytableModal">
+      <div class="casino-modal-card">
+        <button type="button" class="casino-modal-close" data-paytable-close>Close</button>
+        <h2>Loaf Slots paytable</h2>
+        <p>Results are determined before the reel animation starts. Near-miss pacing is only visual polish.</p>
+        <pre>Triple Loaf: 3x
+Triple Acorn: 4x
+Triple Leaf: 6x
+Triple Spark: 10x
+Triple Horn: 18x
+Triple Crown: 35x
+Two of a kind: 1.35x
+Crown + Horn: 2.2x
+Crown bonus: occasional extra multiplier</pre>
+      </div>
+    </dialog>
     <div class="casino-toast" id="casinoToast" aria-live="polite"></div>
   </main>
   <script type="module" src="/casino.js"></script>
