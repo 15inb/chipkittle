@@ -354,7 +354,10 @@ slotsForm.addEventListener("submit", async (event) => {
     animateSlots(payload.result.reels || [], payload.result.payline || [], payload.result.bonus);
       setTimeout(() => {
         applyNet(slotsNet, payload.net);
-        slotsStatus.textContent = `${payload.result.label}. Payout ${fmt(payload.payout)} bread.`;
+        const lineDetail = (payload.result.payline || []).length
+          ? ` Payline ${payload.result.payline.map((index) => index + 1).join("-")}.`
+          : "";
+        slotsStatus.textContent = `${payload.result.label}. Payout ${fmt(payload.payout)} bread.${lineDetail}`;
       pulseBalance(payload.balance);
       setAccount({ wallet: payload.wallet, bank: payload.bank });
       recordTransaction("Slots", payload.bet, payload.payout, payload.net);

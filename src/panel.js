@@ -232,12 +232,12 @@ const WEBSITE_CASINO_SYMBOLS = [
   { id: "crown", icon: "\u265B", label: "Crown", tier: "legendary", weight: 5 }
 ];
 const WEBSITE_CASINO_SLOT_PAYOUTS = {
-  loaf: 3,
-  nut: 4,
-  leaf: 5,
+  loaf: 2,
+  nut: 2.8,
+  leaf: 4.5,
   spark: 8,
   horn: 14,
-  crown: 28
+  crown: 26
 };
 const SUGGESTION_STATUSES = ["submitted", "under_consideration", "accepted", "denied", "implemented"];
 const SUGGESTION_STATUS_LABELS = {
@@ -2680,16 +2680,16 @@ function resolveWebsiteSlots(bet = 0, proof = casinoProof()) {
     label = `Triple ${reels[0].label}`;
     payline = [0, 1, 2];
   } else if (new Set(ids).size === 2) {
-    multiplier = 1.35;
-    label = "Two of a kind";
+    multiplier = 0.35;
+    label = "Two of a kind crumb-back";
     payline = ids[0] === ids[1] ? [0, 1] : ids[1] === ids[2] ? [1, 2] : [0, 2];
   } else if (ids.includes("crown") && ids.includes("horn")) {
-    multiplier = 2.2;
+    multiplier = 1.4;
     label = "Royal horn omen";
     payline = ids.map((id, index) => ["crown", "horn"].includes(id) ? index : -1).filter((index) => index >= 0);
   }
-  if (ids.includes("crown") && casinoUnitInterval(proof, 9) > 0.82) {
-    const bonusMultiplier = 1 + Math.floor(casinoUnitInterval(proof, 10) * 4);
+  if (ids.filter((id) => id === "crown").length >= 2 && casinoUnitInterval(proof, 9) > 0.92) {
+    const bonusMultiplier = 1 + Math.floor(casinoUnitInterval(proof, 10) * 2);
     multiplier += bonusMultiplier;
     bonus = { name: "Crown bonus", multiplier: bonusMultiplier };
     label = `${label} + Crown bonus`;
