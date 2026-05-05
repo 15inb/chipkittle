@@ -6,7 +6,8 @@ const ICONS = {
   leaf: "\u{1F343}",
   spark: "\u2726",
   horn: "\u2648",
-  crown: "\u265B"
+  crown: "\u265B",
+  blank: "\u25CB"
 };
 const SPIN_ICONS = Object.values(ICONS);
 

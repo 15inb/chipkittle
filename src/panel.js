@@ -224,20 +224,21 @@ const WEBSITE_CASINO_SESSION_MS = 5 * 60 * 1000;
 const WEBSITE_CASINO_STARTING_BREAD = 500;
 const WEBSITE_CASINO_LOG_LIMIT = 60;
 const WEBSITE_CASINO_SYMBOLS = [
-  { id: "loaf", icon: "\u{1F35E}", label: "Loaf", tier: "common", weight: 28 },
-  { id: "nut", icon: "\u{1F330}", label: "Acorn", tier: "common", weight: 24 },
-  { id: "leaf", icon: "\u{1F343}", label: "Leaf", tier: "rare", weight: 20 },
-  { id: "spark", icon: "\u2726", label: "Spark", tier: "rare", weight: 14 },
-  { id: "horn", icon: "\u2648", label: "Horn", tier: "epic", weight: 9 },
-  { id: "crown", icon: "\u265B", label: "Crown", tier: "legendary", weight: 5 }
+  { id: "loaf", icon: "\u{1F35E}", label: "Loaf", tier: "common", weight: 20 },
+  { id: "nut", icon: "\u{1F330}", label: "Acorn", tier: "common", weight: 18 },
+  { id: "leaf", icon: "\u{1F343}", label: "Leaf", tier: "rare", weight: 13 },
+  { id: "spark", icon: "\u2726", label: "Spark", tier: "rare", weight: 8 },
+  { id: "horn", icon: "\u2648", label: "Horn", tier: "epic", weight: 4 },
+  { id: "crown", icon: "\u265B", label: "Crown", tier: "legendary", weight: 2 },
+  { id: "blank", icon: "\u25CB", label: "Blank", tier: "miss", weight: 55 }
 ];
 const WEBSITE_CASINO_SLOT_PAYOUTS = {
-  loaf: 2,
-  nut: 2.8,
-  leaf: 4.5,
+  loaf: 3,
+  nut: 4,
+  leaf: 5,
   spark: 8,
   horn: 14,
-  crown: 26
+  crown: 28
 };
 const SUGGESTION_STATUSES = ["submitted", "under_consideration", "accepted", "denied", "implemented"];
 const SUGGESTION_STATUS_LABELS = {
