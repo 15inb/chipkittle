@@ -105,8 +105,9 @@
           <form class="casino-controls split-controls" id="crashForm">
             <label>Bet <input name="bet" inputmode="numeric" value="100"></label>
             <label>Auto cashout <input name="target" inputmode="decimal" value="2.00"></label>
-            <button class="button primary" type="submit">Launch</button>
+            <button class="button primary" id="crashActionButton" type="submit">Place Bet</button>
           </form>
+          <div class="crash-live-feed" id="crashLiveFeed" aria-label="Crash player feed"></div>
           <p class="casino-status" id="crashStatus">Smooth curve, auto cashout, recent markers. Still bread peril.</p>
         </article>
 

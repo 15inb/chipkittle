@@ -2704,6 +2704,45 @@ function crashPoint(proof = casinoProof()) {
   return Math.min(Math.max(Math.floor((houseEdge / roll) * 100) / 100, 1), 250);
 }
 
+function crashMultiplierAt(elapsedMs = 0) {
+  const seconds = Math.max(Number(elapsedMs) || 0, 0) / 1000;
+  return Math.max(1, Math.floor((1 + Math.pow(seconds / 1.2, 1.72)) * 100) / 100);
+}
+
+function crashTimeForMultiplier(multiplier = 1) {
+  return Math.max(0, Math.ceil(1200 * Math.pow(Math.max(Number(multiplier) || 1, 1) - 1, 1 / 1.72)));
+}
+
+function publicCrashPayload(session = {}, reveal = false) {
+  const now = Date.now();
+  const startsAt = Number(session.startsAt) || now;
+  const crashAt = Number(session.crashAt) || startsAt;
+  const active = now >= startsAt && now < crashAt && session.status !== "finished";
+  const waiting = now < startsAt && session.status !== "finished";
+  const multiplier = waiting ? 1 : crashMultiplierAt(Math.min(Math.max(now - startsAt, 0), Math.max(crashAt - startsAt, 0)));
+  return {
+    sessionId: session.id,
+    status: session.status === "finished" ? "finished" : waiting ? "betting" : active ? "active" : "finished",
+    bet: Math.max(Math.floor(Number(session.bet) || 0), 0),
+    autoCashout: Number(session.autoCashout || 0),
+    startsAt,
+    serverNow: now,
+    multiplier,
+    cashoutMultiplier: Number(session.cashoutMultiplier || 0),
+    payout: Math.max(Math.floor(Number(session.payout) || 0), 0),
+    result: String(session.result || ""),
+    proof: session.proof ? {
+      serverSeed: reveal ? session.proof.serverSeed : undefined,
+      serverSeedHash: session.proof.serverSeedHash,
+      clientSeed: session.proof.clientSeed,
+      nonce: session.proof.nonce,
+      digest: reveal ? session.proof.digest : undefined
+    } : null,
+    crashPoint: reveal ? Number(session.crashPoint || 0) : undefined,
+    crashAt: reveal ? crashAt : undefined
+  };
+}
+
 function blackjackDeck(proof = casinoProof()) {
   const ranks = [
     ["A", 11],
@@ -4677,6 +4716,7 @@ export function createPanel({
   const oauthStates = new Map();
   const profileOAuthStates = new Map();
   const websiteBlackjackSessions = new Map();
+  const websiteCrashSessions = new Map();
   const sessionStore = new FileSessionStore(path.join(process.cwd(), "data", "panel-sessions.json"));
   const publicSuggestionCooldowns = new Map();
   const publicSuggestionCaptchas = new Map();
@@ -5506,13 +5546,187 @@ export function createPanel({
     }
   });
 
+  app.post("/api/public/casino/crash/start", async (request, response) => {
+    setPublicApiHeaders(response);
+    try {
+      const verified = await websiteCasinoUser(request, response);
+      if (!verified) return;
+      const config = store.getGuild(verified.guildId);
+      const economy = {
+        ...(config.economy || {}),
+        balances: { ...(config.economy?.balances || {}) },
+        bankBalances: { ...(config.economy?.bankBalances || {}) },
+        cooldowns: {
+          ...(config.economy?.cooldowns || {}),
+          gambling: { ...(config.economy?.cooldowns?.gambling || {}) }
+        },
+        stats: { ...(config.economy?.stats || {}) },
+        transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : [],
+        websiteCasino: { ...(config.economy?.websiteCasino || {}) }
+      };
+      const userId = verified.member.id;
+      const existing = [...websiteCrashSessions.values()].find((session) =>
+        session.userId === userId &&
+        session.guildId === verified.guildId &&
+        session.status !== "finished" &&
+        Date.now() - Number(session.createdAt || 0) < WEBSITE_CASINO_SESSION_MS
+      );
+      if (existing) {
+        response.status(409).json({ error: "You already have a crash round running.", crash: publicCrashPayload(existing) });
+        return;
+      }
+      const balance = websiteCasinoAvailableBread(economy, userId);
+      const bet = websiteCasinoBet(request.body?.bet, balance, economy);
+      if (!bet.ok) {
+        response.status(400).json({ error: bet.error });
+        return;
+      }
+      const cooldown = websiteCasinoCooldown(economy, userId, websiteCasinoEconomySettings(economy).gamblingCooldownMs);
+      if (cooldown.limited) {
+        response.status(429).json({ error: `Slow down. You can gamble again in ${Math.ceil(cooldown.remainingMs / 1000)}s.` });
+        return;
+      }
+      const proof = nextCasinoProof(economy, userId, "crash", request.body?.clientSeed);
+      const point = crashPoint(proof);
+      const now = Date.now();
+      const startsAt = now + 3200;
+      const session = {
+        id: crypto.randomBytes(8).toString("hex"),
+        proof,
+        guildId: verified.guildId,
+        userId,
+        displayName: verified.member.displayName,
+        bet: bet.amount,
+        autoCashout: Math.min(Math.max(Number(request.body?.autoCashout) || 0, 0), 25),
+        crashPoint: point,
+        startsAt,
+        crashAt: startsAt + crashTimeForMultiplier(point),
+        status: "betting",
+        payout: 0,
+        createdAt: now
+      };
+      const spend = websiteCasinoSpendBread(economy, userId, bet.amount);
+      if (spend.shortfall > 0) {
+        response.status(400).json({ error: "You do not have enough available bread." });
+        return;
+      }
+      websiteCasinoSetCooldown(economy, userId);
+      websiteCrashSessions.set(session.id, session);
+      await store.updateGuild(verified.guildId, { economy });
+      response.json({
+        ok: true,
+        crash: publicCrashPayload(session),
+        balance: websiteCasinoAvailableBread(economy, userId),
+        wallet: websiteCasinoBalance(economy, userId),
+        bank: websiteCasinoBankBalance(economy, userId),
+        recentRounds: websiteCasinoState(economy).history.slice(0, 12).map(casinoPublicRound),
+        leaderboard: casinoLeaderboard(economy).map((entry, index) => ({ ...entry, rank: index + 1 })),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Website crash start failed:", error);
+      response.status(500).json({ error: "Crash failed to start." });
+    }
+  });
+
+  app.post("/api/public/casino/crash/action", async (request, response) => {
+    setPublicApiHeaders(response);
+    try {
+      const verified = await websiteCasinoUser(request, response);
+      if (!verified) return;
+      const sessionId = String(request.body?.sessionId || "");
+      const action = String(request.body?.action || "").toLowerCase();
+      const session = websiteCrashSessions.get(sessionId);
+      if (!session || session.userId !== verified.member.id || session.guildId !== verified.guildId || Date.now() - Number(session.createdAt || 0) > WEBSITE_CASINO_SESSION_MS) {
+        websiteCrashSessions.delete(sessionId);
+        response.status(400).json({ error: "That crash round expired. Start a new round." });
+        return;
+      }
+      const now = Date.now();
+      if (action === "state") {
+        response.json({ ok: true, crash: publicCrashPayload(session), updatedAt: new Date().toISOString() });
+        return;
+      }
+      if (now < Number(session.startsAt || 0)) {
+        response.status(400).json({ error: "The crash round has not started yet.", crash: publicCrashPayload(session) });
+        return;
+      }
+
+      const config = store.getGuild(verified.guildId);
+      const economy = {
+        ...(config.economy || {}),
+        balances: { ...(config.economy?.balances || {}) },
+        bankBalances: { ...(config.economy?.bankBalances || {}) },
+        stats: { ...(config.economy?.stats || {}) },
+        transactions: Array.isArray(config.economy?.transactions) ? [...config.economy.transactions] : [],
+        websiteCasino: { ...(config.economy?.websiteCasino || {}) }
+      };
+      const crashed = now >= Number(session.crashAt || 0);
+      const cashingOut = action === "cashout" && !crashed;
+      const elapsed = Math.min(Math.max(now - Number(session.startsAt || now), 0), Math.max(Number(session.crashAt || now) - Number(session.startsAt || now), 0));
+      const multiplier = cashingOut ? crashMultiplierAt(elapsed) : Number(session.crashPoint || 1);
+      session.status = "finished";
+      session.cashoutMultiplier = cashingOut ? multiplier : 0;
+      session.payout = cashingOut ? Math.floor(Number(session.bet || 0) * multiplier) : 0;
+      session.result = cashingOut
+        ? `Cashed out at ${multiplier.toFixed(2)}x for +${session.payout.toLocaleString()} bread.`
+        : `Crashed at ${Number(session.crashPoint || 1).toFixed(2)}x. Lost ${Number(session.bet || 0).toLocaleString()} bread.`;
+
+      if (session.payout > 0) {
+        websiteCasinoAddWalletBread(economy, session.userId, session.payout);
+      }
+      websiteCasinoRecord(economy, session.userId, {
+        game: "Website crash",
+        bet: session.bet,
+        payout: session.payout,
+        details: session.result
+      });
+      const unlocked = [
+        unlockCasinoAchievement(economy, session.userId, "first_spin"),
+        session.payout >= session.bet * 5 ? unlockCasinoAchievement(economy, session.userId, "big_win") : null,
+        session.payout > 0 ? unlockCasinoAchievement(economy, session.userId, "crash_cashout") : null
+      ].filter(Boolean);
+      recordWebsiteCasinoRound(economy, session.userId, {
+        game: "crash",
+        displayName: session.displayName || verified.member.displayName,
+        bet: session.bet,
+        payout: session.payout,
+        net: session.payout - session.bet,
+        label: session.result,
+        multiplier: cashingOut ? multiplier : session.crashPoint
+      });
+      websiteCrashSessions.delete(session.id);
+      await store.updateGuild(verified.guildId, { economy });
+      response.json({
+        ok: true,
+        crash: publicCrashPayload(session, true),
+        payout: session.payout,
+        net: session.payout - session.bet,
+        balance: websiteCasinoAvailableBread(economy, session.userId),
+        wallet: websiteCasinoBalance(economy, session.userId),
+        bank: websiteCasinoBankBalance(economy, session.userId),
+        achievements: unlocked,
+        recentRounds: websiteCasinoState(economy).history.slice(0, 12).map(casinoPublicRound),
+        leaderboard: casinoLeaderboard(economy).map((entry, index) => ({ ...entry, rank: index + 1 })),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Website crash action failed:", error);
+      response.status(500).json({ error: "Crash action failed." });
+    }
+  });
+
   app.post("/api/public/casino/play", async (request, response) => {
     setPublicApiHeaders(response);
     try {
       const verified = await websiteCasinoUser(request, response);
       if (!verified) return;
       const game = String(request.body?.game || "").toLowerCase();
-      if (!["slots", "crash"].includes(game)) {
+      if (game === "crash") {
+        response.status(400).json({ error: "Crash now uses live rounds. Place a crash bet first." });
+        return;
+      }
+      if (!["slots"].includes(game)) {
         response.status(400).json({ error: "Unknown website casino game." });
         return;
       }

@@ -31,6 +31,8 @@ const crashReadout = document.querySelector("#crashReadout");
 const crashBadge = document.querySelector("#crashBadge");
 const crashCanvas = document.querySelector("#crashCanvas");
 const crashMarkers = document.querySelector("#crashMarkers");
+const crashActionButton = document.querySelector("#crashActionButton");
+const crashLiveFeed = document.querySelector("#crashLiveFeed");
 const blackjackForm = document.querySelector("#blackjackForm");
 const blackjackStatus = document.querySelector("#blackjackStatus");
 const dealerCards = document.querySelector("#dealerCards");
@@ -48,8 +50,14 @@ let prefs = loadPrefs();
 let state = { balance: 0, wallet: 0, bank: 0, maxBet: 10000, user: null, recentRounds: [], leaderboard: [], achievements: [] };
 let blackjackSessionId = "";
 let currentBlackjackHand = null;
+let crashRound = null;
+let crashFrame = 0;
+let crashPollTimer = 0;
+let crashServerOffset = 0;
+let crashFeedTimer = 0;
 let busy = false;
 let audioContext = null;
+const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || false;
 
 clientSeedInput.value = prefs.clientSeed || "chipkittle";
 soundToggle.textContent = prefs.sound ? "Sound on" : "Sound off";
@@ -195,7 +203,8 @@ function updateSidePanels(payload = {}) {
 function updateProof(proof = null) {
   if (!proof) return;
   const server = proof.serverSeed ? `server ${proof.serverSeed.slice(0, 10)}...` : `hash ${proof.serverSeedHash?.slice(0, 12) || "pending"}...`;
-  proofText.textContent = `Fairness proof: ${server} | client ${proof.clientSeed || "chipkittle"} | nonce ${proof.nonce}`;
+  const digest = proof.digest ? ` | digest ${proof.digest.slice(0, 14)}...` : "";
+  proofText.textContent = `Fairness proof: ${server} | client ${proof.clientSeed || "chipkittle"} | nonce ${proof.nonce}${digest}`;
 }
 
 async function loadState() {
@@ -240,6 +249,7 @@ function syncBlackjackButtons() {
 function setButtons(disabled) {
   busy = disabled;
   document.querySelectorAll(".casino-controls button, .casino-chip-row button").forEach((button) => {
+    if (button.id === "crashActionButton" && crashRound?.status === "active") return;
     button.disabled = disabled;
   });
   repeatBetButton.disabled = disabled;
@@ -315,7 +325,25 @@ slotsForm.addEventListener("submit", async (event) => {
   }
 });
 
-function drawCrash(progress, shown, target, done = false, won = false) {
+function crashMultiplierAt(elapsedMs = 0) {
+  const seconds = Math.max(Number(elapsedMs) || 0, 0) / 1000;
+  return Math.max(1, Math.floor((1 + Math.pow(seconds / 1.2, 1.72)) * 100) / 100);
+}
+
+function setCrashInputsLocked(locked) {
+  crashForm.querySelectorAll("input").forEach((input) => {
+    input.disabled = locked;
+  });
+  document.querySelectorAll(".casino-chip-row[data-target='crashForm'] button").forEach((button) => {
+    button.disabled = locked;
+  });
+}
+
+function crashNow() {
+  return Date.now() + crashServerOffset;
+}
+
+function drawCrash(progress, shown, target = 2, done = false, won = false, cashout = 0, crashPoint = 0) {
   const ctx = crashCanvas.getContext("2d");
   const width = crashCanvas.width;
   const height = crashCanvas.height;
@@ -354,7 +382,8 @@ function drawCrash(progress, shown, target, done = false, won = false) {
   }
   ctx.stroke();
   ctx.shadowBlur = 0;
-  const targetX = Math.min(28 + ((target - 1) / Math.max(shown - 1, target - 1, 0.1)) * (width - 70), width - 38);
+  const maxShown = Math.max(shown, target, cashout, crashPoint, 1.2);
+  const targetX = Math.min(28 + ((target - 1) / Math.max(maxShown - 1, 0.1)) * (width - 70), width - 38);
   ctx.strokeStyle = "rgba(246, 200, 93, 0.7)";
   ctx.setLineDash([8, 8]);
   ctx.beginPath();
@@ -368,61 +397,196 @@ function drawCrash(progress, shown, target, done = false, won = false) {
   ctx.fillStyle = "rgba(255,255,255,0.76)";
   ctx.font = "700 16px system-ui";
   ctx.fillText(`auto ${target.toFixed(2)}x`, 28, 44);
+  if (cashout > 0) {
+    const x = Math.min(28 + ((cashout - 1) / Math.max(maxShown - 1, 0.1)) * (width - 70), width - 38);
+    ctx.fillStyle = "#9dff6b";
+    ctx.beginPath();
+    ctx.arc(x, height - 34 - Math.pow((x - 28) / (width - 70), 1.86) * (height - 78), 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillText(`you ${cashout.toFixed(2)}x`, Math.max(28, x - 36), height - 18);
+  }
+  if (crashPoint > 0) {
+    const x = Math.min(28 + ((crashPoint - 1) / Math.max(maxShown - 1, 0.1)) * (width - 70), width - 38);
+    ctx.strokeStyle = "#ff6b6b";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x - 8, 22);
+    ctx.lineTo(x + 8, 38);
+    ctx.moveTo(x + 8, 22);
+    ctx.lineTo(x - 8, 38);
+    ctx.stroke();
+  }
 }
 
 function renderCrashMarkers(rounds = []) {
   const crashRounds = rounds.filter((round) => round.game === "crash").slice(0, 5);
   crashMarkers.innerHTML = crashRounds.map((round) => `
-    <span class="${Number(round.net) >= 0 ? "win" : "loss"}">${Number(round.multiplier || 0).toFixed(2)}x</span>
+    <span class="${Number(round.multiplier || 0) >= 10 ? "high" : Number(round.multiplier || 0) >= 2 ? "medium" : "low"}">${Number(round.multiplier || 0).toFixed(2)}x</span>
   `).join("");
+}
+
+function fakeCrashFeed(phase = "betting", multiplier = 1) {
+  const names = ["Nahrkiin", "Tuski", "Loafgrim", "CK Biscuit", "Garvifn", "Horn User", "Bread Clerk"];
+  const name = names[Math.floor(Math.random() * names.length)];
+  const bet = [25, 50, 100, 250, 500, 1000][Math.floor(Math.random() * 6)];
+  const text = phase === "betting"
+    ? `${name} placed ${bet} bread`
+    : multiplier > 1
+      ? `${name} cashed at ${(Math.max(1.05, multiplier - Math.random() * 0.4)).toFixed(2)}x`
+      : `${name} is staring at the graph`;
+  const item = document.createElement("span");
+  item.textContent = text;
+  crashLiveFeed.prepend(item);
+  while (crashLiveFeed.children.length > 5) crashLiveFeed.lastElementChild.remove();
+}
+
+function clearCrashTimers() {
+  if (crashFrame) cancelAnimationFrame(crashFrame);
+  if (crashPollTimer) clearInterval(crashPollTimer);
+  if (crashFeedTimer) clearInterval(crashFeedTimer);
+  crashFrame = 0;
+  crashPollTimer = 0;
+  crashFeedTimer = 0;
+}
+
+function updateCrashButton(label, disabled = false) {
+  crashActionButton.textContent = label;
+  crashActionButton.disabled = disabled;
+}
+
+function renderCrashCountdown() {
+  if (!crashRound) return;
+  const remaining = Math.max(0, crashRound.startsAt - crashNow());
+  crashBadge.textContent = "betting";
+  updateCrashButton(`Round starts in ${(remaining / 1000).toFixed(1)}s`, true);
+  crashReadout.textContent = "1.00x";
+  crashStatus.textContent = `Bet locked: ${fmt(crashRound.bet)} bread. Server hash ${crashRound.proof?.serverSeedHash?.slice(0, 14) || "pending"}...`;
+  drawCrash(0, 1, Number(crashRound.autoCashout || prefs.target || 2));
+  if (remaining <= 0) {
+    startCrashAnimation();
+    return;
+  }
+  crashFrame = requestAnimationFrame(renderCrashCountdown);
+}
+
+async function settleCrashRound() {
+  if (!crashRound) return;
+  try {
+    const payload = await api("/api/public/casino/crash/action", { sessionId: crashRound.sessionId, action: "settle" });
+    finishCrashRound(payload);
+  } catch (error) {
+    crashStatus.textContent = error.message || "Crash settlement failed.";
+    updateCrashButton("Place Bet", false);
+    setCrashInputsLocked(false);
+    crashRound = null;
+  }
+}
+
+async function cashOutCrash() {
+  if (!crashRound || crashRound.status !== "active") return;
+  updateCrashButton("Cashing out...", true);
+  try {
+    const payload = await api("/api/public/casino/crash/action", { sessionId: crashRound.sessionId, action: "cashout" });
+    finishCrashRound(payload);
+  } catch (error) {
+    crashStatus.textContent = error.message || "Cashout failed.";
+    updateCrashButton(`Cash Out at ${crashRound.multiplier?.toFixed(2) || "1.00"}x`, false);
+  }
+}
+
+function startCrashAnimation() {
+  if (!crashRound) return;
+  clearCrashTimers();
+  crashRound.status = "active";
+  crashBadge.textContent = "live";
+  setCrashInputsLocked(true);
+  updateCrashButton("Cash Out at 1.00x", false);
+  crashStatus.textContent = "Multiplier is live. Cash out before the graph snaps.";
+  crashFeedTimer = setInterval(() => fakeCrashFeed("active", crashRound?.multiplier || 1), 1450);
+  crashPollTimer = setInterval(async () => {
+    if (!crashRound) return;
+    try {
+      const payload = await api("/api/public/casino/crash/action", { sessionId: crashRound.sessionId, action: "state" });
+      if (payload.crash?.status === "finished") settleCrashRound();
+    } catch {
+      clearInterval(crashPollTimer);
+      crashPollTimer = 0;
+    }
+  }, 350);
+
+  const tick = () => {
+    if (!crashRound || crashRound.status !== "active") return;
+    const elapsed = Math.max(0, crashNow() - crashRound.startsAt);
+    const multiplier = crashMultiplierAt(elapsed);
+    crashRound.multiplier = multiplier;
+    crashReadout.textContent = `${multiplier.toFixed(2)}x`;
+    updateCrashButton(`Cash Out at ${multiplier.toFixed(2)}x`, false);
+    drawCrash(Math.min(elapsed / 9000, 1), multiplier, Number(crashRound.autoCashout || prefs.target || 2));
+    const target = Number(crashRound.autoCashout || 0);
+    if (target >= 1.05 && multiplier >= target) {
+      cashOutCrash();
+      return;
+    }
+    crashFrame = requestAnimationFrame(tick);
+  };
+  crashFrame = requestAnimationFrame(tick);
+}
+
+function finishCrashRound(payload = {}) {
+  clearCrashTimers();
+  const crash = payload.crash || {};
+  crashRound = null;
+  const won = Number(payload.payout || 0) > 0;
+  crashBadge.textContent = won ? "cashed" : "crashed";
+  crashReadout.textContent = `${Number(crash.crashPoint || crash.multiplier || 1).toFixed(2)}x`;
+  updateCrashButton(won ? `Cashed at ${Number(crash.cashoutMultiplier || 1).toFixed(2)}x` : `Crashed at ${Number(crash.crashPoint || 1).toFixed(2)}x`, true);
+  drawCrash(1, Number(crash.crashPoint || crash.multiplier || 1), Number(crash.autoCashout || prefs.target || 2), true, won, Number(crash.cashoutMultiplier || 0), Number(crash.crashPoint || 0));
+  crashStatus.textContent = crash.result || (won ? `Cashed out for +${fmt(payload.payout)}.` : `Crashed. Lost ${fmt(crash.bet)}.`);
+  pulseBalance(payload.balance);
+  setAccount({ wallet: payload.wallet, bank: payload.bank });
+  updateProof(crash.proof || payload.proof);
+  updateSidePanels(payload);
+  renderCrashMarkers(payload.recentRounds || []);
+  fakeCrashFeed(won ? "active" : "crashed", Number(crash.crashPoint || 1));
+  tone(won ? "win" : "loss");
+  setTimeout(() => {
+    updateCrashButton("Place Bet", false);
+    setCrashInputsLocked(false);
+    crashBadge.textContent = "armed";
+  }, reduceMotion ? 300 : 1400);
 }
 
 crashForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (busy) return;
-  setButtons(true);
+  if (crashRound?.status === "active") {
+    cashOutCrash();
+    return;
+  }
+  if (busy || crashRound) return;
   tone("click");
-  crashStatus.textContent = "Curve engaged. Hold your crumbs.";
-  crashBadge.textContent = "climbing";
+  updateCrashButton("Locking bet...", true);
+  crashStatus.textContent = "Locking bet and asking the server for a hidden crash point...";
   try {
     const target = Number(new FormData(crashForm).get("target") || 2);
-    const payload = await api("/api/public/casino/play", {
-      game: "crash",
-      targetMultiplier: target,
+    const payload = await api("/api/public/casino/crash/start", {
+      autoCashout: target,
       ...betPayload(crashForm)
     });
-    const point = Number(payload.result.crashPoint || 1);
-    const targetMultiplier = Number(payload.result.targetMultiplier || target);
-    const duration = Math.min(3100, 1050 + Math.log2(Math.max(point, 1)) * 520);
-    const start = performance.now();
-    function step(now) {
-      const progress = Math.min((now - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 2.45);
-      const shown = 1 + (point - 1) * eased;
-      crashReadout.textContent = `${shown.toFixed(2)}x`;
-      drawCrash(progress, shown, targetMultiplier, false, payload.net >= 0);
-      if (progress < 1) {
-        requestAnimationFrame(step);
-      } else {
-        drawCrash(1, point, targetMultiplier, true, payload.net >= 0);
-        crashReadout.textContent = `${point.toFixed(2)}x`;
-        crashBadge.textContent = payload.net >= 0 ? "cashed" : "crashed";
-        crashStatus.textContent = `${payload.result.label} Net ${payload.net >= 0 ? "+" : ""}${fmt(payload.net)} bread.`;
-        pulseBalance(payload.balance);
-        setAccount({ wallet: payload.wallet, bank: payload.bank });
-        updateProof(payload.proof);
-        updateSidePanels(payload);
-        renderCrashMarkers(payload.recentRounds || []);
-        tone(payload.net >= 0 ? "win" : "loss");
-      }
-    }
-    requestAnimationFrame(step);
+    crashRound = { ...payload.crash, multiplier: 1 };
+    crashServerOffset = Number(payload.crash?.serverNow || Date.now()) - Date.now();
+    setAccount({ balance: payload.balance, wallet: payload.wallet, bank: payload.bank });
+    updateProof(payload.crash?.proof);
+    updateSidePanels(payload);
+    setCrashInputsLocked(true);
+    fakeCrashFeed("betting");
+    crashFeedTimer = setInterval(() => fakeCrashFeed("betting"), 900);
+    renderCrashCountdown();
   } catch (error) {
     crashStatus.textContent = error.message || "Crash failed.";
     crashBadge.textContent = "jammed";
+    updateCrashButton("Place Bet", false);
+    setCrashInputsLocked(false);
     tone("loss");
-  } finally {
-    setTimeout(() => setButtons(false), 3250);
   }
 });
 

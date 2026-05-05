@@ -1720,6 +1720,38 @@ a {
   color: #ff8f8f;
 }
 
+.crash-markers .low {
+  color: #ff9d9d;
+}
+
+.crash-markers .medium {
+  color: #f8e8a0;
+}
+
+.crash-markers .high {
+  color: #9dff6b;
+  box-shadow: 0 0 18px rgba(107, 255, 131, 0.26);
+}
+
+.crash-live-feed {
+  min-height: 38px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.crash-live-feed span {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(255, 246, 214, 0.74);
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  animation: casino-pop 260ms ease;
+}
+
 .blackjack-felt {
   background:
     radial-gradient(circle at 50% 30%, rgba(107, 255, 131, 0.12), transparent 44%),
@@ -4109,7 +4141,20 @@ a {
   .ember,
   .lofi-visualizer span,
   .breathing-orb,
-  .room-window span {
+  .room-window span,
+  .slot-reel.pop,
+  .playing-card,
+  .crash-badge,
+  .casino-feed-item,
+  .crash-live-feed span {
     animation: none;
+  }
+
+  .casino-table,
+  .casino-pill,
+  .casino-chip-row button,
+  .blackjack-actions button,
+  .casino-toast {
+    transition: none;
   }
 }
