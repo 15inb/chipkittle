@@ -104,6 +104,7 @@ const PORTABLE_USER_INSTALL_COMMANDS = new Set([
   "uptime"
 ]);
 const PRIORITY_GUILD_SLASH_COMMANDS = new Set([
+  "court",
   "indict",
   "trial",
   "trials",
@@ -114,7 +115,23 @@ const PRIORITY_GUILD_SLASH_COMMANDS = new Set([
   "verdict",
   "closetrial",
   "trialstats",
-  "trialhelp"
+  "trialhelp",
+  "assignjudge",
+  "removejudge",
+  "judgeinfo",
+  "defensecounsel",
+  "courtphase",
+  "approveplea",
+  "callwitness",
+  "dismisswitness",
+  "witnesslist",
+  "startdirect",
+  "startcross",
+  "objection",
+  "sustain",
+  "overrule",
+  "courtstatus",
+  "courthistory"
 ]);
 
 function isPortableUserInstallCommand(command) {
@@ -220,6 +237,175 @@ function addCaptionOptions(builder) {
         .setDescription("Optional bottom caption.")
         .setRequired(false)
     );
+}
+
+function addCourtSubcommands(builder) {
+  const caseOption = (subcommand) =>
+    subcommand.addStringOption((option) =>
+      option
+        .setName("case_id")
+        .setDescription("Optional staff fallback, like CK-0001. Usually not needed in a case thread.")
+        .setRequired(false)
+    );
+  const noteOption = (subcommand, name = "note", description = "Optional note.") =>
+    subcommand.addStringOption((option) =>
+      option
+        .setName(name)
+        .setDescription(description)
+        .setRequired(false)
+    );
+
+  return builder
+    .addSubcommand((subcommand) => caseOption(subcommand.setName("status").setDescription("Show the current case status.")))
+    .addSubcommand((subcommand) => caseOption(subcommand.setName("summary").setDescription("Show the current case summary.")))
+    .addSubcommand((subcommand) => caseOption(subcommand.setName("history").setDescription("Show recent case history.")))
+    .addSubcommand((subcommand) =>
+      caseOption(
+        subcommand
+          .setName("assign-judge")
+          .setDescription("Assign the judge for this case.")
+          .addUserOption((option) => option.setName("user").setDescription("Judge to assign.").setRequired(true))
+      )
+    )
+    .addSubcommand((subcommand) => caseOption(subcommand.setName("remove-judge").setDescription("Remove the assigned judge.")))
+    .addSubcommand((subcommand) => caseOption(subcommand.setName("judge-info").setDescription("Show judge assignment and powers.")))
+    .addSubcommand((subcommand) =>
+      caseOption(
+        subcommand
+          .setName("defense-counsel")
+          .setDescription("Assign defense counsel.")
+          .addUserOption((option) => option.setName("user").setDescription("Defense counsel.").setRequired(true))
+      )
+    )
+    .addSubcommand((subcommand) =>
+      caseOption(
+        subcommand
+          .setName("phase")
+          .setDescription("Move the case to a new phase.")
+          .addStringOption((option) => option.setName("phase").setDescription("Phase name.").setRequired(true))
+      )
+    )
+    .addSubcommand((subcommand) =>
+      caseOption(
+        subcommand
+          .setName("call-witness")
+          .setDescription("Call a witness.")
+          .addUserOption((option) => option.setName("user").setDescription("Witness to call.").setRequired(true))
+          .addStringOption((option) =>
+            option
+              .setName("side")
+              .setDescription("Which side called this witness.")
+              .setRequired(true)
+              .addChoices({ name: "prosecution", value: "prosecution" }, { name: "defense", value: "defense" })
+          )
+      )
+    )
+    .addSubcommand((subcommand) =>
+      caseOption(
+        subcommand
+          .setName("dismiss-witness")
+          .setDescription("Dismiss a witness.")
+          .addUserOption((option) => option.setName("user").setDescription("Witness to dismiss.").setRequired(false))
+      )
+    )
+    .addSubcommand((subcommand) => caseOption(subcommand.setName("witness-list").setDescription("List case witnesses.")))
+    .addSubcommand((subcommand) => caseOption(subcommand.setName("start-direct-examination").setDescription("Start direct examination.")))
+    .addSubcommand((subcommand) => caseOption(subcommand.setName("start-cross-examination").setDescription("Start cross examination.")))
+    .addSubcommand((subcommand) =>
+      caseOption(
+        subcommand
+          .setName("objection")
+          .setDescription("Raise an objection.")
+          .addStringOption((option) => option.setName("reason").setDescription("Why you object.").setRequired(true))
+      )
+    )
+    .addSubcommand((subcommand) => noteOption(caseOption(subcommand.setName("sustain").setDescription("Sustain the latest objection.")), "note", "Optional ruling note."))
+    .addSubcommand((subcommand) => noteOption(caseOption(subcommand.setName("overrule").setDescription("Overrule the latest objection.")), "note", "Optional ruling note."))
+    .addSubcommand((subcommand) =>
+      noteOption(
+        caseOption(
+          subcommand
+            .setName("plead")
+            .setDescription("Enter a plea.")
+            .addStringOption((option) =>
+              option
+                .setName("choice")
+                .setDescription("Plea.")
+                .setRequired(true)
+                .addChoices({ name: "guilty", value: "guilty" }, { name: "not guilty", value: "notguilty" }, { name: "no contest", value: "nocontest" })
+            )
+        ),
+        "note",
+        "Optional plea note."
+      )
+    )
+    .addSubcommand((subcommand) =>
+      caseOption(
+        subcommand
+          .setName("evidence")
+          .setDescription("Submit text evidence.")
+          .addStringOption((option) => option.setName("text").setDescription("Evidence text.").setRequired(true))
+      )
+    )
+    .addSubcommand((subcommand) =>
+      caseOption(
+        subcommand
+          .setName("testify")
+          .setDescription("Add testimony.")
+          .addStringOption((option) => option.setName("statement").setDescription("Testimony or question.").setRequired(true))
+      )
+    )
+    .addSubcommand((subcommand) =>
+      noteOption(
+        caseOption(
+          subcommand
+            .setName("juryvote")
+            .setDescription("Vote as an eligible juror.")
+            .addStringOption((option) =>
+              option
+                .setName("choice")
+                .setDescription("Vote.")
+                .setRequired(true)
+                .addChoices({ name: "guilty", value: "guilty" }, { name: "not guilty", value: "notguilty" }, { name: "abstain", value: "abstain" })
+            )
+        ),
+        "reason",
+        "Optional vote reason."
+      )
+    )
+    .addSubcommand((subcommand) =>
+      noteOption(
+        caseOption(
+          subcommand
+            .setName("verdict")
+            .setDescription("Enter the official verdict.")
+            .addStringOption((option) =>
+              option
+                .setName("choice")
+                .setDescription("Verdict.")
+                .setRequired(true)
+                .addChoices(
+                  { name: "guilty", value: "guilty" },
+                  { name: "not guilty", value: "notguilty" },
+                  { name: "dismissed", value: "dismissed" },
+                  { name: "mistrial", value: "mistrial" }
+                )
+            )
+        ),
+        "note",
+        "Sentence or verdict note."
+      )
+    )
+    .addSubcommand((subcommand) => noteOption(caseOption(subcommand.setName("close").setDescription("Close and archive the case.")), "reason", "Close reason."))
+    .addSubcommand((subcommand) =>
+      caseOption(
+        subcommand
+          .setName("approve-plea")
+          .setDescription("Approve a plea agreement.")
+          .addStringOption((option) => option.setName("terms").setDescription("Plea agreement terms.").setRequired(false))
+      )
+    )
+    .addSubcommand((subcommand) => subcommand.setName("help").setDescription("Show court help."));
 }
 
 function addGifConvertOptions(builder) {
@@ -359,6 +545,10 @@ export function buildSlashCommands(commandList) {
 
     if (command.name === "tts") {
       return addTtsSubcommands(builder).toJSON();
+    }
+
+    if (command.name === "court") {
+      return addCourtSubcommands(builder).toJSON();
     }
 
     if (command.name === "caption") {
@@ -506,8 +696,41 @@ function reminderInput(interaction) {
   return duration > 0 ? `ms:${duration} ${message}` : "";
 }
 
+function courtInput(interaction) {
+  const subcommand = interaction.options.getSubcommand();
+  const parts = [subcommand];
+  const getString = (name) => {
+    try {
+      return interaction.options.getString(name, false);
+    } catch {
+      return null;
+    }
+  };
+  const getUser = (name) => {
+    try {
+      return interaction.options.getUser(name, false);
+    } catch {
+      return null;
+    }
+  };
+  const caseId = getString("case_id");
+  if (caseId) parts.push(caseId);
+
+  const user = getUser("user");
+  if (user) parts.push(`<@${user.id}>`);
+
+  const orderedStrings = ["phase", "side", "choice", "reason", "text", "statement", "note", "terms"];
+  for (const name of orderedStrings) {
+    const value = getString(name);
+    if (value) parts.push(value);
+  }
+
+  return parts.join(" ");
+}
+
 function inputForInteraction(interaction) {
   if (interaction.commandName === "remind") return reminderInput(interaction);
+  if (interaction.commandName === "court") return courtInput(interaction);
   if (interaction.commandName === "tts") return interaction.options.getSubcommand();
   if (interaction.commandName === "gifedit") return interaction.options.getSubcommand();
   if (interaction.commandName === "caption") return interaction.options.getString("text") || "";
@@ -522,10 +745,25 @@ function resolvedAttachmentCollection(options) {
   return new Collection(Object.entries(resolved));
 }
 
+function collectionEntries(value) {
+  if (!value) return [];
+  if (value instanceof Collection) return [...value.entries()];
+  if (Array.isArray(value)) return value;
+  return Object.entries(value);
+}
+
 function createInteractionMessage(interaction, input) {
   const content = `/${interaction.commandName}${input ? ` ${input}` : ""}`;
   const mentions = parseMentions(input, interaction.guild);
   const attachments = resolvedAttachmentCollection(interaction.options);
+  for (const [userId, user] of collectionEntries(interaction.options.resolved?.users)) {
+    if (user?.id) mentions.users.set(user.id, user);
+    else if (userId && user) mentions.users.set(userId, user);
+  }
+  for (const [memberId, member] of collectionEntries(interaction.options.resolved?.members)) {
+    if (member?.id) mentions.members.set(member.id, member);
+    else if (memberId && member) mentions.members.set(memberId, member);
+  }
   let firstReplySent = false;
 
   function initialReplyHandle() {

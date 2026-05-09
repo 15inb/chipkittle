@@ -1247,9 +1247,135 @@ async function recordModerationAudit(ctx, { action, member, reason, durationMs =
 
 function trialState(config = {}) {
   const trials = config.community?.trials || {};
+  const rawCases = trials.cases || {};
+  const cases = Object.fromEntries(
+    Object.entries(rawCases).map(([caseId, trial]) => [caseId, migrateTrialCase(caseId, trial)])
+  );
   return {
     counter: Math.max(0, Number(trials.counter) || 0),
-    cases: { ...(trials.cases || {}) }
+    cases
+  };
+}
+
+const TRIAL_PHASES = [
+  "case_created",
+  "judge_assigned",
+  "arraignment",
+  "plea_entry",
+  "opening_statements",
+  "prosecution_witnesses",
+  "defense_cross_examination",
+  "defense_witnesses",
+  "prosecution_cross_examination",
+  "evidence_submission",
+  "objections_rulings",
+  "closing_statements",
+  "jury_deliberation",
+  "verdict",
+  "sentencing",
+  "case_closed"
+];
+
+const TRIAL_PHASE_LABELS = {
+  case_created: "Case Created",
+  judge_assigned: "Judge Assigned",
+  arraignment: "Arraignment",
+  plea_entry: "Plea Entry",
+  opening_statements: "Opening Statements",
+  prosecution_witnesses: "Prosecution Witnesses",
+  defense_cross_examination: "Defense Cross Examination",
+  defense_witnesses: "Defense Witnesses",
+  prosecution_cross_examination: "Prosecution Cross Examination",
+  evidence_submission: "Evidence Submission",
+  objections_rulings: "Objections/Rulings",
+  closing_statements: "Closing Statements",
+  jury_deliberation: "Jury Deliberation",
+  verdict: "Verdict",
+  sentencing: "Sentencing",
+  case_closed: "Case Closed"
+};
+
+const TRIAL_PHASE_ALIASES = {
+  created: "case_created",
+  casecreated: "case_created",
+  judge: "judge_assigned",
+  judgeassigned: "judge_assigned",
+  arraignment: "arraignment",
+  plea: "plea_entry",
+  pleaentry: "plea_entry",
+  openings: "opening_statements",
+  opening: "opening_statements",
+  openingstatements: "opening_statements",
+  prosecution: "prosecution_witnesses",
+  prosecutionwitnesses: "prosecution_witnesses",
+  direct: "prosecution_witnesses",
+  defensecross: "defense_cross_examination",
+  cross: "defense_cross_examination",
+  defensecrossexamination: "defense_cross_examination",
+  defense: "defense_witnesses",
+  defensewitnesses: "defense_witnesses",
+  prosecutioncross: "prosecution_cross_examination",
+  prosecutioncrossexamination: "prosecution_cross_examination",
+  evidence: "evidence_submission",
+  evidencesubmission: "evidence_submission",
+  objections: "objections_rulings",
+  objection: "objections_rulings",
+  objectionsrulings: "objections_rulings",
+  closings: "closing_statements",
+  closing: "closing_statements",
+  closingstatements: "closing_statements",
+  deliberation: "jury_deliberation",
+  jurydeliberation: "jury_deliberation",
+  verdict: "verdict",
+  sentencing: "sentencing",
+  closed: "case_closed",
+  caseclosed: "case_closed"
+};
+
+function normalizeTrialPhase(value = "") {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  return TRIAL_PHASE_ALIASES[normalized] || (TRIAL_PHASES.includes(value) ? value : "");
+}
+
+function trialPhaseLabel(value = "") {
+  return TRIAL_PHASE_LABELS[value] || trialStatusLabel({ status: value || "case_created" });
+}
+
+function migrateTrialCase(caseId, trial = {}) {
+  const status = String(trial.status || "active").toLowerCase();
+  const closed = Boolean(trial.closedAt || ["closed", "dismissed"].includes(status));
+  return {
+    id: trial.id || caseId,
+    status: trial.status || (closed ? "closed" : "active"),
+    phase: trial.phase || (closed ? "case_closed" : trial.verdict?.choice ? "verdict" : trial.plea?.choice ? "plea_entry" : "case_created"),
+    defendantId: String(trial.defendantId || ""),
+    defendantTag: String(trial.defendantTag || trial.defendantId || ""),
+    prosecutorId: String(trial.prosecutorId || ""),
+    prosecutorTag: String(trial.prosecutorTag || trial.prosecutorId || ""),
+    defenseCounselId: String(trial.defenseCounselId || ""),
+    defenseCounselTag: String(trial.defenseCounselTag || ""),
+    judgeId: String(trial.judgeId || ""),
+    judgeTag: String(trial.judgeTag || ""),
+    channelId: String(trial.channelId || ""),
+    threadId: String(trial.threadId || ""),
+    parentChannelId: String(trial.parentChannelId || ""),
+    charges: String(trial.charges || ""),
+    plea: trial.plea || null,
+    pleaAgreement: trial.pleaAgreement || null,
+    verdict: trial.verdict || null,
+    sentence: String(trial.sentence || ""),
+    closeReason: String(trial.closeReason || ""),
+    evidence: Array.isArray(trial.evidence) ? trial.evidence : [],
+    testimony: Array.isArray(trial.testimony) ? trial.testimony : [],
+    votes: trial.votes || {},
+    witnesses: Array.isArray(trial.witnesses) ? trial.witnesses : [],
+    activeWitnessId: String(trial.activeWitnessId || ""),
+    activeExamination: String(trial.activeExamination || ""),
+    objections: Array.isArray(trial.objections) ? trial.objections : [],
+    history: Array.isArray(trial.history) ? trial.history : [],
+    createdAt: trial.createdAt || new Date().toISOString(),
+    updatedAt: trial.updatedAt || trial.createdAt || new Date().toISOString(),
+    closedAt: trial.closedAt || ""
   };
 }
 
@@ -1293,8 +1419,25 @@ function trialVoteCounts(trial = {}) {
   };
 }
 
+function trialPartyLines(trial = {}) {
+  return [
+    `Judge: ${trial.judgeId ? `<@${trial.judgeId}>` : "Unassigned"}`,
+    `Defendant: ${trial.defendantId ? `<@${trial.defendantId}>` : "Unknown"}`,
+    `Prosecutor: ${trial.prosecutorId ? `<@${trial.prosecutorId}>` : "Unknown"}`,
+    `Defense: ${trial.defenseCounselId ? `<@${trial.defenseCounselId}>` : "Unassigned"}`
+  ].join("\n");
+}
+
+function trialLatestObjection(trial = {}) {
+  return (trial.objections || []).slice(-1)[0] || null;
+}
+
 function trialEmbed(trial = {}, guild = null) {
   const counts = trialVoteCounts(trial);
+  const latestObjection = trialLatestObjection(trial);
+  const activeWitness = trial.activeWitnessId
+    ? (trial.witnesses || []).find((witness) => witness.userId === trial.activeWitnessId)
+    : null;
   const evidence = (trial.evidence || []).slice(-4).map((item, index) => {
     const author = item.authorTag || item.authorId || "Unknown";
     return `${index + 1}. ${item.text || "Evidence submitted."} (${author})`;
@@ -1308,9 +1451,12 @@ function trialEmbed(trial = {}, guild = null) {
     title: `Trial ${trial.id}: ${trial.defendantTag || trial.defendantId || "Unknown"}`,
     description: [
       `**Status:** ${trialStatusLabel(trial)}`,
+      `**Phase:** ${trialPhaseLabel(trial.phase)}`,
       `**Charges:** ${trial.charges || "No charges recorded."}`,
       `**Plea:** ${trial.plea?.choice ? `${trial.plea.choice}${trial.plea.note ? ` - ${trial.plea.note}` : ""}` : "Not entered"}`,
+      trial.pleaAgreement?.approvedAt ? `**Plea Agreement:** Approved - ${trial.pleaAgreement.terms || "No terms listed."}` : "",
       trial.verdict?.choice ? `**Verdict:** ${trial.verdict.choice}${trial.verdict.note ? ` - ${trial.verdict.note}` : ""}` : "",
+      trial.sentence ? `**Sentence:** ${trial.sentence}` : "",
       trial.threadId ? `**Thread:** <#${trial.threadId}>` : ""
     ].filter(Boolean).join("\n"),
     color: trial.closedAt ? 0x64748b : 0xf59e0b,
@@ -1319,8 +1465,20 @@ function trialEmbed(trial = {}, guild = null) {
 
   embed.addFields(
     {
+      name: "Court Roles",
+      value: trialPartyLines(trial),
+      inline: true
+    },
+    {
       name: "Jury Votes",
       value: `Guilty: **${counts.guilty}**\nNot guilty: **${counts.notGuilty}**\nAbstain: **${counts.abstain}**`,
+      inline: true
+    },
+    {
+      name: "Active Witness",
+      value: activeWitness
+        ? `<@${activeWitness.userId}>\nSide: **${activeWitness.side || "unknown"}**\nMode: **${trial.activeExamination || "not examining"}**`
+        : "No active witness.",
       inline: true
     },
     {
@@ -1340,6 +1498,13 @@ function trialEmbed(trial = {}, guild = null) {
     {
       name: "Recent Testimony",
       value: testimony.length ? testimony.join("\n").slice(0, 1000) : "No testimony submitted yet.",
+      inline: false
+    },
+    {
+      name: "Latest Objection",
+      value: latestObjection
+        ? `**${latestObjection.byTag || latestObjection.byId}:** ${latestObjection.reason || "No reason"}\nRuling: **${latestObjection.ruling || "pending"}**${latestObjection.rulingNote ? ` - ${latestObjection.rulingNote}` : ""}`
+        : "No objections logged.",
       inline: false
     }
   );
@@ -1364,7 +1529,12 @@ async function updateTrials(ctx, updater) {
 async function fetchTrial(ctx, caseIdInput = "") {
   const config = ctx.store.getGuild(ctx.message.guild.id);
   const state = trialState(config);
-  const caseId = normalizeTrialCaseId(caseIdInput, state.cases);
+  let caseId = normalizeTrialCaseId(caseIdInput, state.cases);
+  if (!state.cases[caseId] && ctx.message.channel?.isThread?.()) {
+    const threadId = ctx.message.channel.id;
+    const match = Object.values(state.cases).find((trial) => trial.threadId === threadId);
+    caseId = match?.id || caseId;
+  }
   return {
     config,
     state,
@@ -1373,8 +1543,93 @@ async function fetchTrial(ctx, caseIdInput = "") {
   };
 }
 
+function trialCaseIdArg(args = [], cases = {}) {
+  const first = String(args[0] || "");
+  if (!first) return { caseIdInput: "", offset: 0 };
+  const normalized = normalizeTrialCaseId(first, cases);
+  return cases[normalized] || /^CK-?\d+$/i.test(first) || /^\d+$/.test(first)
+    ? { caseIdInput: first, offset: 1 }
+    : { caseIdInput: "", offset: 0 };
+}
+
+async function fetchTrialFromArgs(ctx, args = []) {
+  const config = ctx.store.getGuild(ctx.message.guild.id);
+  const cases = trialState(config).cases;
+  const parsed = trialCaseIdArg(args, cases);
+  const found = await fetchTrial(ctx, parsed.caseIdInput);
+  return { ...found, argOffset: parsed.offset, usedCaseIdFallback: Boolean(parsed.caseIdInput) };
+}
+
+async function requireThreadTrial(ctx, args = []) {
+  const found = await fetchTrialFromArgs(ctx, args);
+  if (found.trial && found.usedCaseIdFallback && !ctx.message.channel?.isThread?.() && !trialIsCourtAdmin(ctx)) {
+    await ctx.message.reply("Case ID fallback is only for court moderators outside case threads. Please use this command inside the linked case thread.");
+    return null;
+  }
+  if (found.trial) return found;
+  await ctx.message.reply(
+    ctx.message.channel?.isThread?.()
+      ? "This thread is not linked to a Chipkittle court case. Use a case ID as a staff fallback, or start with `!indict @user charges`."
+      : "Use this court command inside a case thread. Staff can still pass a case ID as the first argument for debugging."
+  );
+  return null;
+}
+
 function trialOpen(trial = {}) {
   return Boolean(trial?.id && !trial.closedAt && !["closed", "dismissed"].includes(String(trial.status || "").toLowerCase()));
+}
+
+function addTrialHistory(trial = {}, ctx, action, detail = "") {
+  return {
+    ...trial,
+    history: [
+      ...(trial.history || []),
+      {
+        action,
+        detail: String(detail || "").slice(0, 500),
+        byId: ctx.message.author.id,
+        byTag: ctx.message.author.tag,
+        at: new Date().toISOString()
+      }
+    ].slice(-80)
+  };
+}
+
+function trialIsCourtAdmin(ctx) {
+  return hasPermission(ctx.message.member, PermissionsBitField.Flags.ModerateMembers);
+}
+
+function trialIsJudge(ctx, trial = {}) {
+  return Boolean(trial.judgeId && ctx.message.author.id === trial.judgeId);
+}
+
+function trialCanManage(ctx, trial = {}) {
+  return trialIsCourtAdmin(ctx) || trialIsJudge(ctx, trial);
+}
+
+async function requireTrialManager(ctx, trial = {}) {
+  if (trialCanManage(ctx, trial)) return true;
+  await ctx.message.reply("Only the assigned judge or a court moderator can do that.");
+  return false;
+}
+
+function trialParticipantRole(trial = {}, userId = "") {
+  const id = String(userId || "");
+  if (id && id === trial.judgeId) return "Judge";
+  if (id && id === trial.defendantId) return "Defendant";
+  if (id && id === trial.prosecutorId) return "Prosecutor";
+  if (id && id === trial.defenseCounselId) return "Defense Counsel";
+  if ((trial.witnesses || []).some((witness) => witness.userId === id && witness.status !== "dismissed")) return "Witness";
+  return "Juror";
+}
+
+function trialJurorIneligibility(trial = {}, userId = "") {
+  const role = trialParticipantRole(trial, userId);
+  return role === "Juror" ? "" : `${role}s cannot vote as jurors in this case.`;
+}
+
+function trialWitnessById(trial = {}, userId = "") {
+  return (trial.witnesses || []).find((witness) => witness.userId === userId) || null;
 }
 
 async function sendTrialLog(ctx, trial, action) {
@@ -5653,13 +5908,32 @@ define({
         prosecutorId: ctx.message.author.id,
         prosecutorTag: ctx.message.author.tag,
         channelId: ctx.message.channel.id,
+        parentChannelId: ctx.message.channel.id,
         charges,
+        phase: "case_created",
+        defenseCounselId: "",
+        defenseCounselTag: "",
+        judgeId: "",
+        judgeTag: "",
         plea: null,
         verdict: null,
         sentence: "",
         evidence: [],
         testimony: [],
         votes: {},
+        witnesses: [],
+        activeWitnessId: "",
+        activeExamination: "",
+        objections: [],
+        history: [
+          {
+            action: "case_created",
+            detail: `Indicted ${member.user.tag}: ${charges}`,
+            byId: ctx.message.author.id,
+            byTag: ctx.message.author.tag,
+            at: createdAt
+          }
+        ],
         createdAt,
         updatedAt: createdAt,
         closedAt: ""
@@ -5690,6 +5964,7 @@ define({
             [createdTrial.id]: {
               ...(trials.cases[createdTrial.id] || createdTrial),
               threadId: thread.id,
+              parentChannelId: ctx.message.channel.id,
               updatedAt: createdTrial.updatedAt
             }
           }
@@ -5698,8 +5973,8 @@ define({
           embeds: [trialEmbed(createdTrial, ctx.message.guild)],
           content: [
             `${member}, you have been indicted by ${ctx.message.author}.`,
-            `Use \`${ctx.config.prefix}plead ${createdTrial.id} guilty|notguilty|nocontest [note]\` to enter a plea.`,
-            `Use \`${ctx.config.prefix}evidence ${createdTrial.id} ...\`, \`${ctx.config.prefix}testify ${createdTrial.id} ...\`, and \`${ctx.config.prefix}juryvote ${createdTrial.id} guilty|notguilty|abstain [reason]\`.`
+            `This thread is now linked to **${createdTrial.id}**, so most court commands can be used here without typing the case ID.`,
+            `Next steps: assign a judge with \`${ctx.config.prefix}assignjudge @user\`, then use \`${ctx.config.prefix}courtphase arraignment\`.`
           ].join("\n"),
           allowedMentions: { users: [member.id, ctx.message.author.id] }
         }).catch(() => {});
@@ -5767,10 +6042,12 @@ define({
   aliases: ["plea"],
   category: "Trials",
   description: "Enter a plea for a trial.",
-  usage: "plead CK-0001 guilty|notguilty|nocontest [note]",
+  usage: "plead [CK-0001] guilty|notguilty|nocontest [note]",
   async run(ctx) {
-    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
-    const rawChoice = String(ctx.args[1] || "").toLowerCase().replace(/[^a-z]/g, "");
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
+    const rawChoice = String(ctx.args[argOffset] || "").toLowerCase().replace(/[^a-z]/g, "");
     const choiceMap = {
       guilty: "guilty",
       notguilty: "not guilty",
@@ -5792,11 +6069,12 @@ define({
       await ctx.message.reply("Only the defendant or staff can enter a plea for this trial.");
       return;
     }
-    const note = safeContent(ctx.args.slice(2).join(" "), "");
+    const note = safeContent(ctx.args.slice(argOffset + 1).join(" "), "");
     let updated = null;
     await updateTrials(ctx, (trials) => {
-      updated = {
+      updated = addTrialHistory({
         ...(trials.cases[caseId] || trial),
+        phase: "plea_entry",
         plea: {
           choice,
           note,
@@ -5805,7 +6083,7 @@ define({
           at: new Date().toISOString()
         },
         updatedAt: new Date().toISOString()
-      };
+      }, ctx, "plea_entered", `${choice}${note ? ` - ${note}` : ""}`);
       return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
     });
     await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
@@ -5818,13 +6096,11 @@ define({
   aliases: ["exhibit"],
   category: "Trials",
   description: "Submit evidence to a trial case file.",
-  usage: "evidence CK-0001 text or attach a file",
+  usage: "evidence [CK-0001] text or attach a file",
   async run(ctx) {
-    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
-    if (!trial) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
     if (!trialOpen(trial)) {
       await ctx.message.reply(`${caseId} is already closed.`);
       return;
@@ -5833,7 +6109,7 @@ define({
       name: attachmentName(attachment),
       url: attachmentUrl(attachment)
     })).filter((attachment) => attachment.url).slice(0, 4);
-    const text = safeContent(ctx.args.slice(1).join(" "), attachments.length ? "Attached evidence." : "");
+    const text = safeContent(ctx.args.slice(argOffset).join(" "), attachments.length ? "Attached evidence." : "");
     if (!text && !attachments.length) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
       return;
@@ -5841,8 +6117,9 @@ define({
     let updated = null;
     await updateTrials(ctx, (trials) => {
       const current = trials.cases[caseId] || trial;
-      updated = {
+      updated = addTrialHistory({
         ...current,
+        phase: current.phase === "case_created" ? "evidence_submission" : current.phase,
         evidence: [
           ...(current.evidence || []),
           {
@@ -5855,7 +6132,7 @@ define({
           }
         ].slice(-30),
         updatedAt: new Date().toISOString()
-      };
+      }, ctx, "evidence_submitted", text || `${attachments.length} attachment(s)`);
       return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
     });
     await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
@@ -5868,10 +6145,12 @@ define({
   aliases: ["witness"],
   category: "Trials",
   description: "Add testimony to a trial.",
-  usage: "testify CK-0001 statement",
+  usage: "testify [CK-0001] statement",
   async run(ctx) {
-    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
-    const text = safeContent(ctx.args.slice(1).join(" "), "");
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
+    const text = safeContent(ctx.args.slice(argOffset).join(" "), "");
     if (!trial || !text) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
       return;
@@ -5880,10 +6159,21 @@ define({
       await ctx.message.reply(`${caseId} is already closed.`);
       return;
     }
+    if (trial.activeWitnessId) {
+      const role = trialParticipantRole(trial, ctx.message.author.id);
+      const activeSide = trial.activeExamination === "cross"
+        ? (trialWitnessById(trial, trial.activeWitnessId)?.side === "prosecution" ? "Defense Counsel" : "Prosecutor")
+        : (trialWitnessById(trial, trial.activeWitnessId)?.side === "prosecution" ? "Prosecutor" : "Defense Counsel");
+      const isActiveWitness = ctx.message.author.id === trial.activeWitnessId;
+      if (!isActiveWitness && role !== activeSide && !trialCanManage(ctx, trial)) {
+        await ctx.message.reply(`Only the active witness, the judge, or the active examining side (${activeSide}) can submit testimony/questions right now.`);
+        return;
+      }
+    }
     let updated = null;
     await updateTrials(ctx, (trials) => {
       const current = trials.cases[caseId] || trial;
-      updated = {
+      updated = addTrialHistory({
         ...current,
         testimony: [
           ...(current.testimony || []),
@@ -5896,7 +6186,7 @@ define({
           }
         ].slice(-40),
         updatedAt: new Date().toISOString()
-      };
+      }, ctx, "testimony_added", text);
       return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
     });
     await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
@@ -5908,10 +6198,12 @@ define({
   aliases: ["trialvote", "voteverdict"],
   category: "Trials",
   description: "Vote guilty, not guilty, or abstain in an open trial.",
-  usage: "juryvote CK-0001 guilty|notguilty|abstain [reason]",
+  usage: "juryvote [CK-0001] guilty|notguilty|abstain [reason]",
   async run(ctx) {
-    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
-    const rawChoice = String(ctx.args[1] || "").toLowerCase().replace(/[^a-z]/g, "");
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
+    const rawChoice = String(ctx.args[argOffset] || "").toLowerCase().replace(/[^a-z]/g, "");
     const choiceMap = {
       guilty: "guilty",
       notguilty: "not_guilty",
@@ -5927,11 +6219,20 @@ define({
       await ctx.message.reply(`${caseId} is already closed.`);
       return;
     }
-    const reason = safeContent(ctx.args.slice(2).join(" "), "");
+    if (trial.phase !== "jury_deliberation" && !trialCanManage(ctx, trial)) {
+      await ctx.message.reply(`Jury voting opens during **${trialPhaseLabel("jury_deliberation")}**. Current phase: **${trialPhaseLabel(trial.phase)}**.`);
+      return;
+    }
+    const ineligible = trialJurorIneligibility(trial, ctx.message.author.id);
+    if (ineligible) {
+      await ctx.message.reply(`You cannot vote on this jury: ${ineligible}`);
+      return;
+    }
+    const reason = safeContent(ctx.args.slice(argOffset + 1).join(" "), "");
     let updated = null;
     await updateTrials(ctx, (trials) => {
       const current = trials.cases[caseId] || trial;
-      updated = {
+      updated = addTrialHistory({
         ...current,
         votes: {
           ...(current.votes || {}),
@@ -5944,7 +6245,7 @@ define({
           }
         },
         updatedAt: new Date().toISOString()
-      };
+      }, ctx, "jury_vote", `${choice}${reason ? ` - ${reason}` : ""}`);
       return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
     });
     await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
@@ -5956,11 +6257,13 @@ define({
   aliases: ["trialverdict", "sentence"],
   category: "Trials",
   description: "Set the official verdict for a trial.",
-  usage: "verdict CK-0001 guilty|notguilty|dismissed|mistrial [sentence/reason]",
+  usage: "verdict [CK-0001] guilty|notguilty|dismissed|mistrial [sentence/reason]",
   async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
-    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
-    const rawChoice = String(ctx.args[1] || "").toLowerCase().replace(/[^a-z]/g, "");
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
+    if (!(await requireTrialManager(ctx, trial))) return;
+    const rawChoice = String(ctx.args[argOffset] || "").toLowerCase().replace(/[^a-z]/g, "");
     const choiceMap = {
       guilty: "guilty",
       notguilty: "not guilty",
@@ -5978,14 +6281,15 @@ define({
       await ctx.message.reply(`${caseId} is already closed.`);
       return;
     }
-    const note = safeContent(ctx.args.slice(2).join(" "), choice === "guilty" ? "Awaiting sentencing by the den." : "");
+    const note = safeContent(ctx.args.slice(argOffset + 1).join(" "), choice === "guilty" ? "Awaiting sentencing by the den." : "");
     const now = new Date().toISOString();
     let updated = null;
     await updateTrials(ctx, (trials) => {
       const current = trials.cases[caseId] || trial;
-      updated = {
+      updated = addTrialHistory({
         ...current,
         status: choice === "dismissed" ? "dismissed" : "verdict_entered",
+        phase: choice === "dismissed" ? "case_closed" : "verdict",
         verdict: {
           choice,
           note,
@@ -5996,7 +6300,7 @@ define({
         sentence: choice === "guilty" ? note : "",
         closedAt: choice === "dismissed" ? now : "",
         updatedAt: now
-      };
+      }, ctx, "verdict_entered", `${choice}${note ? ` - ${note}` : ""}`);
       return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
     });
     await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
@@ -6009,30 +6313,29 @@ define({
   aliases: ["trialclose"],
   category: "Trials",
   description: "Close and archive a trial case.",
-  usage: "closetrial CK-0001 [reason]",
+  usage: "closetrial [CK-0001] [reason]",
   async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
-    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
-    if (!trial) {
-      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
-      return;
-    }
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
+    if (!(await requireTrialManager(ctx, trial))) return;
     if (!trialOpen(trial)) {
       await ctx.message.reply(`${caseId} is already closed.`);
       return;
     }
-    const reason = safeContent(ctx.args.slice(1).join(" "), "Closed by staff.");
+    const reason = safeContent(ctx.args.slice(argOffset).join(" "), "Closed by staff.");
     const now = new Date().toISOString();
     let updated = null;
     await updateTrials(ctx, (trials) => {
       const current = trials.cases[caseId] || trial;
-      updated = {
+      updated = addTrialHistory({
         ...current,
         status: "closed",
+        phase: "case_closed",
         closeReason: reason,
         closedAt: now,
         updatedAt: now
-      };
+      }, ctx, "case_closed", reason);
       return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
     });
     if (updated.threadId) {
@@ -6072,6 +6375,533 @@ define({
 });
 
 define({
+  name: "assignjudge",
+  aliases: ["assign-judge", "setjudge"],
+  category: "Trials",
+  description: "Assign the judge for the current case thread.",
+  usage: "assignjudge [CK-0001] @user",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId } = found;
+    const member = ctx.message.mentions.members.first();
+    if (!member) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const now = new Date().toISOString();
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      updated = addTrialHistory({
+        ...(trials.cases[caseId] || trial),
+        judgeId: member.id,
+        judgeTag: member.user.tag,
+        phase: "judge_assigned",
+        updatedAt: now
+      }, ctx, "judge_assigned", `${member.user.tag} assigned as judge.`);
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+    await sendTrialLog(ctx, updated, "Judge assigned");
+  }
+});
+
+define({
+  name: "removejudge",
+  aliases: ["remove-judge", "clearjudge"],
+  category: "Trials",
+  description: "Remove the assigned judge from the current case.",
+  usage: "removejudge [CK-0001]",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId } = found;
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      updated = addTrialHistory({
+        ...(trials.cases[caseId] || trial),
+        judgeId: "",
+        judgeTag: "",
+        updatedAt: new Date().toISOString()
+      }, ctx, "judge_removed", "Judge assignment removed.");
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "judgeinfo",
+  aliases: ["judge-info"],
+  category: "Trials",
+  description: "Show judge permissions and assignment for the current case.",
+  usage: "judgeinfo [CK-0001]",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial } = found;
+    const embed = buildPrettyEmbed({
+      title: `Judge Info: ${trial.id}`,
+      description: [
+        `Assigned judge: ${trial.judgeId ? `<@${trial.judgeId}>` : "Unassigned"}`,
+        "Judges can move phases, call/dismiss witnesses, start direct/cross examination, rule on objections, enter verdicts, and close cases.",
+        "Court moderators can assign or remove judges."
+      ].join("\n"),
+      color: 0xf59e0b
+    });
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "defensecounsel",
+  aliases: ["defense", "setdefense"],
+  category: "Trials",
+  description: "Assign defense counsel for the current case.",
+  usage: "defensecounsel [CK-0001] @user",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId } = found;
+    if (!(await requireTrialManager(ctx, trial))) return;
+    const member = ctx.message.mentions.members.first();
+    if (!member) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      updated = addTrialHistory({
+        ...(trials.cases[caseId] || trial),
+        defenseCounselId: member.id,
+        defenseCounselTag: member.user.tag,
+        updatedAt: new Date().toISOString()
+      }, ctx, "defense_counsel_assigned", `${member.user.tag} assigned as defense counsel.`);
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "courtphase",
+  aliases: ["phase", "startphase"],
+  category: "Trials",
+  description: "Move a case into a court phase.",
+  usage: "courtphase [CK-0001] arraignment|opening|prosecution|defense|evidence|deliberation|sentencing",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
+    if (!(await requireTrialManager(ctx, trial))) return;
+    const phase = normalizeTrialPhase(ctx.args[argOffset]);
+    if (!phase) {
+      await ctx.message.reply(`Unknown phase. Try one of: ${TRIAL_PHASES.map((item) => `\`${item}\``).join(", ")}`);
+      return;
+    }
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      updated = addTrialHistory({
+        ...(trials.cases[caseId] || trial),
+        phase,
+        status: phase === "case_closed" ? "closed" : (trials.cases[caseId]?.status || trial.status || "active"),
+        closedAt: phase === "case_closed" ? new Date().toISOString() : (trials.cases[caseId]?.closedAt || trial.closedAt || ""),
+        updatedAt: new Date().toISOString()
+      }, ctx, "phase_changed", trialPhaseLabel(phase));
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "approveplea",
+  aliases: ["approve-plea", "pleadeal", "pleaagreement"],
+  category: "Trials",
+  description: "Approve a plea agreement for the current case.",
+  usage: "approveplea [CK-0001] terms",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
+    if (!(await requireTrialManager(ctx, trial))) return;
+    const terms = safeContent(ctx.args.slice(argOffset).join(" "), trial.plea?.note || "Plea agreement approved.");
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      updated = addTrialHistory({
+        ...current,
+        pleaAgreement: {
+          terms,
+          approvedById: ctx.message.author.id,
+          approvedByTag: ctx.message.author.tag,
+          approvedAt: new Date().toISOString()
+        },
+        phase: "plea_entry",
+        updatedAt: new Date().toISOString()
+      }, ctx, "plea_agreement_approved", terms);
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "callwitness",
+  aliases: ["call-witness"],
+  category: "Trials",
+  description: "Call a witness for prosecution or defense.",
+  usage: "callwitness [CK-0001] @user prosecution|defense",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
+    if (!(await requireTrialManager(ctx, trial))) return;
+    const member = ctx.message.mentions.members.first();
+    const side = ctx.args.slice(argOffset).map((arg) => arg.toLowerCase()).find((arg) => ["prosecution", "defense"].includes(arg)) || "prosecution";
+    if (!member) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      const witnesses = (current.witnesses || []).filter((witness) => witness.userId !== member.id);
+      updated = addTrialHistory({
+        ...current,
+        witnesses: [
+          ...witnesses,
+          {
+            userId: member.id,
+            userTag: member.user.tag,
+            side,
+            status: "called",
+            calledById: ctx.message.author.id,
+            calledByTag: ctx.message.author.tag,
+            calledAt: new Date().toISOString()
+          }
+        ],
+        activeWitnessId: member.id,
+        activeExamination: "direct",
+        phase: side === "defense" ? "defense_witnesses" : "prosecution_witnesses",
+        updatedAt: new Date().toISOString()
+      }, ctx, "witness_called", `${member.user.tag} called for ${side}.`);
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "dismisswitness",
+  aliases: ["dismiss-witness"],
+  category: "Trials",
+  description: "Dismiss a witness from the stand.",
+  usage: "dismisswitness [CK-0001] @user",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId } = found;
+    if (!(await requireTrialManager(ctx, trial))) return;
+    const member = ctx.message.mentions.members.first();
+    const witnessId = member?.id || trial.activeWitnessId;
+    if (!witnessId) {
+      await ctx.message.reply("Mention a witness, or use this while a witness is active.");
+      return;
+    }
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      const witness = trialWitnessById(current, witnessId);
+      updated = addTrialHistory({
+        ...current,
+        witnesses: (current.witnesses || []).map((entry) => entry.userId === witnessId ? { ...entry, status: "dismissed", dismissedAt: new Date().toISOString() } : entry),
+        activeWitnessId: current.activeWitnessId === witnessId ? "" : current.activeWitnessId,
+        activeExamination: current.activeWitnessId === witnessId ? "" : current.activeExamination,
+        updatedAt: new Date().toISOString()
+      }, ctx, "witness_dismissed", `${witness?.userTag || witnessId} dismissed.`);
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "witnesslist",
+  aliases: ["witness-list", "witnesses"],
+  category: "Trials",
+  description: "List witnesses for the current case.",
+  usage: "witnesslist [CK-0001]",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial } = found;
+    const witnesses = trial.witnesses || [];
+    const embed = buildPrettyEmbed({
+      title: `Witness List: ${trial.id}`,
+      description: witnesses.length
+        ? witnesses.map((witness) => `<@${witness.userId}> - **${witness.side}** - ${witness.status || "called"}`).join("\n")
+        : "No witnesses have been called.",
+      color: 0xf59e0b
+    });
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "startdirect",
+  aliases: ["start-direct-examination", "directexam"],
+  category: "Trials",
+  description: "Start direct examination for the active witness.",
+  usage: "startdirect [CK-0001]",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId } = found;
+    if (!(await requireTrialManager(ctx, trial))) return;
+    if (!trial.activeWitnessId) {
+      await ctx.message.reply("No active witness. Use `callwitness @user prosecution|defense` first.");
+      return;
+    }
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      updated = addTrialHistory({
+        ...current,
+        activeExamination: "direct",
+        updatedAt: new Date().toISOString()
+      }, ctx, "direct_examination_started", `Direct examination started for ${current.activeWitnessId}.`);
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "startcross",
+  aliases: ["start-cross-examination", "crossexam"],
+  category: "Trials",
+  description: "Start cross examination for the active witness.",
+  usage: "startcross [CK-0001]",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId } = found;
+    if (!(await requireTrialManager(ctx, trial))) return;
+    if (!trial.activeWitnessId) {
+      await ctx.message.reply("No active witness. Use `callwitness @user prosecution|defense` first.");
+      return;
+    }
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      updated = addTrialHistory({
+        ...current,
+        activeExamination: "cross",
+        phase: trialWitnessById(current, current.activeWitnessId)?.side === "defense" ? "prosecution_cross_examination" : "defense_cross_examination",
+        updatedAt: new Date().toISOString()
+      }, ctx, "cross_examination_started", `Cross examination started for ${current.activeWitnessId}.`);
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "objection",
+  aliases: ["object"],
+  category: "Trials",
+  description: "Raise an objection in the current case.",
+  usage: "objection [CK-0001] reason",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial, caseId, argOffset } = found;
+    const reason = safeContent(ctx.args.slice(argOffset).join(" "), "");
+    if (!reason) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      const objection = {
+        id: `${Date.now()}-${ctx.message.author.id}`,
+        reason,
+        byId: ctx.message.author.id,
+        byTag: ctx.message.author.tag,
+        at: new Date().toISOString(),
+        ruling: "",
+        rulingById: "",
+        rulingByTag: "",
+        rulingNote: "",
+        ruledAt: ""
+      };
+      updated = addTrialHistory({
+        ...current,
+        phase: "objections_rulings",
+        objections: [...(current.objections || []), objection].slice(-40),
+        updatedAt: new Date().toISOString()
+      }, ctx, "objection", reason);
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+async function ruleOnLatestObjection(ctx, ruling) {
+  const found = await requireThreadTrial(ctx, ctx.args);
+  if (!found) return;
+  const { trial, caseId, argOffset } = found;
+  if (!(await requireTrialManager(ctx, trial))) return;
+  const note = safeContent(ctx.args.slice(argOffset).join(" "), "");
+  const latest = trialLatestObjection(trial);
+  if (!latest || latest.ruling) {
+    await ctx.message.reply("There is no pending objection to rule on.");
+    return;
+  }
+  let updated = null;
+  await updateTrials(ctx, (trials) => {
+    const current = trials.cases[caseId] || trial;
+    updated = addTrialHistory({
+      ...current,
+      objections: (current.objections || []).map((entry) => entry.id === latest.id ? {
+        ...entry,
+        ruling,
+        rulingById: ctx.message.author.id,
+        rulingByTag: ctx.message.author.tag,
+        rulingNote: note,
+        ruledAt: new Date().toISOString()
+      } : entry),
+      updatedAt: new Date().toISOString()
+    }, ctx, `objection_${ruling}`, note || latest.reason);
+    return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+  });
+  await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+}
+
+define({
+  name: "sustain",
+  aliases: ["sustained"],
+  category: "Trials",
+  description: "Sustain the latest pending objection.",
+  usage: "sustain [CK-0001] [note]",
+  async run(ctx) {
+    await ruleOnLatestObjection(ctx, "sustained");
+  }
+});
+
+define({
+  name: "overrule",
+  aliases: ["overruled"],
+  category: "Trials",
+  description: "Overrule the latest pending objection.",
+  usage: "overrule [CK-0001] [note]",
+  async run(ctx) {
+    await ruleOnLatestObjection(ctx, "overruled");
+  }
+});
+
+define({
+  name: "courthistory",
+  aliases: ["trialhistorylog", "trialevents"],
+  category: "Trials",
+  description: "Show recent case history events.",
+  usage: "courthistory [CK-0001]",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    const { trial } = found;
+    const events = (trial.history || []).slice(-15).reverse();
+    const embed = buildPrettyEmbed({
+      title: `Court History: ${trial.id}`,
+      description: events.length
+        ? events.map((event) => `**${trialStatusLabel({ status: event.action })}** - ${event.detail || "No detail"}\n${event.byTag || event.byId || "unknown"}${event.at ? ` - <t:${Math.floor(Date.parse(event.at) / 1000)}:R>` : ""}`).join("\n\n").slice(0, 3800)
+        : "No case history yet.",
+      color: 0xf59e0b
+    });
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "courtstatus",
+  aliases: ["court-status", "trialstatus", "summary", "courtsummary"],
+  category: "Trials",
+  description: "Show the current court status and summary.",
+  usage: "courtstatus [CK-0001]",
+  async run(ctx) {
+    const found = await requireThreadTrial(ctx, ctx.args);
+    if (!found) return;
+    await ctx.message.reply({ embeds: [trialEmbed(found.trial, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "court",
+  aliases: ["courtroom"],
+  category: "Trials",
+  description: "Run court subcommands from one place.",
+  usage: "court status | assign-judge @user | call-witness @user prosecution | objection reason",
+  async run(ctx) {
+    const subcommand = String(ctx.args[0] || "status").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const subcommandMap = {
+      status: "courtstatus",
+      summary: "courtstatus",
+      history: "courthistory",
+      assignjudge: "assignjudge",
+      removejudge: "removejudge",
+      judgeinfo: "judgeinfo",
+      defense: "defensecounsel",
+      defensecounsel: "defensecounsel",
+      phase: "courtphase",
+      startphase: "courtphase",
+      callwitness: "callwitness",
+      approveplea: "approveplea",
+      pleadeal: "approveplea",
+      pleaagreement: "approveplea",
+      dismisswitness: "dismisswitness",
+      witnesslist: "witnesslist",
+      witnesses: "witnesslist",
+      startdirectexamination: "startdirect",
+      direct: "startdirect",
+      startdirect: "startdirect",
+      startcrossexamination: "startcross",
+      cross: "startcross",
+      startcross: "startcross",
+      objection: "objection",
+      object: "objection",
+      sustain: "sustain",
+      overrule: "overrule",
+      plead: "plead",
+      evidence: "evidence",
+      testify: "testify",
+      juryvote: "juryvote",
+      verdict: "verdict",
+      close: "closetrial",
+      closetrial: "closetrial",
+      help: "trialhelp"
+    };
+    const commandName = subcommandMap[subcommand];
+    const command = ctx.commandList.find((entry) => entry.name === commandName);
+    if (!command) {
+      await ctx.message.reply(`Unknown court action. Try \`${ctx.config.prefix}court help\` or \`${ctx.config.prefix}trialhelp\`.`);
+      return;
+    }
+    const args = ctx.args.slice(1);
+    await command.run({
+      ...ctx,
+      command,
+      invokedName: `court ${ctx.args[0] || "status"}`,
+      args,
+      rest: args.join(" ")
+    });
+  }
+});
+
+define({
   name: "trialhelp",
   aliases: ["court"],
   category: "Trials",
@@ -6081,12 +6911,13 @@ define({
     const embed = buildPrettyEmbed({
       title: "Chipkittle Court Procedure",
       description: [
-        `1. \`${prefix}indict @user charges\` opens a trial and tries to create a review thread.`,
-        `2. \`${prefix}plead CK-0001 guilty|notguilty|nocontest\` records the plea.`,
-        `3. \`${prefix}evidence CK-0001 text\` and \`${prefix}testify CK-0001 statement\` build the case file.`,
-        `4. \`${prefix}juryvote CK-0001 guilty|notguilty|abstain\` records public jury votes.`,
-        `5. \`${prefix}verdict CK-0001 guilty|notguilty|dismissed|mistrial [sentence]\` sets the official result.`,
-        `6. \`${prefix}closetrial CK-0001\` locks and archives the trial.`
+        `1. \`${prefix}indict @user charges\` opens a case thread. Use court commands inside that thread without case IDs.`,
+        `2. \`${prefix}assignjudge @user\`, \`${prefix}defensecounsel @user\`, then \`${prefix}courtphase arraignment\` start the formal flow.`,
+        `3. \`${prefix}plead guilty|notguilty|nocontest\`, \`${prefix}evidence ...\`, and \`${prefix}testify ...\` build the record.`,
+        `4. \`${prefix}callwitness @user prosecution|defense\`, \`${prefix}startdirect\`, and \`${prefix}startcross\` manage witnesses.`,
+        `5. \`${prefix}objection reason\`, \`${prefix}sustain\`, and \`${prefix}overrule\` log rulings.`,
+        `6. \`${prefix}courtphase jury_deliberation\`, \`${prefix}juryvote guilty|notguilty|abstain\`, \`${prefix}verdict ...\`, and \`${prefix}closetrial\` finish the case.`,
+        `Shortcut: \`${prefix}court status\`, \`${prefix}court assign-judge @user\`, \`${prefix}court history\`, etc.`
       ].join("\n"),
       color: 0xf59e0b
     });
