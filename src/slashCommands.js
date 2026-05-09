@@ -22,7 +22,8 @@ const SLASH_CATEGORY_PRIORITY = new Map([
   ["Dating", 9],
   ["AI", 10],
   ["Moderation", 11],
-  ["Config", 12]
+  ["Trials", 12],
+  ["Config", 13]
 ]);
 const LOW_PRIORITY_SLASH_COMMANDS = new Set([
   "economyaudit",
@@ -102,16 +103,30 @@ const PORTABLE_USER_INSTALL_COMMANDS = new Set([
   "timestamp",
   "uptime"
 ]);
+const PRIORITY_GUILD_SLASH_COMMANDS = new Set([
+  "indict",
+  "trial",
+  "trials",
+  "plead",
+  "evidence",
+  "testify",
+  "juryvote",
+  "verdict",
+  "closetrial",
+  "trialstats",
+  "trialhelp"
+]);
 
 function isPortableUserInstallCommand(command) {
   return PORTABLE_USER_INSTALL_COMMANDS.has(command.name);
 }
 
 function slashCommandPriority(command) {
+  const priorityGuildRank = PRIORITY_GUILD_SLASH_COMMANDS.has(command.name) ? -8 : 0;
   const portableRank = isPortableUserInstallCommand(command) ? -10 : 0;
   const categoryRank = SLASH_CATEGORY_PRIORITY.get(command.category || "Other") ?? 50;
   const adminPenalty = LOW_PRIORITY_SLASH_COMMANDS.has(command.name) ? 100 : 0;
-  return portableRank + categoryRank + adminPenalty;
+  return priorityGuildRank + portableRank + categoryRank + adminPenalty;
 }
 
 function slashCommandList(commandList) {

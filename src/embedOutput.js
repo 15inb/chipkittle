@@ -12,6 +12,7 @@ const CATEGORY_COLORS = {
   Games: 0x14b8a6,
   Chipkittle: 0x22c55e,
   Moderation: 0xef4444,
+  Trials: 0xf59e0b,
   Config: 0x38bdf8,
   AI: 0x10b981,
   Applications: 0xf97316

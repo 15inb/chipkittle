@@ -136,7 +136,11 @@ const DEFAULT_CONFIG = {
     suggestions: [],
     questClaims: {},
     questStreaks: {},
-    staffNotes: {}
+    staffNotes: {},
+    trials: {
+      counter: 0,
+      cases: {}
+    }
   }
 };
 
@@ -276,6 +280,13 @@ function mergeConfig(config = {}) {
       rituals: {
         ...clone(DEFAULT_CONFIG.community.rituals),
         ...(config.community?.rituals || {})
+      },
+      trials: {
+        ...clone(DEFAULT_CONFIG.community.trials),
+        ...(config.community?.trials || {}),
+        cases: {
+          ...(config.community?.trials?.cases || {})
+        }
       }
     }
   };
@@ -443,6 +454,13 @@ export class ConfigStore {
         rituals: {
           ...this.getGuild(guildId).community.rituals,
           ...(partialConfig.community?.rituals || {})
+        },
+        trials: {
+          ...this.getGuild(guildId).community.trials,
+          ...(partialConfig.community?.trials || {}),
+          cases: hasOwn(partialConfig.community?.trials || {}, "cases")
+            ? { ...(partialConfig.community?.trials?.cases || {}) }
+            : { ...(this.getGuild(guildId).community.trials?.cases || {}) }
         }
       }
     });

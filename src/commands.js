@@ -166,6 +166,7 @@ const HELP_CATEGORY_ORDER = [
   "AI",
   "Applications",
   "Moderation",
+  "Trials",
   "Config",
   "Fun",
   "Dating"
@@ -1241,6 +1242,151 @@ async function recordModerationAudit(ctx, { action, member, reason, durationMs =
     moderatorId: ctx.message.author.id,
     moderatorTag: ctx.message.author.tag,
     durationMs
+  }).catch(() => {});
+}
+
+function trialState(config = {}) {
+  const trials = config.community?.trials || {};
+  return {
+    counter: Math.max(0, Number(trials.counter) || 0),
+    cases: { ...(trials.cases || {}) }
+  };
+}
+
+function trialCaseId(counter) {
+  return `CK-${String(counter).padStart(4, "0")}`;
+}
+
+function normalizeTrialCaseId(value = "", cases = {}) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return "";
+  if (cases[raw]) return raw;
+  const digits = raw.replace(/^CK-?/i, "").replace(/[^0-9]/g, "");
+  if (!digits) return raw;
+  const padded = trialCaseId(Number(digits));
+  return cases[padded] ? padded : padded;
+}
+
+function activeTrialCases(config = {}) {
+  return Object.values(trialState(config).cases)
+    .filter((trial) => !trial.closedAt && !["closed", "dismissed"].includes(String(trial.status || "").toLowerCase()))
+    .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+}
+
+function allTrialCases(config = {}) {
+  return Object.values(trialState(config).cases)
+    .sort((a, b) => Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0));
+}
+
+function trialStatusLabel(trial = {}) {
+  const status = String(trial.status || "active").replace(/_/g, " ");
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function trialVoteCounts(trial = {}) {
+  const votes = trial.votes || {};
+  const values = Object.values(votes).map((vote) => String(vote.choice || "").toLowerCase());
+  return {
+    guilty: values.filter((choice) => choice === "guilty").length,
+    notGuilty: values.filter((choice) => choice === "not_guilty").length,
+    abstain: values.filter((choice) => choice === "abstain").length
+  };
+}
+
+function trialEmbed(trial = {}, guild = null) {
+  const counts = trialVoteCounts(trial);
+  const evidence = (trial.evidence || []).slice(-4).map((item, index) => {
+    const author = item.authorTag || item.authorId || "Unknown";
+    return `${index + 1}. ${item.text || "Evidence submitted."} (${author})`;
+  });
+  const testimony = (trial.testimony || []).slice(-4).map((item, index) => {
+    const author = item.authorTag || item.authorId || "Unknown";
+    return `${index + 1}. ${item.text || "Testimony submitted."} (${author})`;
+  });
+
+  const embed = buildPrettyEmbed({
+    title: `Trial ${trial.id}: ${trial.defendantTag || trial.defendantId || "Unknown"}`,
+    description: [
+      `**Status:** ${trialStatusLabel(trial)}`,
+      `**Charges:** ${trial.charges || "No charges recorded."}`,
+      `**Plea:** ${trial.plea?.choice ? `${trial.plea.choice}${trial.plea.note ? ` - ${trial.plea.note}` : ""}` : "Not entered"}`,
+      trial.verdict?.choice ? `**Verdict:** ${trial.verdict.choice}${trial.verdict.note ? ` - ${trial.verdict.note}` : ""}` : "",
+      trial.threadId ? `**Thread:** <#${trial.threadId}>` : ""
+    ].filter(Boolean).join("\n"),
+    color: trial.closedAt ? 0x64748b : 0xf59e0b,
+    footer: `Opened by ${trial.prosecutorTag || trial.prosecutorId || "unknown"}${guild ? ` in ${guild.name}` : ""}`
+  });
+
+  embed.addFields(
+    {
+      name: "Jury Votes",
+      value: `Guilty: **${counts.guilty}**\nNot guilty: **${counts.notGuilty}**\nAbstain: **${counts.abstain}**`,
+      inline: true
+    },
+    {
+      name: "Timeline",
+      value: [
+        `Opened: ${trial.createdAt ? `<t:${Math.floor(Date.parse(trial.createdAt) / 1000)}:R>` : "unknown"}`,
+        trial.updatedAt ? `Updated: <t:${Math.floor(Date.parse(trial.updatedAt) / 1000)}:R>` : "",
+        trial.closedAt ? `Closed: <t:${Math.floor(Date.parse(trial.closedAt) / 1000)}:R>` : ""
+      ].filter(Boolean).join("\n"),
+      inline: true
+    },
+    {
+      name: "Recent Evidence",
+      value: evidence.length ? evidence.join("\n").slice(0, 1000) : "No evidence submitted yet.",
+      inline: false
+    },
+    {
+      name: "Recent Testimony",
+      value: testimony.length ? testimony.join("\n").slice(0, 1000) : "No testimony submitted yet.",
+      inline: false
+    }
+  );
+
+  return embed;
+}
+
+async function updateTrials(ctx, updater) {
+  const latest = ctx.store.getGuild(ctx.message.guild.id);
+  const community = {
+    ...(latest.community || {}),
+    trials: trialState(latest)
+  };
+  const nextTrials = await updater(community.trials, latest);
+  community.trials = {
+    counter: Math.max(0, Number(nextTrials?.counter) || 0),
+    cases: { ...(nextTrials?.cases || {}) }
+  };
+  return ctx.store.updateGuild(ctx.message.guild.id, { community });
+}
+
+async function fetchTrial(ctx, caseIdInput = "") {
+  const config = ctx.store.getGuild(ctx.message.guild.id);
+  const state = trialState(config);
+  const caseId = normalizeTrialCaseId(caseIdInput, state.cases);
+  return {
+    config,
+    state,
+    caseId,
+    trial: state.cases[caseId] || null
+  };
+}
+
+function trialOpen(trial = {}) {
+  return Boolean(trial?.id && !trial.closedAt && !["closed", "dismissed"].includes(String(trial.status || "").toLowerCase()));
+}
+
+async function sendTrialLog(ctx, trial, action) {
+  const content = `${action}: ${trial.id} for ${trial.defendantTag || trial.defendantId}. Charges: ${trial.charges || "None"}`;
+  await sendModerationLog(ctx, content);
+  await addAuditLog(ctx.store, ctx.message.guild.id, {
+    type: "trial",
+    label: action,
+    details: content,
+    actor: ctx.message.author.tag,
+    targetId: trial.defendantId,
+    targetTag: trial.defendantTag
   }).catch(() => {});
 }
 
@@ -5472,6 +5618,479 @@ define({
     });
     await ctx.message.reply(finalOutput);
     await sendModerationLog(ctx, finalOutput);
+  }
+});
+
+define({
+  name: "indict",
+  aliases: ["charge", "trialstart"],
+  category: "Trials",
+  description: "Open a persistent Chipkittle trial against a member.",
+  usage: "indict @user charges",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
+    const member = ctx.message.mentions.members.first();
+    const charges = safeContent(ctx.args.slice(1).join(" "), "");
+    if (!member || !charges) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (member.user.bot) {
+      await ctx.message.reply("The court refuses to indict bots. They already know what they did.");
+      return;
+    }
+
+    const createdAt = new Date().toISOString();
+    let createdTrial = null;
+    await updateTrials(ctx, (trials) => {
+      const counter = Math.max(0, Number(trials.counter) || 0) + 1;
+      const id = trialCaseId(counter);
+      createdTrial = {
+        id,
+        status: "active",
+        defendantId: member.id,
+        defendantTag: member.user.tag,
+        prosecutorId: ctx.message.author.id,
+        prosecutorTag: ctx.message.author.tag,
+        channelId: ctx.message.channel.id,
+        charges,
+        plea: null,
+        verdict: null,
+        sentence: "",
+        evidence: [],
+        testimony: [],
+        votes: {},
+        createdAt,
+        updatedAt: createdAt,
+        closedAt: ""
+      };
+      return {
+        counter,
+        cases: {
+          ...trials.cases,
+          [id]: createdTrial
+        }
+      };
+    });
+
+    const canThread = ctx.message.channel?.threads?.create && ctx.message.channel.type !== ChannelType.DM;
+    if (canThread && createdTrial) {
+      const thread = await ctx.message.channel.threads.create({
+        name: `trial-${createdTrial.id.toLowerCase()}-${member.user.username}`.slice(0, 90),
+        autoArchiveDuration: 1440,
+        reason: `Trial ${createdTrial.id} opened by ${ctx.message.author.tag}`
+      }).catch(() => null);
+      if (thread) {
+        createdTrial.threadId = thread.id;
+        createdTrial.updatedAt = new Date().toISOString();
+        await updateTrials(ctx, (trials) => ({
+          ...trials,
+          cases: {
+            ...trials.cases,
+            [createdTrial.id]: {
+              ...(trials.cases[createdTrial.id] || createdTrial),
+              threadId: thread.id,
+              updatedAt: createdTrial.updatedAt
+            }
+          }
+        }));
+        await thread.send({
+          embeds: [trialEmbed(createdTrial, ctx.message.guild)],
+          content: [
+            `${member}, you have been indicted by ${ctx.message.author}.`,
+            `Use \`${ctx.config.prefix}plead ${createdTrial.id} guilty|notguilty|nocontest [note]\` to enter a plea.`,
+            `Use \`${ctx.config.prefix}evidence ${createdTrial.id} ...\`, \`${ctx.config.prefix}testify ${createdTrial.id} ...\`, and \`${ctx.config.prefix}juryvote ${createdTrial.id} guilty|notguilty|abstain [reason]\`.`
+          ].join("\n"),
+          allowedMentions: { users: [member.id, ctx.message.author.id] }
+        }).catch(() => {});
+      }
+    }
+
+    await ctx.message.reply({
+      embeds: [trialEmbed(createdTrial, ctx.message.guild)],
+      allowedMentions: NO_MENTIONS
+    });
+    await sendTrialLog(ctx, createdTrial, "Trial opened");
+  }
+});
+
+define({
+  name: "trial",
+  aliases: ["case"],
+  category: "Trials",
+  description: "Show a trial case file.",
+  usage: "trial CK-0001",
+  async run(ctx) {
+    const { trial } = await fetchTrial(ctx, ctx.args[0]);
+    if (!trial) {
+      await ctx.message.reply(`No trial found. Try \`${ctx.config.prefix}trials\`.`);
+      return;
+    }
+    await ctx.message.reply({
+      embeds: [trialEmbed(trial, ctx.message.guild)],
+      allowedMentions: NO_MENTIONS
+    });
+  }
+});
+
+define({
+  name: "trials",
+  aliases: ["caselist", "triallist"],
+  category: "Trials",
+  description: "List open, closed, or all trials.",
+  usage: "trials [open|closed|all]",
+  async run(ctx) {
+    const mode = String(ctx.args[0] || "open").toLowerCase();
+    const cases = allTrialCases(ctx.config).filter((trial) => {
+      if (mode === "all") return true;
+      if (mode === "closed") return !trialOpen(trial);
+      return trialOpen(trial);
+    }).slice(0, 12);
+    if (!cases.length) {
+      await ctx.message.reply(`No ${mode === "all" ? "" : `${mode} `}trials found.`);
+      return;
+    }
+    const embed = buildPrettyEmbed({
+      title: `Chipkittle Trials: ${mode}`,
+      description: cases.map((trial) => {
+        const counts = trialVoteCounts(trial);
+        return `**${trial.id}** - ${trial.defendantTag || trial.defendantId} - ${trialStatusLabel(trial)}\n${trial.charges || "No charges"}\nVotes: ${counts.guilty} guilty / ${counts.notGuilty} not guilty / ${counts.abstain} abstain`;
+      }).join("\n\n").slice(0, 3800),
+      color: 0xf59e0b
+    });
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "plead",
+  aliases: ["plea"],
+  category: "Trials",
+  description: "Enter a plea for a trial.",
+  usage: "plead CK-0001 guilty|notguilty|nocontest [note]",
+  async run(ctx) {
+    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
+    const rawChoice = String(ctx.args[1] || "").toLowerCase().replace(/[^a-z]/g, "");
+    const choiceMap = {
+      guilty: "guilty",
+      notguilty: "not guilty",
+      innocent: "not guilty",
+      nocontest: "no contest",
+      no: "not guilty"
+    };
+    const choice = choiceMap[rawChoice];
+    if (!trial || !choice) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (!trialOpen(trial)) {
+      await ctx.message.reply(`${caseId} is already closed.`);
+      return;
+    }
+    const staffOverride = hasPermission(ctx.message.member, PermissionsBitField.Flags.ModerateMembers);
+    if (ctx.message.author.id !== trial.defendantId && !staffOverride) {
+      await ctx.message.reply("Only the defendant or staff can enter a plea for this trial.");
+      return;
+    }
+    const note = safeContent(ctx.args.slice(2).join(" "), "");
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      updated = {
+        ...(trials.cases[caseId] || trial),
+        plea: {
+          choice,
+          note,
+          byId: ctx.message.author.id,
+          byTag: ctx.message.author.tag,
+          at: new Date().toISOString()
+        },
+        updatedAt: new Date().toISOString()
+      };
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+    await sendTrialLog(ctx, updated, "Plea entered");
+  }
+});
+
+define({
+  name: "evidence",
+  aliases: ["exhibit"],
+  category: "Trials",
+  description: "Submit evidence to a trial case file.",
+  usage: "evidence CK-0001 text or attach a file",
+  async run(ctx) {
+    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
+    if (!trial) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (!trialOpen(trial)) {
+      await ctx.message.reply(`${caseId} is already closed.`);
+      return;
+    }
+    const attachments = [...(ctx.message.attachments?.values?.() || [])].map((attachment) => ({
+      name: attachmentName(attachment),
+      url: attachmentUrl(attachment)
+    })).filter((attachment) => attachment.url).slice(0, 4);
+    const text = safeContent(ctx.args.slice(1).join(" "), attachments.length ? "Attached evidence." : "");
+    if (!text && !attachments.length) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      updated = {
+        ...current,
+        evidence: [
+          ...(current.evidence || []),
+          {
+            id: `${Date.now()}-${ctx.message.author.id}`,
+            text,
+            attachments,
+            authorId: ctx.message.author.id,
+            authorTag: ctx.message.author.tag,
+            at: new Date().toISOString()
+          }
+        ].slice(-30),
+        updatedAt: new Date().toISOString()
+      };
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+    await sendTrialLog(ctx, updated, "Evidence submitted");
+  }
+});
+
+define({
+  name: "testify",
+  aliases: ["witness"],
+  category: "Trials",
+  description: "Add testimony to a trial.",
+  usage: "testify CK-0001 statement",
+  async run(ctx) {
+    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
+    const text = safeContent(ctx.args.slice(1).join(" "), "");
+    if (!trial || !text) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (!trialOpen(trial)) {
+      await ctx.message.reply(`${caseId} is already closed.`);
+      return;
+    }
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      updated = {
+        ...current,
+        testimony: [
+          ...(current.testimony || []),
+          {
+            id: `${Date.now()}-${ctx.message.author.id}`,
+            text,
+            authorId: ctx.message.author.id,
+            authorTag: ctx.message.author.tag,
+            at: new Date().toISOString()
+          }
+        ].slice(-40),
+        updatedAt: new Date().toISOString()
+      };
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "juryvote",
+  aliases: ["trialvote", "voteverdict"],
+  category: "Trials",
+  description: "Vote guilty, not guilty, or abstain in an open trial.",
+  usage: "juryvote CK-0001 guilty|notguilty|abstain [reason]",
+  async run(ctx) {
+    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
+    const rawChoice = String(ctx.args[1] || "").toLowerCase().replace(/[^a-z]/g, "");
+    const choiceMap = {
+      guilty: "guilty",
+      notguilty: "not_guilty",
+      innocent: "not_guilty",
+      abstain: "abstain"
+    };
+    const choice = choiceMap[rawChoice];
+    if (!trial || !choice) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (!trialOpen(trial)) {
+      await ctx.message.reply(`${caseId} is already closed.`);
+      return;
+    }
+    const reason = safeContent(ctx.args.slice(2).join(" "), "");
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      updated = {
+        ...current,
+        votes: {
+          ...(current.votes || {}),
+          [ctx.message.author.id]: {
+            choice,
+            reason,
+            userId: ctx.message.author.id,
+            userTag: ctx.message.author.tag,
+            at: new Date().toISOString()
+          }
+        },
+        updatedAt: new Date().toISOString()
+      };
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "verdict",
+  aliases: ["trialverdict", "sentence"],
+  category: "Trials",
+  description: "Set the official verdict for a trial.",
+  usage: "verdict CK-0001 guilty|notguilty|dismissed|mistrial [sentence/reason]",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
+    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
+    const rawChoice = String(ctx.args[1] || "").toLowerCase().replace(/[^a-z]/g, "");
+    const choiceMap = {
+      guilty: "guilty",
+      notguilty: "not guilty",
+      innocent: "not guilty",
+      dismissed: "dismissed",
+      dismiss: "dismissed",
+      mistrial: "mistrial"
+    };
+    const choice = choiceMap[rawChoice];
+    if (!trial || !choice) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (!trialOpen(trial)) {
+      await ctx.message.reply(`${caseId} is already closed.`);
+      return;
+    }
+    const note = safeContent(ctx.args.slice(2).join(" "), choice === "guilty" ? "Awaiting sentencing by the den." : "");
+    const now = new Date().toISOString();
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      updated = {
+        ...current,
+        status: choice === "dismissed" ? "dismissed" : "verdict_entered",
+        verdict: {
+          choice,
+          note,
+          byId: ctx.message.author.id,
+          byTag: ctx.message.author.tag,
+          at: now
+        },
+        sentence: choice === "guilty" ? note : "",
+        closedAt: choice === "dismissed" ? now : "",
+        updatedAt: now
+      };
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+    await sendTrialLog(ctx, updated, "Verdict entered");
+  }
+});
+
+define({
+  name: "closetrial",
+  aliases: ["trialclose"],
+  category: "Trials",
+  description: "Close and archive a trial case.",
+  usage: "closetrial CK-0001 [reason]",
+  async run(ctx) {
+    if (!requirePermission(ctx, PermissionsBitField.Flags.ModerateMembers)) return;
+    const { trial, caseId } = await fetchTrial(ctx, ctx.args[0]);
+    if (!trial) {
+      await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    if (!trialOpen(trial)) {
+      await ctx.message.reply(`${caseId} is already closed.`);
+      return;
+    }
+    const reason = safeContent(ctx.args.slice(1).join(" "), "Closed by staff.");
+    const now = new Date().toISOString();
+    let updated = null;
+    await updateTrials(ctx, (trials) => {
+      const current = trials.cases[caseId] || trial;
+      updated = {
+        ...current,
+        status: "closed",
+        closeReason: reason,
+        closedAt: now,
+        updatedAt: now
+      };
+      return { ...trials, cases: { ...trials.cases, [caseId]: updated } };
+    });
+    if (updated.threadId) {
+      const thread = await ctx.message.guild.channels.fetch(updated.threadId).catch(() => null);
+      if (thread?.isThread?.()) {
+        await thread.setLocked(true, reason).catch(() => {});
+        await thread.setArchived(true, reason).catch(() => {});
+      }
+    }
+    await ctx.message.reply({ embeds: [trialEmbed(updated, ctx.message.guild)], allowedMentions: NO_MENTIONS });
+    await sendTrialLog(ctx, updated, "Trial closed");
+  }
+});
+
+define({
+  name: "trialstats",
+  aliases: ["trialhistory"],
+  category: "Trials",
+  description: "Show a member's trial history.",
+  usage: "trialstats [@user]",
+  async run(ctx) {
+    const member = ctx.message.mentions.members.first() || ctx.message.member;
+    const cases = allTrialCases(ctx.config)
+      .filter((trial) => trial.defendantId === member.id)
+      .slice(0, 10);
+    if (!cases.length) {
+      await ctx.message.reply(`${member} has no trial history.`);
+      return;
+    }
+    const embed = buildPrettyEmbed({
+      title: `Trial History: ${member.displayName}`,
+      description: cases.map((trial) => `**${trial.id}** - ${trialStatusLabel(trial)} - ${trial.charges || "No charges"}`).join("\n").slice(0, 3800),
+      color: 0xf59e0b
+    });
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+define({
+  name: "trialhelp",
+  aliases: ["court"],
+  category: "Trials",
+  description: "Show the Chipkittle trial command flow.",
+  async run(ctx) {
+    const prefix = ctx.config.prefix;
+    const embed = buildPrettyEmbed({
+      title: "Chipkittle Court Procedure",
+      description: [
+        `1. \`${prefix}indict @user charges\` opens a trial and tries to create a review thread.`,
+        `2. \`${prefix}plead CK-0001 guilty|notguilty|nocontest\` records the plea.`,
+        `3. \`${prefix}evidence CK-0001 text\` and \`${prefix}testify CK-0001 statement\` build the case file.`,
+        `4. \`${prefix}juryvote CK-0001 guilty|notguilty|abstain\` records public jury votes.`,
+        `5. \`${prefix}verdict CK-0001 guilty|notguilty|dismissed|mistrial [sentence]\` sets the official result.`,
+        `6. \`${prefix}closetrial CK-0001\` locks and archives the trial.`
+      ].join("\n"),
+      color: 0xf59e0b
+    });
+    await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
   }
 });
 
