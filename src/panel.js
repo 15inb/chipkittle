@@ -2676,20 +2676,21 @@ function resolveWebsiteSlots(bet = 0, proof = casinoProof()) {
   let label = "The reels coughed politely.";
   let payline = [];
   let bonus = null;
-  if (ids[0] === ids[1] && ids[1] === ids[2]) {
+  const hasBlank = ids.includes("blank");
+  if (!hasBlank && ids[0] === ids[1] && ids[1] === ids[2]) {
     multiplier = WEBSITE_CASINO_SLOT_PAYOUTS[ids[0]] || 3;
     label = `Triple ${reels[0].label}`;
     payline = [0, 1, 2];
-  } else if (new Set(ids).size === 2) {
+  } else if (!hasBlank && new Set(ids).size === 2) {
     multiplier = 0.35;
     label = "Two of a kind crumb-back";
     payline = ids[0] === ids[1] ? [0, 1] : ids[1] === ids[2] ? [1, 2] : [0, 2];
-  } else if (ids.includes("crown") && ids.includes("horn")) {
+  } else if (!hasBlank && ids.includes("crown") && ids.includes("horn")) {
     multiplier = 1.4;
     label = "Royal horn omen";
     payline = ids.map((id, index) => ["crown", "horn"].includes(id) ? index : -1).filter((index) => index >= 0);
   }
-  if (ids.filter((id) => id === "crown").length >= 2 && casinoUnitInterval(proof, 9) > 0.92) {
+  if (!hasBlank && ids.filter((id) => id === "crown").length >= 2 && casinoUnitInterval(proof, 9) > 0.92) {
     const bonusMultiplier = 1 + Math.floor(casinoUnitInterval(proof, 10) * 2);
     multiplier += bonusMultiplier;
     bonus = { name: "Crown bonus", multiplier: bonusMultiplier };
