@@ -766,10 +766,13 @@ function createInteractionMessage(interaction, input) {
   }
   let firstReplySent = false;
 
-  function initialReplyHandle() {
+  async function initialReplyHandle() {
+    const fetched = await interaction.fetchReply().catch(() => null);
+    if (fetched) return fetched;
     return {
       edit: (payload) => interaction.editReply(normalizeReplyPayload(payload)),
-      delete: () => interaction.deleteReply().catch(() => {})
+      delete: () => interaction.deleteReply().catch(() => {}),
+      createMessageComponentCollector: (...args) => interaction.channel?.createMessageComponentCollector?.(...args)
     };
   }
 
@@ -783,8 +786,11 @@ function createInteractionMessage(interaction, input) {
 
     if (!interaction.replied && !interaction.deferred) {
       firstReplySent = true;
-      await interaction.reply(options);
-      return initialReplyHandle();
+      const response = await interaction.reply({ ...options, fetchReply: true }).catch(async () => {
+        await interaction.reply(options);
+        return null;
+      });
+      return response || initialReplyHandle();
     }
     firstReplySent = true;
     return interaction.followUp(options);
