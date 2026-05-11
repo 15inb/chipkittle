@@ -261,13 +261,23 @@ export async function handleApplicationDm({ client, store, message }) {
   const config = store.getGuild(found.guild.id);
   const questions = applicationQuestions(config);
   const currentIndex = Math.min(found.ticket.questionIndex, Math.max(questions.length - 1, 0));
+  const channel = await ensureApplicationChannelReady(found.channel, found.ticket);
 
   if (!questions.length || found.ticket.completed) {
+    await channel.send({
+      embeds: [
+        applicationEmbed(
+          "Applicant Follow-Up",
+          `**${message.author.tag}:** ${safeDmContent(message.content)}${attachmentLines(message)}`,
+          found.guild.name
+        )
+      ]
+    }).catch(() => {});
     await message.reply({
       embeds: [
         applicationEmbed(
-          "Application Submitted",
-          "Your application has already been submitted. Staff will contact you if they need anything else.",
+          "Follow-Up Sent",
+          "Your message was added to your application thread for staff to review.",
           found.guild.name
         )
       ]
@@ -276,7 +286,6 @@ export async function handleApplicationDm({ client, store, message }) {
   }
 
   const question = questions[currentIndex];
-  const channel = await ensureApplicationChannelReady(found.channel, found.ticket);
   await channel.send({
     embeds: [
       applicationEmbed(
