@@ -5,6 +5,7 @@ import { commandList, createBot } from "./bot.js";
 import { AiService } from "./aiService.js";
 import { ConfigStore } from "./configStore.js";
 import { createPanel } from "./panel.js";
+import { installRuntimeErrorCapture } from "./runtimeErrors.js";
 
 const port = Number(process.env.PORT || 3000);
 const publicUrl = process.env.PUBLIC_URL || `http://localhost:${port}`;
@@ -17,6 +18,8 @@ const defaultAiModel = process.env.OPENAI_MODEL || "gpt-5.2";
 const panelPassword = process.env.PANEL_PASSWORD || "";
 const allowLegacyPanelPasswordLogin = String(process.env.ALLOW_LEGACY_PANEL_PASSWORD_LOGIN || "").toLowerCase() === "true";
 const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+
+installRuntimeErrorCapture();
 
 if (allowLegacyPanelPasswordLogin && !panelPassword) {
   console.warn("Legacy panel password login is enabled, but PANEL_PASSWORD is not set.");

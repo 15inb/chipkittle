@@ -1184,6 +1184,20 @@ function safeContent(text, fallback = "No text provided.") {
   return cleaned ? cleaned.slice(0, 1800) : fallback;
 }
 
+function isDiscordAccessError(error) {
+  return [50001, 50013, 10008].includes(Number(error?.code));
+}
+
+async function safeMessageEdit(message, payload) {
+  if (!message?.edit) return null;
+  try {
+    return await message.edit(payload);
+  } catch (error) {
+    if (isDiscordAccessError(error)) return null;
+    throw error;
+  }
+}
+
 function normalizeBlockedWord(word) {
   return String(word || "").trim().toLowerCase().slice(0, 80);
 }
@@ -5432,14 +5446,14 @@ define({
         userId: ctx.message.author.id
       });
       const file = new AttachmentBuilder(imageBuffer, { name: "chipified.png" });
-      await status.edit({
+      await safeMessageEdit(status, {
         content: `${ctx.message.author}, behold: chipified.`,
         files: [file],
         allowedMentions: NO_MENTIONS
       });
     } catch (error) {
       console.error("Chipify failed:", error);
-      await status.edit(error.message || "The artifact failed to chipify that image.").catch(() => {});
+      await safeMessageEdit(status, error.message || "The artifact failed to chipify that image.").catch(() => {});
     }
   }
 });
@@ -5477,14 +5491,14 @@ define({
       const media = await downloadMediaAttachment(attachment, { maxBytes: mediaLimitForContext(ctx) });
       const output = await captionMedia(media, { topText, bottomText });
       const file = new AttachmentBuilder(output.buffer, { name: output.filename });
-      await status.edit({
+      await safeMessageEdit(status, {
         content: `${ctx.message.author}, done.`,
         files: [file],
         allowedMentions: NO_MENTIONS
       });
     } catch (error) {
       console.error("Caption command failed:", error);
-      await status.edit(error.message || "I could not caption that media.").catch(() => {});
+      await safeMessageEdit(status, error.message || "I could not caption that media.").catch(() => {});
     }
   }
 });
@@ -5509,14 +5523,14 @@ define({
       const media = await downloadMediaAttachment(attachment, { maxBytes: mediaLimitForContext(ctx) });
       const output = await convertToGif(media);
       const file = new AttachmentBuilder(output.buffer, { name: output.filename });
-      await status.edit({
+      await safeMessageEdit(status, {
         content: `${ctx.message.author}, done.`,
         files: [file],
         allowedMentions: NO_MENTIONS
       });
     } catch (error) {
       console.error("GIF command failed:", error);
-      await status.edit(error.message || "I could not convert that media to GIF.").catch(() => {});
+      await safeMessageEdit(status, error.message || "I could not convert that media to GIF.").catch(() => {});
     }
   }
 });
@@ -5584,14 +5598,14 @@ define({
       }
 
       const file = new AttachmentBuilder(output.buffer, { name: output.filename });
-      await status.edit({
+      await safeMessageEdit(status, {
         content: `${ctx.message.author}, done.`,
         files: [file],
         allowedMentions: NO_MENTIONS
       });
     } catch (error) {
       console.error("GIF command failed:", error);
-      await status.edit(error.message || "I could not edit that GIF.").catch(() => {});
+      await safeMessageEdit(status, error.message || "I could not edit that GIF.").catch(() => {});
     }
   }
 });

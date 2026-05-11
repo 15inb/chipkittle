@@ -24,6 +24,7 @@ import {
 import { CHIPKITTLE_LORE } from "./chipkittleLore.js";
 import { createDashClaim, redeemDashClaim } from "./dashClaims.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
+import { clearRuntimeErrors, getRuntimeErrors } from "./runtimeErrors.js";
 import {
   PANEL_ACCESS_LEVELS,
   hashPanelPassword,
@@ -71,6 +72,7 @@ const PANEL_SECTION_MIN_LEVEL = {
   permissions: "artifact_contributor",
   access: "artifact_contributor",
   backups: "root",
+  errorlogs: "root",
   general: "root",
   members: "root",
   public: "root",
@@ -97,6 +99,7 @@ const SETTINGS_SECTIONS = [
   { id: "permissions", label: "Permissions", description: "Command role access overrides." },
   { id: "access", label: "Panel Access", description: "Revoke panel users and review access tiers." },
   { id: "backups", label: "Backups", description: "Restore exported configuration, moderation, application, or public site data." },
+  { id: "errorlogs", label: "Error Logs", description: "Recent runtime errors captured since the bot process started." },
   { id: "commands", label: "Commands", description: "Browse, search, and prune the command catalog." },
   { id: "server", label: "Server", description: "Pull GitHub changes and restart the VPS bot." }
 ];
@@ -108,7 +111,7 @@ const SETTINGS_NAV_GROUPS = [
   { label: "Economy", description: "Bread, loans, games, and rewards", sections: ["economy", "games"] },
   { label: "AI", description: "Model, personality, cooldowns, and channels", sections: ["ai"] },
   { label: "Website", description: "Public site, members, and lore", sections: ["public", "members", "community"] },
-  { label: "Settings", description: "Panel users, access, and backups", sections: ["access", "backups"] }
+  { label: "Settings", description: "Panel users, access, backups, and runtime logs", sections: ["access", "backups", "errorlogs"] }
 ];
 
 const SETTINGS_NAV_MARKS = {
@@ -129,10 +132,11 @@ const SETTINGS_NAV_MARKS = {
   economy: "BR",
   access: "AC",
   backups: "BA",
+  errorlogs: "ER",
   server: "RT"
 };
 
-const NON_FORM_SECTIONS = new Set(["dashboard", "audit", "public", "commands", "server", "backups", "suggestions"]);
+const NON_FORM_SECTIONS = new Set(["dashboard", "audit", "public", "commands", "server", "backups", "suggestions", "errorlogs"]);
 
 class FileSessionStore extends session.Store {
   constructor(filePath) {
@@ -1418,6 +1422,61 @@ function auditLogWorkspace(guildId, config = {}, panelUser = null) {
       ${auditLog.length
         ? `<div class="audit-log-list">${rows}</div>`
         : '<p class="muted">No audit activity has been recorded yet.</p>'}
+    </section>
+  `;
+}
+
+function runtimeErrorSummary(part) {
+  if (part && typeof part === "object") {
+    const name = part.name || part.code || part.status || "Error";
+    const message = part.message || part.rawError?.message || part.details || "";
+    return `${name}${message ? `: ${message}` : ""}`;
+  }
+  return String(part || "");
+}
+
+function runtimeErrorDetails(part) {
+  if (part && typeof part === "object") {
+    return part.stack || JSON.stringify(part, null, 2);
+  }
+  return String(part || "");
+}
+
+function errorLogsWorkspace() {
+  const errors = getRuntimeErrors();
+  const rows = errors.map((entry) => {
+    const first = entry.parts?.[0];
+    const summary = runtimeErrorSummary(first) || "Runtime error";
+    const details = (entry.parts || []).map(runtimeErrorDetails).join("\n\n").slice(0, 6000);
+    return `
+      <article class="audit-log-row">
+        <div class="audit-log-main">
+          <div class="audit-log-title">
+            <span>${escapeHtml(entry.source || "runtime")}</span>
+            <strong>${escapeHtml(summary)}</strong>
+          </div>
+          <div class="audit-log-meta">
+            <span>${escapeHtml(entry.createdAt || "")}</span>
+            <span>${escapeHtml(entry.id || "")}</span>
+          </div>
+          <pre class="log-output">${escapeHtml(details || "No details captured.")}</pre>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  return `
+    <section class="panel-section audit-log-panel">
+      <div class="section-heading">
+        <h2>Error Logs</h2>
+        <p>Root-only runtime errors captured since this bot process started. PM2's full log remains the source of truth after process restarts.</p>
+      </div>
+      <div class="compact-actions">
+        <form method="post" action="/admin/errorlogs/clear" onsubmit="return confirm('Clear captured runtime errors?');">
+          <button type="submit" class="danger-button compact-button">Clear captured logs</button>
+        </form>
+      </div>
+      ${errors.length ? `<div class="audit-log-list">${rows}</div>` : '<p class="muted">No runtime errors captured since startup.</p>'}
     </section>
   `;
 }
@@ -4549,6 +4608,8 @@ function sectionWorkspace({ guild, config, commandList, defaultAiModel, ai, curr
       return panelAccessWorkspace(guild.id, config, panelUser);
     case "backups":
       return restoreCenter(guild.id);
+    case "errorlogs":
+      return errorLogsWorkspace();
     case "commands":
       return `
         <section class="panel-section command-catalog">
@@ -7308,6 +7369,11 @@ export function createPanel({
       console.error("Could not start panel restart:", error);
       response.redirect(`${updateRedirectTarget(request)}restart-failed`);
     }
+  });
+
+  app.post("/admin/errorlogs/clear", requireAuth, requirePanelLevel("root"), (_request, response) => {
+    clearRuntimeErrors();
+    response.redirect(`/guilds/${currentPanelGuildId()}?section=errorlogs`);
   });
 
   app.get("/admin/export/config", requireAuth, requirePanelLevel("root"), (_request, response) => {
