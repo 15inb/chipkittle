@@ -1,5 +1,6 @@
 const MAX_RUNTIME_ERRORS = 100;
 const runtimeErrors = [];
+const listeners = new Set();
 let installed = false;
 
 function serializeErrorPart(part) {
@@ -26,13 +27,17 @@ function serializeErrorPart(part) {
 }
 
 export function recordRuntimeError(source = "runtime", ...parts) {
-  runtimeErrors.unshift({
+  const entry = {
     id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     source: String(source || "runtime").slice(0, 120),
     createdAt: new Date().toISOString(),
     parts: parts.map(serializeErrorPart).slice(0, 8)
-  });
+  };
+  runtimeErrors.unshift(entry);
   runtimeErrors.splice(MAX_RUNTIME_ERRORS);
+  for (const listener of listeners) {
+    listener(entry);
+  }
 }
 
 export function getRuntimeErrors() {
@@ -41,6 +46,12 @@ export function getRuntimeErrors() {
 
 export function clearRuntimeErrors() {
   runtimeErrors.splice(0, runtimeErrors.length);
+}
+
+export function onRuntimeError(listener) {
+  if (typeof listener !== "function") return () => {};
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 export function installRuntimeErrorCapture() {

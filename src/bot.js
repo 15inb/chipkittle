@@ -12,11 +12,33 @@ import { commandList, createCommandHandler } from "./commands.js";
 import { addAuditLog, incrementMetric } from "./communityFeatures.js";
 import { NO_MENTIONS, neutralizeMentions } from "./discordSafety.js";
 import { buildPrettyEmbed } from "./embedOutput.js";
+import { onRuntimeError } from "./runtimeErrors.js";
 import { handleSlashCommand, registerSlashCommands } from "./slashCommands.js";
 import { TtsVoiceService } from "./ttsVoice.js";
 
 const invitePattern = /(discord\.gg|discord(?:app)?\.com\/invite)\/[a-z0-9-]+/i;
 const linkPattern = /https?:\/\/\S+/i;
+const BOT_ERROR_DM_USER_ID = "203025242753335296";
+const BOT_ERROR_DM_THROTTLE_MS = 30_000;
+
+function runtimeErrorPartSummary(part) {
+  if (part && typeof part === "object") {
+    return part.stack || `${part.name || part.code || "Error"}${part.message ? `: ${part.message}` : ""}`;
+  }
+  return String(part || "");
+}
+
+function runtimeErrorDmText(entry = {}) {
+  const details = (entry.parts || []).map(runtimeErrorPartSummary).filter(Boolean).join("\n\n");
+  return [
+    `**Chipkittle bot error**`,
+    `Source: \`${String(entry.source || "runtime").slice(0, 80)}\``,
+    `Time: ${entry.createdAt || new Date().toISOString()}`,
+    "```",
+    String(details || "No details captured.").slice(0, 1700),
+    "```"
+  ].join("\n");
+}
 
 function formatWelcomeMessage(template, member) {
   return template
@@ -147,6 +169,37 @@ export function createBot({ store, publicUrl, clientId, guildId, token, ai, defa
     ai,
     tts,
     defaultAiModel
+  });
+  let lastErrorDmAt = 0;
+  const pendingErrorDms = [];
+  let flushingErrorDm = false;
+
+  async function flushErrorDms() {
+    if (flushingErrorDm) return;
+    flushingErrorDm = true;
+    try {
+      while (pendingErrorDms.length) {
+        const waitMs = Math.max(0, BOT_ERROR_DM_THROTTLE_MS - (Date.now() - lastErrorDmAt));
+        if (waitMs) {
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
+        const entry = pendingErrorDms.shift();
+        const user = await client.users.fetch(BOT_ERROR_DM_USER_ID).catch(() => null);
+        if (!user) continue;
+        await user.send({ content: runtimeErrorDmText(entry), allowedMentions: NO_MENTIONS }).catch(() => {});
+        lastErrorDmAt = Date.now();
+      }
+    } finally {
+      flushingErrorDm = false;
+    }
+  }
+
+  onRuntimeError((entry) => {
+    if (!client.isReady()) return;
+    if (entry.source === "console.error" && String(entry.parts?.[0] || "").includes("Discord login failed")) return;
+    pendingErrorDms.push(entry);
+    pendingErrorDms.splice(8);
+    flushErrorDms();
   });
 
   function configForDirectMessage() {
