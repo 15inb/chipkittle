@@ -92,7 +92,7 @@ const THREAT_SCAN_FULL_DEFAULT_LIMIT = 800;
 const THREAT_SCAN_FULL_MAX_LIMIT = 5_000;
 const THREAT_SCAN_FULL_MAX_CHANNELS = 160;
 const THREAT_SCAN_FULL_MAX_MESSAGES_PER_CHANNEL = 3_000;
-const THREAT_SCAN_AI_SAMPLE_LIMIT = 100;
+const THREAT_SCAN_AI_SAMPLE_LIMIT = 800;
 const PROFILE_BIO_MAX = 220;
 
 const pendingDateRequests = new Map();
@@ -1098,9 +1098,11 @@ async function collectFullThreatScanMessages(ctx, member, { limit = THREAT_SCAN_
   let skippedChannels = 0;
   let scannedMessages = 0;
   let partial = channels.length > THREAT_SCAN_FULL_MAX_CHANNELS;
+  let limitReached = false;
 
   for (const channel of channels.slice(0, scope === "here" ? 1 : THREAT_SCAN_FULL_MAX_CHANNELS)) {
     if (collected.length >= limit) {
+      limitReached = true;
       partial = true;
       break;
     }
@@ -1127,7 +1129,10 @@ async function collectFullThreatScanMessages(ctx, member, { limit = THREAT_SCAN_
           createdAt: message.createdAt?.toISOString?.() || "",
           content
         });
-        if (collected.length >= limit) break;
+        if (collected.length >= limit) {
+          limitReached = true;
+          break;
+        }
       }
     }
 
@@ -1139,11 +1144,12 @@ async function collectFullThreatScanMessages(ctx, member, { limit = THREAT_SCAN_
   collected.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   return {
     messages: collected,
-    sampledMessages: sampleThreatScanMessages(collected),
+    sampledMessages: sampleThreatScanMessages(collected, Math.min(limit, THREAT_SCAN_AI_SAMPLE_LIMIT)),
     scannedChannels,
     scannedMessages,
     matchedMessages: collected.length,
     skippedChannels,
+    limitReached,
     partial
   };
 }
@@ -9341,7 +9347,7 @@ define({
     const scanResult = options.full
       ? await collectFullThreatScanMessages(ctx, member, options)
       : await collectThreatScanMessages(ctx, member, options);
-    const { messages, sampledMessages, scannedChannels, scannedMessages, matchedMessages, skippedChannels, partial } = scanResult;
+    const { messages, sampledMessages, scannedChannels, scannedMessages, matchedMessages, skippedChannels, partial, limitReached } = scanResult;
     if (!messages.length) {
       await ctx.message.reply(`I could not find readable ${options.full ? "history" : "recent messages"} from ${member} in ${options.scope === "here" ? "this channel" : "the scanned channels"}.`);
       return;
@@ -9349,7 +9355,8 @@ define({
 
     const assessment = await ctx.ai.threatAssessment(ctx.message, ctx.config, {
       targetTag: member.user.tag,
-      messages: sampledMessages
+      messages: sampledMessages,
+      maxMessages: sampledMessages.length
     });
     await recordAiUsage(ctx.store, ctx.message.guild.id, ctx.config, assessment.usage);
     await incrementMetric(ctx.store, ctx.message.guild.id, "aiReplies", 1).catch(() => {});
@@ -9370,7 +9377,7 @@ define({
         `**Confidence:** ${cleanText(assessment.confidence || "low", 40)}`,
         `**Scope:** ${options.full ? "root full-history scan" : options.scope === "here" ? "current channel" : `${scannedChannels} channel${scannedChannels === 1 ? "" : "s"}`}`,
         `**Coverage:** ${scannedChannels} channel${scannedChannels === 1 ? "" : "s"} scanned, ${scannedMessages.toLocaleString()} message${scannedMessages === 1 ? "" : "s"} checked, ${matchedMessages.toLocaleString()} from target found`,
-        options.full ? `**AI sample:** ${sampledMessages.length} representative message${sampledMessages.length === 1 ? "" : "s"} reviewed${partial ? " (scan hit safety limits)" : ""}` : `**Messages reviewed:** ${sampledMessages.length}`,
+        options.full ? `**AI reviewed:** ${sampledMessages.length.toLocaleString()} message${sampledMessages.length === 1 ? "" : "s"}${limitReached ? ` (requested target limit ${options.limit.toLocaleString()} reached)` : partial ? " (some channel/history safety limits were hit)" : ""}` : `**Messages reviewed:** ${sampledMessages.length}`,
         skippedChannels ? `**Skipped/empty channels:** ${skippedChannels}` : "",
         "",
         "**Summary**",

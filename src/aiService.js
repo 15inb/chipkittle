@@ -208,19 +208,20 @@ export class AiService {
     return { text: output, usage: estimateUsage(response, output) };
   }
 
-  async threatAssessment(message, config, { targetTag, messages = [] } = {}) {
+  async threatAssessment(message, config, { targetTag, messages = [], maxMessages = 250 } = {}) {
     if (!this.client) {
       return { error: "AI is not configured yet. Add `OPENAI_API_KEY` to `.env`, then restart the bot.", usage: { totalTokens: 0 } };
     }
 
     const model = config.ai.model || this.defaultModel;
+    const reviewLimit = Math.max(20, Math.min(1_500, Math.floor(Number(maxMessages) || messages.length || 250)));
     const sample = messages
-      .slice(0, 100)
+      .slice(0, reviewLimit)
       .map((entry, index) => [
         `#${index + 1}`,
         `channel=${entry.channelName || "unknown"}`,
         `time=${entry.createdAt || "unknown"}`,
-        `content=${trimDiscordMessage(entry.content || "[no text]", 420)}`
+        `content=${trimDiscordMessage(entry.content || "[no text]", reviewLimit > 300 ? 280 : 420)}`
       ].join(" | "))
       .join("\n");
 
@@ -242,7 +243,7 @@ export class AiService {
         role: "user",
         content: [
           `Target user: ${targetTag || "unknown"}`,
-          `Messages sampled: ${messages.length}`,
+          `Messages reviewed: ${Math.min(messages.length, reviewLimit)} of ${messages.length}`,
           "Recent messages:",
           sample || "[No readable messages were found.]"
         ].join("\n")
