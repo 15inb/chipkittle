@@ -88,6 +88,11 @@ const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 const UNLIMITED_MEDIA_BYTES = Number.POSITIVE_INFINITY;
 const PLAIN_OUTPUT_COMMANDS = new Set(["ask", "chipify", "gif", "caption"]);
 const MAX_REMINDER_TIMEOUT_MS = 2_147_000_000;
+const THREAT_SCAN_FULL_DEFAULT_LIMIT = 800;
+const THREAT_SCAN_FULL_MAX_LIMIT = 5_000;
+const THREAT_SCAN_FULL_MAX_CHANNELS = 160;
+const THREAT_SCAN_FULL_MAX_MESSAGES_PER_CHANNEL = 3_000;
+const THREAT_SCAN_AI_SAMPLE_LIMIT = 100;
 const PROFILE_BIO_MAX = 220;
 
 const pendingDateRequests = new Map();
@@ -931,15 +936,20 @@ async function sendAiResult(ctx, aiResult) {
 }
 
 function parseThreatScanOptions(args = []) {
+  const flags = new Set(args.map((part) => String(part || "").toLowerCase()));
+  const full = flags.has("full") || flags.has("history") || flags.has("all") || flags.has("--full");
   const numbers = args
     .map((part) => Number(String(part || "").replace(/[^\d]/g, "")))
     .filter((value) => Number.isFinite(value) && value > 0);
-  const requestedLimit = numbers[0] || 80;
+  const requestedLimit = numbers[0] || (full ? THREAT_SCAN_FULL_DEFAULT_LIMIT : 80);
   const scope = args.some((part) => ["here", "channel", "current"].includes(String(part || "").toLowerCase()))
     ? "here"
     : "server";
   return {
-    limit: Math.max(20, Math.min(100, Math.floor(requestedLimit))),
+    full,
+    limit: full
+      ? Math.max(100, Math.min(THREAT_SCAN_FULL_MAX_LIMIT, Math.floor(requestedLimit)))
+      : Math.max(20, Math.min(100, Math.floor(requestedLimit))),
     scope
   };
 }
@@ -1007,7 +1017,135 @@ async function collectThreatScanMessages(ctx, member, { limit = 80, scope = "ser
   }
 
   collected.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  return { messages: collected.slice(-limit), scannedChannels };
+  return {
+    messages: collected.slice(-limit),
+    sampledMessages: collected.slice(-limit),
+    scannedChannels,
+    scannedMessages: scannedChannels ? scannedChannels * Math.min(100, Math.max(35, limit)) : 0,
+    matchedMessages: collected.length,
+    skippedChannels: 0,
+    partial: false
+  };
+}
+
+async function discoverFullThreatScanChannels(ctx, botMember, scope = "server") {
+  const channels = [];
+  const seen = new Set();
+
+  function addChannel(channel) {
+    if (!channel?.id || seen.has(channel.id) || !canReadMessageHistory(channel, botMember)) return;
+    seen.add(channel.id);
+    channels.push(channel);
+  }
+
+  addChannel(ctx.message.channel);
+  if (scope === "here") return channels;
+
+  const guildChannels = [...ctx.message.guild.channels.cache.values()]
+    .filter((channel) =>
+      [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.PublicThread, ChannelType.PrivateThread].includes(channel.type)
+    )
+    .sort((a, b) => {
+      const left = a.id === ctx.message.channel.id ? -1 : 0;
+      const right = b.id === ctx.message.channel.id ? -1 : 0;
+      return left - right || String(a.name || "").localeCompare(String(b.name || ""));
+    });
+  for (const channel of guildChannels) addChannel(channel);
+
+  const activeThreads = await ctx.message.guild.channels.fetchActiveThreads().catch(() => null);
+  for (const thread of activeThreads?.threads?.values?.() || []) addChannel(thread);
+
+  const threadParents = guildChannels.filter((channel) => channel.threads?.fetchArchived);
+  for (const parent of threadParents) {
+    if (channels.length >= THREAT_SCAN_FULL_MAX_CHANNELS) break;
+    const publicThreads = await parent.threads.fetchArchived({ type: "public", limit: 100 }).catch(() => null);
+    for (const thread of publicThreads?.threads?.values?.() || []) addChannel(thread);
+    const privateThreads = await parent.threads.fetchArchived({ type: "private", limit: 100 }).catch(() => null);
+    for (const thread of privateThreads?.threads?.values?.() || []) addChannel(thread);
+  }
+
+  return channels;
+}
+
+function sampleThreatScanMessages(messages = [], limit = THREAT_SCAN_AI_SAMPLE_LIMIT) {
+  if (messages.length <= limit) return messages;
+  const newestCount = Math.ceil(limit * 0.55);
+  const oldestCount = Math.floor(limit * 0.2);
+  const middleCount = Math.max(0, limit - newestCount - oldestCount);
+  const oldest = messages.slice(0, oldestCount);
+  const newest = messages.slice(-newestCount);
+  const middlePool = messages.slice(oldestCount, Math.max(oldestCount, messages.length - newestCount));
+  const middle = [];
+  if (middleCount > 0 && middlePool.length) {
+    const step = Math.max(1, Math.floor(middlePool.length / middleCount));
+    for (let index = 0; index < middlePool.length && middle.length < middleCount; index += step) {
+      middle.push(middlePool[index]);
+    }
+  }
+  const seen = new Set();
+  return [...oldest, ...middle, ...newest].filter((message) => {
+    if (!message?.messageId || seen.has(message.messageId)) return false;
+    seen.add(message.messageId);
+    return true;
+  });
+}
+
+async function collectFullThreatScanMessages(ctx, member, { limit = THREAT_SCAN_FULL_DEFAULT_LIMIT, scope = "server" } = {}) {
+  const botMember = ctx.message.guild.members.me || await ctx.message.guild.members.fetchMe().catch(() => null);
+  const channels = await discoverFullThreatScanChannels(ctx, botMember, scope);
+  const collected = [];
+  let scannedChannels = 0;
+  let skippedChannels = 0;
+  let scannedMessages = 0;
+  let partial = channels.length > THREAT_SCAN_FULL_MAX_CHANNELS;
+
+  for (const channel of channels.slice(0, scope === "here" ? 1 : THREAT_SCAN_FULL_MAX_CHANNELS)) {
+    if (collected.length >= limit) {
+      partial = true;
+      break;
+    }
+
+    let before;
+    let channelScanned = 0;
+    let channelHadReadableBatch = false;
+    while (channelScanned < THREAT_SCAN_FULL_MAX_MESSAGES_PER_CHANNEL && collected.length < limit) {
+      const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
+      if (!batch?.size) break;
+      channelHadReadableBatch = true;
+      channelScanned += batch.size;
+      scannedMessages += batch.size;
+      before = batch.last()?.id;
+
+      for (const message of batch.values()) {
+        if (message.author?.id !== member.id) continue;
+        const content = threatScanExcerpt(message);
+        if (!content) continue;
+        collected.push({
+          channelId: channel.id,
+          channelName: channel.name || channel.parent?.name || channel.id,
+          messageId: message.id,
+          createdAt: message.createdAt?.toISOString?.() || "",
+          content
+        });
+        if (collected.length >= limit) break;
+      }
+    }
+
+    if (channelHadReadableBatch) scannedChannels += 1;
+    else skippedChannels += 1;
+    if (channelScanned >= THREAT_SCAN_FULL_MAX_MESSAGES_PER_CHANNEL) partial = true;
+  }
+
+  collected.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  return {
+    messages: collected,
+    sampledMessages: sampleThreatScanMessages(collected),
+    scannedChannels,
+    scannedMessages,
+    matchedMessages: collected.length,
+    skippedChannels,
+    partial
+  };
 }
 
 function threatLevelColor(level = "") {
@@ -9139,15 +9277,25 @@ define({
 
 define({
   name: "threatscan",
-  aliases: ["riskscan", "threatlevel", "risklevel"],
+  aliases: ["riskscan", "threatlevel", "risklevel", "fullthreatscan", "historythreatscan"],
   category: "Moderation",
-  description: "Use AI to review recent visible messages and estimate a moderation threat level.",
-  usage: "threatscan @user [20-100] [here]",
+  description: "Use AI to review visible messages and estimate a moderation threat level. Root can add full for a deeper history scan.",
+  usage: "threatscan @user [20-100|full 100-5000] [here]",
   async run(ctx) {
-    if (!requirePermission(ctx, PermissionsBitField.Flags.ManageMessages)) return;
     const member = ctx.message.mentions.members.first();
     if (!member) {
       await ctx.message.reply(`Usage: \`${usage(ctx.config, this)}\``);
+      return;
+    }
+    const invokedAsFullScan = ["fullthreatscan", "historythreatscan"].includes(String(ctx.invokedName || "").toLowerCase());
+    const options = parseThreatScanOptions([
+      ...ctx.args.slice(1),
+      ...(invokedAsFullScan ? ["full"] : [])
+    ]);
+
+    if (options.full) {
+      if (!requirePanelRoot(ctx)) return;
+    } else if (!requirePermission(ctx, PermissionsBitField.Flags.ManageMessages)) {
       return;
     }
 
@@ -9182,17 +9330,26 @@ define({
       return;
     }
 
-    const options = parseThreatScanOptions(ctx.args.slice(1));
     await ctx.message.channel.sendTyping();
-    const { messages, scannedChannels } = await collectThreatScanMessages(ctx, member, options);
+    if (options.full) {
+      await ctx.message.reply({
+        content: `Starting root full-history threat scan for ${member}. I will scan readable server history and then summarize the strongest signals.`,
+        allowedMentions: NO_MENTIONS
+      });
+    }
+
+    const scanResult = options.full
+      ? await collectFullThreatScanMessages(ctx, member, options)
+      : await collectThreatScanMessages(ctx, member, options);
+    const { messages, sampledMessages, scannedChannels, scannedMessages, matchedMessages, skippedChannels, partial } = scanResult;
     if (!messages.length) {
-      await ctx.message.reply(`I could not find readable recent messages from ${member} in ${options.scope === "here" ? "this channel" : "the scanned channels"}.`);
+      await ctx.message.reply(`I could not find readable ${options.full ? "history" : "recent messages"} from ${member} in ${options.scope === "here" ? "this channel" : "the scanned channels"}.`);
       return;
     }
 
     const assessment = await ctx.ai.threatAssessment(ctx.message, ctx.config, {
       targetTag: member.user.tag,
-      messages
+      messages: sampledMessages
     });
     await recordAiUsage(ctx.store, ctx.message.guild.id, ctx.config, assessment.usage);
     await incrementMetric(ctx.store, ctx.message.guild.id, "aiReplies", 1).catch(() => {});
@@ -9211,7 +9368,10 @@ define({
       description: [
         `**Review-only result:** ${level} (**${assessment.score}/100**)`,
         `**Confidence:** ${cleanText(assessment.confidence || "low", 40)}`,
-        `**Scope:** ${options.scope === "here" ? "current channel" : `${scannedChannels} channel${scannedChannels === 1 ? "" : "s"}`} / ${messages.length} message${messages.length === 1 ? "" : "s"}`,
+        `**Scope:** ${options.full ? "root full-history scan" : options.scope === "here" ? "current channel" : `${scannedChannels} channel${scannedChannels === 1 ? "" : "s"}`}`,
+        `**Coverage:** ${scannedChannels} channel${scannedChannels === 1 ? "" : "s"} scanned, ${scannedMessages.toLocaleString()} message${scannedMessages === 1 ? "" : "s"} checked, ${matchedMessages.toLocaleString()} from target found`,
+        options.full ? `**AI sample:** ${sampledMessages.length} representative message${sampledMessages.length === 1 ? "" : "s"} reviewed${partial ? " (scan hit safety limits)" : ""}` : `**Messages reviewed:** ${sampledMessages.length}`,
+        skippedChannels ? `**Skipped/empty channels:** ${skippedChannels}` : "",
         "",
         "**Summary**",
         cleanText(assessment.summary, 700),
@@ -9231,12 +9391,12 @@ define({
     });
 
     await ctx.message.reply({ embeds: [embed], allowedMentions: NO_MENTIONS });
-    await sendModerationLog(ctx, `Threat scan for ${member.user.tag}: ${level} (${assessment.score}/100), confidence ${assessment.confidence}. ${messages.length} messages sampled.`);
+    await sendModerationLog(ctx, `Threat scan for ${member.user.tag}: ${level} (${assessment.score}/100), confidence ${assessment.confidence}. ${sampledMessages.length}/${matchedMessages} messages reviewed${options.full ? " from a root full-history scan" : ""}.`);
     await addAuditLog(ctx.store, ctx.message.guild.id, {
       type: "moderation",
       action: "threatscan",
       label: "Threat scan run",
-      details: `${ctx.message.author.tag} ran a threat scan for ${member.user.tag}: ${level} (${assessment.score}/100).`,
+      details: `${ctx.message.author.tag} ran a ${options.full ? "root full-history " : ""}threat scan for ${member.user.tag}: ${level} (${assessment.score}/100).`,
       actor: ctx.message.author.tag,
       targetId: member.id,
       targetName: member.user.tag
