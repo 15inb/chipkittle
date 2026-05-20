@@ -3961,15 +3961,15 @@ define({
 
 define({
   name: "date",
-  aliases: ["dateaccept", "datedeny", "datebreak", "datehelp", "dateinfo", "kiss", "hug", "holdhands", "sex", "cheat", "homewreck", "tickle", "creampie", "drug"],
+  aliases: ["dateaccept", "datedeny", "datebreak", "datehelp", "dateinfo", "kiss", "hug", "holdhands", "sex", "cheat", "homewreck", "tickle", "creampie", "facial", "bust", "drug"],
   category: "Dating",
   description: "Manage Chipkittle dating, status, and relationship interactions.",
-  usage: "date [@user|accept|deny|status|break|help|kiss|hug|holdhands|sex|cheat|homewreck|tickle|creampie|drug] ...",
+  usage: "date [@user|accept|deny|status|break|help|kiss|hug|holdhands|sex|cheat|homewreck|tickle|creampie|facial|bust|drug] ...",
   async run(ctx) {
     const invoked = (ctx.invokedName || ctx.command.name).toLowerCase();
     const explicitMode = (ctx.args[0] || "").toLowerCase();
     const mode = (
-      ["dateaccept", "datedeny", "datebreak", "datehelp", "dateinfo", "kiss", "hug", "holdhands", "sex", "cheat", "homewreck", "tickle", "creampie", "drug"].includes(invoked)
+      ["dateaccept", "datedeny", "datebreak", "datehelp", "dateinfo", "kiss", "hug", "holdhands", "sex", "cheat", "homewreck", "tickle", "creampie", "facial", "bust", "drug"].includes(invoked)
         ? invoked
         : explicitMode
     );
@@ -3989,6 +3989,8 @@ define({
         `${ctx.config.prefix}date homewreck @user`,
         `${ctx.config.prefix}date tickle @user`,
         `${ctx.config.prefix}date creampie @user`,
+        `${ctx.config.prefix}date facial @user`,
+        `${ctx.config.prefix}date bust @user`,
         `${ctx.config.prefix}date drug @user`
       ];
       const embed = new EmbedBuilder()
@@ -4069,7 +4071,7 @@ define({
       return;
     }
 
-    if (["kiss", "hug", "holdhands", "sex", "cheat", "homewreck", "tickle", "creampie", "drug"].includes(mode)) {
+    if (["kiss", "hug", "holdhands", "sex", "cheat", "homewreck", "tickle", "creampie", "facial", "bust", "drug"].includes(mode)) {
       const mentions = [...ctx.message.mentions.users.values()];
       const requester = ctx.message.author;
       const target = mentions[0];
@@ -4092,6 +4094,8 @@ define({
         sex: ["Hot Chipkittle Moment", `${requester} and ${target} shared a very intimate Chipkittle moment. Keep it spicy.`, 0xff3399],
         tickle: ["Tickled", `${requester} tickled ${target} until they started giggling.`, 0xf9a8d4],
         creampie: ["Tiny Chipkittle Created", `${requester} and ${target} somehow produced a tiny Chipkittle named **${randomChipkittleName()}**.`, 0xfda4af],
+        facial: ["Chipkittle Facial", `${requester} gave ${target} a messy Chipkittle facial. Absolute chaos.`, 0xf9a8d4],
+        bust: ["Chipkittle Bust", `${requester} busted all over ${target} in a wildly unhinged Chipkittle moment.`, 0xfb7185],
         drug: ["Questionable Decisions", `${target} has been drugged with ${["caffeine", "weed", "sugar", "bread", "shrooms", "chocolate"].sort(() => Math.random() - 0.5).slice(0, 2).join(" and ")}.`, 0xc4b5fd]
       };
       if (mode === "cheat") {
@@ -4169,6 +4173,42 @@ define({
       .setColor(0xff99cc);
 
     await ctx.message.channel.send({ embeds: [embed], allowedMentions: NO_MENTIONS });
+  }
+});
+
+async function runDateAliasCommand(ctx, mode) {
+  const dateCommand = ctx.commands.get("date");
+  if (!dateCommand) {
+    await ctx.message.reply("The date command is not available right now.");
+    return;
+  }
+
+  await dateCommand.run({
+    ...ctx,
+    command: dateCommand,
+    args: [mode, ...ctx.args],
+    rest: [mode, ctx.rest || ""].join(" ").trim(),
+    invokedName: mode
+  });
+}
+
+define({
+  name: "facial",
+  category: "Dating",
+  description: "Give someone a Chipkittle facial.",
+  usage: "facial @user",
+  async run(ctx) {
+    await runDateAliasCommand(ctx, "facial");
+  }
+});
+
+define({
+  name: "bust",
+  category: "Dating",
+  description: "Bust on someone in a Chipkittle way.",
+  usage: "bust @user",
+  async run(ctx) {
+    await runDateAliasCommand(ctx, "bust");
   }
 });
 
